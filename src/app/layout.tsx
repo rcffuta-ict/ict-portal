@@ -26,14 +26,14 @@ export const metadata: Metadata = {
     metadataBase: new URL("https://ict.rcffuta.com"), // Base URL for all relative links
 
     title: {
-        default: "RCF FUTA Digital Portal",
+        default: "RCF FUTA ICT Portal",
         template: "%s | RCF FUTA ICT",
     },
 
     description:
         "The official digital ecosystem for the Redeemed Christian Fellowship, FUTA. Manage membership, attendance, academics, and voting in one secure hub.",
 
-    applicationName: "RCF FUTA Portal",
+    applicationName: "RCF FUTA ICT Portal",
 
     keywords: [
         "RCF FUTA",
