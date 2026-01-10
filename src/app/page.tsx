@@ -1,4 +1,4 @@
-import Link from "next/link";
+
 import { Logo } from "@/components/ui/logo";
 
 export default function ComingSoon() {
