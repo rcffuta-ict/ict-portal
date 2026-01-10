@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@rcffuta/ict-lib": "1.0.0",
+    "@rcffuta/ict-lib": "workspace:*",
     "@tailwindcss/postcss": "^4.1.18",
     "@yudiel/react-qr-scanner": "^2.5.0",
     "clsx": "^2.1.1",

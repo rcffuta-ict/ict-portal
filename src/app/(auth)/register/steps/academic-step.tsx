@@ -7,10 +7,14 @@ import {
     type AcademicData,
     DepartmentUtils,
 } from "@rcffuta/ict-lib";
-import { registerStepTwo } from "../action";
+import { registerStepTwo, getFamiliesAction } from "../action"; // Import new action
 import { Loader2, ArrowRight } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
+import { useEffect, useState } from "react";
+
+// Hardcode current session year for display calculation (e.g., 2025/2026 session -> 2025)
+const CURRENT_SESSION_YEAR = 2025; 
 
 export default function StepAcademic({
     userId,
@@ -19,6 +23,9 @@ export default function StepAcademic({
     userId: string;
     onSuccess: () => void;
 }) {
+    const [families, setFamilies] = useState<any[]>([]);
+    const [isLoadingFamilies, setIsLoadingFamilies] = useState(true);
+
     const {
         register,
         handleSubmit,
@@ -27,25 +34,49 @@ export default function StepAcademic({
         resolver: zodResolver(AcademicDataSchema),
     });
 
+    // 1. Fetch Families on Mount
+    useEffect(() => {
+        async function load() {
+            const res = await getFamiliesAction();
+            if (res.success && res.data) {
+                setFamilies(res.data);
+            }
+            setIsLoadingFamilies(false);
+        }
+        load();
+    }, []);
+
     const onSubmit = async (data: AcademicData) => {
         const res = await registerStepTwo(userId, data);
         if (res.success) onSuccess();
         else alert(res.error);
     };
 
-    // Get Departments from Lib
     const departments = DepartmentUtils.getAllNames();
 
+    // Helper to calculate display level (e.g. "100L")
+    const getDisplayLevel = (entryYear: number) => {
+        const level = (CURRENT_SESSION_YEAR - entryYear + 1) * 100;
+        if (level < 100) return "Pre-Degree / Aspirant";
+        if (level > 500) return "Alumni / Extra Year";
+        return `${level}L`;
+    };
+
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="space-y-5 animate-fade-in"
+        >
+            {/* 1. Matric Number */}
             <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-700">
                     Matric Number
                 </label>
                 <FormInput
                     {...register("matricNumber")}
-                    className="w-full input-field"
+                    className="w-full input-field uppercase"
                     placeholder="ABC/21/0000"
+                    isMatric={true}
                 />
                 <p className="text-[10px] text-gray-400">
                     Format: DEPT/YY/NUM (e.g. MEE/19/8821)
@@ -57,6 +88,7 @@ export default function StepAcademic({
                 )}
             </div>
 
+            {/* 2. Department Select */}
             <div className="space-y-1">
                 <FormSelect
                     {...register("department")}
@@ -65,8 +97,8 @@ export default function StepAcademic({
                 >
                     <option value="">Select Department</option>
                     {departments.map((dept) => (
-                        <option key={dept} value={dept}>
-                            {dept}
+                        <option key={dept.value} value={dept.value}>
+                            {dept.label}
                         </option>
                     ))}
                 </FormSelect>
@@ -77,21 +109,40 @@ export default function StepAcademic({
                 )}
             </div>
 
+            {/* 3. Family / Generation Select */}
             <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-700">
-                    Entry Year
+                    Academic Level / Family
                 </label>
-                <FormInput
-                    {...register("entryYear", { valueAsNumber: true })}
-                    type="number"
-                    className="w-full input-field"
-                    placeholder="2021"
-                />
-                {errors.entryYear && (
+                <div className="relative">
+                    <select
+                        {...register("classSetId")}
+                        className="w-full input-field bg-white disabled:opacity-50"
+                        disabled={isLoadingFamilies}
+                    >
+                        <option value="">Select your Set</option>
+                        {families.map((f) => (
+                            <option key={f.id} value={f.id}>
+                                {getDisplayLevel(f.entry_year)} —{" "}
+                                {f.family_name || "Unnamed Generation"} (
+                                {f.entry_year} Set)
+                            </option>
+                        ))}
+                    </select>
+                    {isLoadingFamilies && (
+                        <div className="absolute right-3 top-2.5">
+                            <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                        </div>
+                    )}
+                </div>
+                {errors.classSetId && (
                     <p className="text-xs text-red-500">
-                        {errors.entryYear.message}
+                        {errors.classSetId.message}
                     </p>
                 )}
+                <p className="text-[10px] text-gray-400">
+                    Your "Family Name" follows you from 100L to 500L.
+                </p>
             </div>
 
             <button
