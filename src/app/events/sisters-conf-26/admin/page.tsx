@@ -231,6 +231,8 @@ function StatCard({ label, value, icon: Icon, color }: any) {
 
 // --- SCANNER VIEW COMPONENT ---
 
+// --- OPTIMIZED SCANNER VIEW COMPONENT ---
+
 function ScannerView({ onBack }: { onBack: () => void }) {
     const [scanResult, setScanResult] = useState<{
         status: "success" | "error";
@@ -238,33 +240,28 @@ function ScannerView({ onBack }: { onBack: () => void }) {
         msg: string;
     } | null>(null);
     
-    const [lastScanned, setLastScanned] = useState("");
-    const [isProcessing, setIsProcessing] = useState(false);
+    // Lock scanning state to prevent double-fires
+    const [isScanning, setIsScanning] = useState(true);
 
-    // Reset logic to scan next person
-    const resetScanner = () => {
-        setScanResult(null);
-        setIsProcessing(false);
-        // Delay clearing lastScanned to prevent immediate double-read
-        setTimeout(() => setLastScanned(""), 1500);
-    };
-
-    const handleScan = async (text: string) => {
-        // Prevent duplicate scans or scanning while processing
-        if (!text || text === lastScanned || isProcessing) return;
+    const handleScan = async (results: any[]) => {
+        // 1. Strict checks to prevent lag/spam
+        if (!isScanning || !results || results.length === 0) return;
         
-        setIsProcessing(true);
-        setLastScanned(text);
+        const text = results[0].rawValue;
+        if (!text) return;
 
-        // Haptic feedback (short tap)
+        // 2. Lock scanner immediately
+        setIsScanning(false);
+
+        // 3. Haptic Feedback (Short)
         if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
 
         try {
-            // Call Server Action
+            // 4. Server Action
             const result = await checkInUserAction(text);
 
             if (result.success) {
-                // Success Pattern: 2 short pulses
+                // Success Vibrate
                 if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([100, 50, 100]);
                 
                 setScanResult({
@@ -273,7 +270,7 @@ function ScannerView({ onBack }: { onBack: () => void }) {
                     msg: `${result.data?.fullName || 'Attendee'} • ${result.data?.level || ''}`,
                 });
             } else {
-                // Error Pattern: Long pulse
+                // Error Vibrate (Long)
                 if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(400);
 
                 setScanResult({
@@ -291,17 +288,16 @@ function ScannerView({ onBack }: { onBack: () => void }) {
         }
     };
 
-    // Auto-dismiss result after 2.5 seconds
-    useEffect(() => {
-        if (scanResult) {
-            const timer = setTimeout(resetScanner, 2500);
-            return () => clearTimeout(timer);
-        }
-    }, [scanResult]);
+    // Reset function to clear state and unlock scanner
+    const resetScanner = () => {
+        setScanResult(null);
+        // Small delay before reactivating scanner to let user move phone away
+        setTimeout(() => setIsScanning(true), 500);
+    };
 
     return (
         <div className="fixed inset-0 z-50 bg-black flex flex-col font-sans">
-            {/* Scanner Header */}
+            {/* Header */}
             <div className="flex items-center justify-between p-4 bg-slate-900/90 backdrop-blur-md border-b border-white/10 z-20">
                 <div className="flex items-center gap-3">
                     <div className="bg-pink-600 p-1.5 rounded text-white">
@@ -310,11 +306,12 @@ function ScannerView({ onBack }: { onBack: () => void }) {
                     <div>
                         <h2 className="text-white font-bold text-sm leading-none">Ticket Scanner</h2>
                         <div className="flex items-center gap-1.5 mt-1">
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                            <span className={`relative flex h-2 w-2 rounded-full ${isScanning ? 'bg-green-500' : 'bg-red-500'}`}>
+                              {isScanning && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
                             </span>
-                            <span className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Camera Active</span>
+                            <span className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">
+                                {isScanning ? "Camera Active" : "Processing..."}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -328,26 +325,23 @@ function ScannerView({ onBack }: { onBack: () => void }) {
 
             {/* Camera Area */}
             <div className="flex-1 relative bg-black">
-                {/* 1. The Actual Scanner */}
                 <Scanner 
-                    onScan={(result) => {
-                        if (result && result[0]) handleScan(result[0].rawValue);
-                    }}
+                    onScan={handleScan}
+                    // IMPORTANT: Delay helps performance significantly
+                    scanDelay={500} 
                     components={{ finder: false }}
+                    constraints={{ facingMode: 'environment' }} // Force back camera
                     styles={{ container: { height: "100%", width: "100%" } }}
                 />
 
-                {/* 2. Viewfinder Overlay (When not showing result) */}
+                {/* Viewfinder Overlay (Only visible when idle) */}
                 {!scanResult && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="relative w-72 h-72 opacity-80">
-                            {/* Corners */}
-                            <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-pink-500 rounded-tl-2xl shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
-                            <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-pink-500 rounded-tr-2xl shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
-                            <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-pink-500 rounded-bl-2xl shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
-                            <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-pink-500 rounded-br-2xl shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
-                            
-                            {/* Scanning Laser Animation */}
+                            <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-pink-500 rounded-tl-2xl"></div>
+                            <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-pink-500 rounded-tr-2xl"></div>
+                            <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-pink-500 rounded-bl-2xl"></div>
+                            <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-pink-500 rounded-br-2xl"></div>
                             <div className="absolute inset-x-4 top-0 h-0.5 bg-pink-500 shadow-[0_0_20px_rgba(236,72,153,1)] animate-[scan_2s_ease-in-out_infinite]"></div>
                         </div>
                         <p className="absolute bottom-20 text-white/70 text-sm font-medium bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm">
@@ -356,12 +350,12 @@ function ScannerView({ onBack }: { onBack: () => void }) {
                     </div>
                 )}
 
-                {/* 3. Result Overlay (Success/Error) */}
+                {/* Result Overlay */}
                 {scanResult && (
                     <div 
                         onClick={resetScanner}
-                        className={`absolute inset-0 z-30 flex flex-col items-center justify-center p-6 backdrop-blur-sm animate-in fade-in zoom-in duration-200 cursor-pointer ${
-                            scanResult.status === 'success' ? 'bg-green-900/90' : 'bg-red-900/90'
+                        className={`absolute inset-0 z-30 flex flex-col items-center justify-center p-6 backdrop-blur-md animate-in fade-in zoom-in duration-200 cursor-pointer ${
+                            scanResult.status === 'success' ? 'bg-green-900/80' : 'bg-red-900/80'
                         }`}
                     >
                         <div className="bg-white rounded-3xl p-8 text-center shadow-2xl w-full max-w-sm transform transition-all">
@@ -381,21 +375,20 @@ function ScannerView({ onBack }: { onBack: () => void }) {
                                 {scanResult.title}
                             </h2>
                             
-                            <p className="text-xl font-medium text-slate-700">
+                            <p className="text-xl font-medium text-slate-700 leading-snug">
                                 {scanResult.msg}
                             </p>
 
                             <div className="mt-8 pt-6 border-t border-slate-100">
-                                <p className="text-xs text-slate-400 uppercase tracking-widest font-bold animate-pulse">
-                                    Tap to scan next
-                                </p>
+                                <button className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-sm uppercase tracking-wider animate-pulse">
+                                    Tap to Scan Next
+                                </button>
                             </div>
                         </div>
                     </div>
                 )}
             </div>
 
-            {/* Custom Animations */}
             <style>{`
                 @keyframes scan {
                     0% { top: 5%; opacity: 0; }

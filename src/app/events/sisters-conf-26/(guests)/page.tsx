@@ -25,12 +25,16 @@ interface TicketData {
     last_name: string;
     level: string;
     department?: string;
+    phone: string;
 }
 
 interface EventInfo {
     title: string;
     description: string;
 }
+
+const EVENT_TIME = "10:00 AM"; // Event time constant
+const EVENT_VENUE = "RCF FUTA South Gate Auditorium"; // Event venue constant
 
 export default function SistersConferenceReg() {
     const [step, setStep] = useState<"form" | "ticket">("form");
@@ -51,23 +55,110 @@ export default function SistersConferenceReg() {
         e.preventDefault();
         setLoading(true);
 
+        // Let browser run built-in validity checks first (email, required fields)
+        if (!e.currentTarget.checkValidity()) {
+            // show native validation UI
+            // Note: reportValidity returns whether the form is valid
+            ;(e.currentTarget as HTMLFormElement).reportValidity();
+            setLoading(false);
+            return;
+        }
+
         const formData = new FormData(e.currentTarget);
         formData.append("isGuest", isGuest ? "true" : "false");
+
+        // Normalize phone number to international +234 format when possible
+        const rawPhone = String(formData.get("phone") || "").trim();
+        let phone = rawPhone.replace(/[^0-9+]/g, ""); // remove spaces, dashes
+
+        if (phone.startsWith("0")) {
+            // Convert local leading 0 to +234 (e.g., 08012345678 -> +2348012345678)
+            phone = "+234" + phone.slice(1);
+        } else if (phone.startsWith("234")) {
+            phone = "+" + phone;
+        }
+
+        // Enforce Nigerian number pattern: +234 followed by 10 digits
+        const ngPattern = /^\+234\d{10}$/;
+        if (!ngPattern.test(phone)) {
+            alert("Please enter a valid Nigerian phone number (e.g. 08012345678 or +2348012345678).");
+            setLoading(false);
+            return;
+        }
+
+        formData.set("phone", phone);
 
         try {
             const result = await registerSisterAction(formData);
             if (result.success) {
                 setTicketData(result.data);
                 setStep("ticket");
+                showToast("success", "Ticket generated — you can print or save as PDF.");
                 window.scrollTo({ top: 0, behavior: "smooth" });
             } else {
-                alert("Error: " + result.error);
+                showToast("error", String(result.error || "An error occurred"));
             }
         } catch (err) {
-            alert("Network error. Please try again.");
+            showToast("error", "Network error. Please try again.");
         } finally {
             setLoading(false);
         }
+    }
+
+    // -----------------------
+    // Simple themed toast system
+    // -----------------------
+    type Toast = { id: number; type: "success" | "error" | "info"; msg: string };
+    const [toasts, setToasts] = useState<Toast[]>([]);
+    const toastId = React.useRef(1);
+
+    function showToast(type: Toast["type"], msg: string, timeout = 4500) {
+        const id = toastId.current++;
+        setToasts((t) => [...t, { id, type, msg }]);
+        window.setTimeout(() => {
+            setToasts((t) => t.filter((x) => x.id !== id));
+        }, timeout);
+    }
+
+    // Format and validate email on blur
+    function handleEmailBlur(e: React.FocusEvent<HTMLInputElement>) {
+        const input = e.target as HTMLInputElement;
+        const val = input.value.trim().toLowerCase();
+        input.value = val;
+        const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (val && !emailRe.test(val)) {
+            input.setCustomValidity("Please enter a valid email address.");
+            // reportValidity will show the native tooltip/message in browser
+            input.reportValidity();
+        } else {
+            input.setCustomValidity("");
+        }
+    }
+
+    // Format Nigerian phone numbers on blur and validate
+    function handlePhoneBlur(e: React.FocusEvent<HTMLInputElement>) {
+        const input = e.target as HTMLInputElement;
+        let v = input.value.trim();
+        // remove common separators
+        v = v.replace(/[^0-9+]/g, "");
+
+        if (v.startsWith("0")) {
+            // Convert local leading 0 to +234 (e.g., 08012345678 -> +2348012345678)
+            v = "+234" + v.slice(1);
+        } else if (v.startsWith("234") && !v.startsWith("+")) {
+            v = "+" + v;
+        }
+
+        // Enforce Nigerian number pattern: +234 followed by 10 digits
+        const ngPattern = /^\+234\d{10}$/;
+        if (v && !ngPattern.test(v)) {
+            input.setCustomValidity("Please enter a valid Nigerian phone number (e.g. 08012345678 or +2348012345678).");
+            input.reportValidity();
+        } else {
+            input.setCustomValidity("");
+        }
+
+        input.value = v;
     }
 
     return (
@@ -108,7 +199,7 @@ export default function SistersConferenceReg() {
                         />
                         <InfoRow
                             icon={Clock}
-                            title="8:00 AM Prompt"
+                            title={`${EVENT_TIME} Prompt`}
                             subtitle="Morning Session"
                         />
                         <InfoRow
@@ -171,11 +262,13 @@ export default function SistersConferenceReg() {
                                         label="First Name"
                                         name="firstname"
                                         placeholder="Oyin"
+                                        autoComplete="given-name"
                                     />
                                     <FloatingInput
                                         label="Last Name"
                                         name="lastname"
                                         placeholder="Olwaseyi"
+                                        autoComplete="family-name"
                                     />
                                 </div>
 
@@ -184,6 +277,8 @@ export default function SistersConferenceReg() {
                                     name="email"
                                     type="email"
                                     placeholder="sister@example.com"
+                                    autoComplete="email"
+                                    onBlur={handleEmailBlur}
                                 />
 
 
@@ -192,17 +287,21 @@ export default function SistersConferenceReg() {
                                     name="phone"
                                     type="tel"
                                     placeholder="080..."
+                                    inputMode="tel"
+                                    autoComplete="tel"
+                                    onBlur={handlePhoneBlur}
                                 />
 
                                 {!isGuest && (
                                     <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-6">
                                         <div className="space-y-1">
-                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">
-                                                Level
-                                            </label>
+                                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">
+                                                                Level <span className="text-pink-200">*</span>
+                                                            </label>
                                             <div className="relative">
                                                 <select
                                                     name="level"
+                                                    required
                                                     className="w-full h-12 appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium outline-none transition-all focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-500/10 cursor-pointer"
                                                 >
                                                     <option>100L</option>
@@ -292,17 +391,43 @@ export default function SistersConferenceReg() {
                     )}
                 </div>
             </div>
+            {/* Toasts container */}
+            <div aria-live="polite" className="fixed bottom-6 right-6 z-50 flex flex-col items-end space-y-2">
+                {toasts.map((t) => (
+                    <div
+                        key={t.id}
+                        className={`max-w-sm w-full px-4 py-3 rounded-lg shadow-lg border ${
+                            t.type === "success"
+                                ? "bg-green-50 border-green-200 text-green-800"
+                                : t.type === "error"
+                                ? "bg-red-50 border-red-200 text-red-800"
+                                : "bg-pink-50 border-pink-200 text-pink-800"
+                        }`}
+                    >
+                        <div className="flex items-start gap-3">
+                            <div className="flex-1 text-sm">{t.msg}</div>
+                            <button
+                                aria-label="Dismiss"
+                                onClick={() => setToasts((s) => s.filter((x) => x.id !== t.id))}
+                                className="text-xs font-bold opacity-60 hover:opacity-100"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
 
 // --- SUB-COMPONENTS ---
 
-function FloatingInput({ label, name, type = "text", placeholder }: any) {
+function FloatingInput({ label, name, type = "text", placeholder, ...rest }: any) {
     return (
         <div className="space-y-1">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">
-                {label}
+                {label} <span className="text-pink-200">*</span>
             </label>
             <input
                 required
@@ -310,6 +435,7 @@ function FloatingInput({ label, name, type = "text", placeholder }: any) {
                 type={type}
                 className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium outline-none transition-all focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-500/10 placeholder:text-slate-400"
                 placeholder={placeholder}
+                {...rest}
             />
         </div>
     );
@@ -347,7 +473,6 @@ function TicketCard({
     return (
         // Ticket should fill the printable container; avoid forcing a large max-width
         <div className="relative w-full max-w-full drop-shadow-2xl print:drop-shadow-none">
-            
             {/* 1. TICKET HEADER */}
             <div className="relative bg-gradient-to-br from-[#BE185D] to-[#831843] text-white p-8 rounded-t-3xl overflow-hidden print:bg-[#BE185D] print:print-color-adjust-exact">
                 <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
@@ -387,10 +512,12 @@ function TicketCard({
                         </h1>
                         <div className="flex items-center justify-center gap-3 text-xs font-bold uppercase tracking-wider text-pink-600">
                             <span className="bg-pink-50 px-2 py-1 rounded-md border border-pink-100">
-                                {data.level === "Guest" ? "Invited Guest" : data.level}
+                                {data.level === "Guest"
+                                    ? "Invited Guest"
+                                    : data.level}
                             </span>
                             <span className="h-1.5 w-1.5 rounded-full bg-slate-300 print:bg-slate-200 print:print-color-adjust-exact"></span>
-                            <span className="text-slate-400">#SC26</span>
+                            <span className="text-slate-400">{data.phone}</span>
                         </div>
                     </div>
 
@@ -400,7 +527,7 @@ function TicketCard({
                                 Venue
                             </p>
                             <p className="text-sm font-bold text-slate-700 mt-0.5">
-                                Auditorium
+                                {EVENT_VENUE}
                             </p>
                         </div>
                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-center print:bg-slate-100 print:print-color-adjust-exact">
@@ -408,7 +535,7 @@ function TicketCard({
                                 Time
                             </p>
                             <p className="text-sm font-bold text-slate-700 mt-0.5">
-                                8:00 AM
+                                {EVENT_TIME}
                             </p>
                         </div>
                     </div>

@@ -30,20 +30,29 @@ export async function registerSisterAction(formData: FormData) {
   const level = isGuest ? "Guest" : (formData.get("level") as string);
 
   try {
-    // 3. Call the updated Library method
     const result = await rcf.event.register({
-      eventId: event.id, // Pass the UUID resolved from slug
+      eventId: event.id,
       firstName,
       lastName,
       email,
       phoneNumber: phone,
       level, 
-      // Note: Department is removed as requested
     });
 
     return { success: true, data: result };
+
   } catch (error: any) {
     console.error("Registration Error:", error);
-    return { success: false, error: error.message };
+
+    // Check for Postgres Unique Violation Code (23505) or error message content
+    if (error.message.includes("unique_event_email") || error.message.includes("email")) {
+        return { success: false, error: "This email has already registered for this event." };
+    }
+    
+    if (error.message.includes("unique_event_phone") || error.message.includes("phone_number")) {
+        return { success: false, error: "This phone number has already registered." };
+    }
+
+    return { success: false, error: "Registration failed. Please try again." };
   }
 }

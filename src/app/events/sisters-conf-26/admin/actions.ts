@@ -44,7 +44,10 @@ export async function getDashboardData() {
 }
 
 export async function checkInUserAction(ticketId: string) {
-    const rcf = RcfIctClient.fromEnv();
+    const rcf = new RcfIctClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
     try {
         const user = await rcf.event.checkInUser(ticketId);
         return { success: true, data: user };
