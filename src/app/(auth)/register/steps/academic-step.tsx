@@ -9,6 +9,8 @@ import {
 } from "@rcffuta/ict-lib";
 import { registerStepTwo } from "../action";
 import { Loader2, ArrowRight } from "lucide-react";
+import FormInput from "@/components/ui/FormInput";
+import FormSelect from "@/components/ui/FormSelect";
 
 export default function StepAcademic({
     userId,
@@ -40,7 +42,7 @@ export default function StepAcademic({
                 <label className="text-xs font-medium text-gray-700">
                     Matric Number
                 </label>
-                <input
+                <FormInput
                     {...register("matricNumber")}
                     className="w-full input-field"
                     placeholder="ABC/21/0000"
@@ -56,11 +58,9 @@ export default function StepAcademic({
             </div>
 
             <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700">
-                    Department
-                </label>
-                <select
+                <FormSelect
                     {...register("department")}
+                    label="Department"
                     className="w-full input-field bg-white"
                 >
                     <option value="">Select Department</option>
@@ -69,7 +69,7 @@ export default function StepAcademic({
                             {dept}
                         </option>
                     ))}
-                </select>
+                </FormSelect>
                 {errors.department && (
                     <p className="text-xs text-red-500">
                         {errors.department.message}
@@ -81,7 +81,7 @@ export default function StepAcademic({
                 <label className="text-xs font-medium text-gray-700">
                     Entry Year
                 </label>
-                <input
+                <FormInput
                     {...register("entryYear", { valueAsNumber: true })}
                     type="number"
                     className="w-full input-field"

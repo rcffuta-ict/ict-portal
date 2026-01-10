@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import FormInput from "@/components/ui/FormInput";
+import FormSelect from "@/components/ui/FormSelect";
 import { Save, Loader2 } from "lucide-react";
 
 // Mock Department List (In reality, import FUTA_DEPARTMENTS from @rcffuta/ict-lib)
@@ -32,13 +34,12 @@ export function ProfileEdit() {
                 </h3>
                 <div className="grid gap-6 md:grid-cols-2">
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">
-                            Matric Number
-                        </label>
-                        <input
+                        <FormInput
+                            label="Matric Number"
+                            name="matric"
                             type="text"
                             placeholder="MEE/19/8821"
-                            className="w-full rounded-md border border-slate-300 p-2.5 text-sm outline-none focus:border-rcf-navy focus:ring-1 focus:ring-rcf-navy"
+                            className="rounded-md p-2.5 text-sm w-full"
                         />
                     </div>
 
@@ -46,26 +47,29 @@ export function ProfileEdit() {
                         <label className="text-sm font-medium text-slate-700">
                             Department
                         </label>
-                        <select className="w-full rounded-md border border-slate-300 p-2.5 text-sm outline-none focus:border-rcf-navy focus:ring-1 focus:ring-rcf-navy bg-white">
+                        <FormSelect
+                            label="Department"
+                            name="department"
+                            className="rounded-md p-2.5 text-sm w-full"
+                        >
                             <option value="">Select Department</option>
                             {DEPARTMENTS.map((dept) => (
                                 <option key={dept} value={dept}>
                                     {dept}
                                 </option>
                             ))}
-                        </select>
+                        </FormSelect>
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">
-                            Entry Year
-                        </label>
-                        <input
+                        <FormInput
+                            label="Entry Year"
+                            name="entryYear"
                             type="number"
+                            min={2015}
+                            max={2026}
                             placeholder="2019"
-                            min="2015"
-                            max="2026"
-                            className="w-full rounded-md border border-slate-300 p-2.5 text-sm outline-none focus:border-rcf-navy focus:ring-1 focus:ring-rcf-navy"
+                            className="rounded-md p-2.5 text-sm w-full"
                         />
                         <p className="text-[10px] text-slate-500">
                             This determines your Family Name (e.g. Army of
@@ -82,40 +86,42 @@ export function ProfileEdit() {
                 </h3>
                 <div className="grid gap-6 md:grid-cols-2">
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">
-                            First Name
-                        </label>
-                        <input
+                        <FormInput
+                            label="First Name"
+                            name="firstName"
                             type="text"
-                            className="w-full rounded-md border border-slate-300 p-2.5 text-sm"
+                            className="rounded-md p-2.5 text-sm w-full"
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">
-                            Last Name
-                        </label>
-                        <input
+                        <FormInput
+                            label="Last Name"
+                            name="lastName"
                             type="text"
-                            className="w-full rounded-md border border-slate-300 p-2.5 text-sm"
+                            className="rounded-md p-2.5 text-sm w-full"
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">
-                            Phone Number
-                        </label>
-                        <input
+                        <FormInput
+                            label="Phone Number"
+                            name="phone"
                             type="tel"
-                            className="w-full rounded-md border border-slate-300 p-2.5 text-sm"
+                            className="rounded-md p-2.5 text-sm w-full"
                         />
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">
                             Gender
                         </label>
-                        <select className="w-full rounded-md border border-slate-300 p-2.5 text-sm bg-white">
-                            <option>Male</option>
-                            <option>Female</option>
-                        </select>
+                        <FormSelect
+                            label="Gender"
+                            name="gender"
+                            className="rounded-md p-2.5 text-sm w-full"
+                        >
+                            <option value="">Select</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </FormSelect>
                     </div>
                 </div>
             </div>
@@ -127,35 +133,32 @@ export function ProfileEdit() {
                 </h3>
                 <div className="grid gap-6">
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">
-                            School Hostel Address
-                        </label>
-                        <input
+                        <FormInput
+                            label="School Hostel Address"
+                            name="schoolHostel"
                             type="text"
                             placeholder="e.g. South Gate, Success Lodge"
-                            className="w-full rounded-md border border-slate-300 p-2.5 text-sm"
+                            className="rounded-md p-2.5 text-sm w-full"
                         />
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">
-                                Next of Kin Name
-                            </label>
-                            <input
-                                type="text"
-                                className="w-full rounded-md border border-slate-300 p-2.5 text-sm"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">
-                                Next of Kin Phone
-                            </label>
-                            <input
-                                type="tel"
-                                className="w-full rounded-md border border-slate-300 p-2.5 text-sm"
-                            />
-                        </div>
+                            <div className="space-y-2">
+                                <FormInput
+                                    label="Next of Kin Name"
+                                    name="nokName"
+                                    type="text"
+                                    className="rounded-md p-2.5 text-sm w-full"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <FormInput
+                                    label="Next of Kin Phone"
+                                    name="nokPhone"
+                                    type="tel"
+                                    className="rounded-md p-2.5 text-sm w-full"
+                                />
+                            </div>
                     </div>
                 </div>
             </div>

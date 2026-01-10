@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Loader2, Mail, Lock, ArrowRight } from "lucide-react";
+import FormInput from "@/components/ui/FormInput";
 
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +52,7 @@ export default function LoginPage() {
                     </label>
                     <div className="relative">
                         <Mail className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                        <input
+                        <FormInput
                             id="email"
                             type="email"
                             placeholder="brother.david@example.com"
@@ -79,7 +80,7 @@ export default function LoginPage() {
                     </div>
                     <div className="relative">
                         <Lock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                        <input
+                        <FormInput
                             id="password"
                             type="password"
                             placeholder="••••••••"

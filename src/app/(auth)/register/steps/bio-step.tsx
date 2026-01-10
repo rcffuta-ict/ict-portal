@@ -5,6 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { BioDataSchema, type BioData } from "@rcffuta/ict-lib";
 import { registerStepOne } from "../action";
 import { Loader2, ArrowRight } from "lucide-react";
+import FormInput from "@/components/ui/FormInput";
+import FormSelect from "@/components/ui/FormSelect";
 import { useState } from "react";
 
 export default function StepBio({
@@ -46,7 +48,7 @@ export default function StepBio({
                     <label className="text-xs font-medium text-gray-700">
                         First Name
                     </label>
-                    <input
+                    <FormInput
                         {...register("firstName")}
                         className="w-full input-field"
                         placeholder="John"
@@ -61,7 +63,7 @@ export default function StepBio({
                     <label className="text-xs font-medium text-gray-700">
                         Last Name
                     </label>
-                    <input
+                    <FormInput
                         {...register("lastName")}
                         className="w-full input-field"
                         placeholder="Doe"
@@ -78,7 +80,7 @@ export default function StepBio({
                 <label className="text-xs font-medium text-gray-700">
                     Email Address
                 </label>
-                <input
+                <FormInput
                     {...register("email")}
                     type="email"
                     className="w-full input-field"
@@ -96,7 +98,7 @@ export default function StepBio({
                     <label className="text-xs font-medium text-gray-700">
                         Phone
                     </label>
-                    <input
+                    <FormInput
                         {...register("phoneNumber")}
                         className="w-full input-field"
                         placeholder="08012345678"
@@ -108,17 +110,15 @@ export default function StepBio({
                     )}
                 </div>
                 <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-700">
-                        Gender
-                    </label>
-                    <select
+                    <FormSelect
                         {...register("gender")}
+                        label="Gender"
                         className="w-full input-field bg-white"
                     >
                         <option value="">Select</option>
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
-                    </select>
+                    </FormSelect>
                     {errors.gender && (
                         <p className="text-xs text-red-500">
                             {errors.gender.message}
@@ -131,7 +131,7 @@ export default function StepBio({
                 <label className="text-xs font-medium text-gray-700">
                     Date of Birth
                 </label>
-                <input
+                <FormInput
                     {...register("dob")}
                     type="date"
                     className="w-full input-field"
@@ -145,7 +145,7 @@ export default function StepBio({
                 <label className="text-xs font-medium text-gray-700">
                     Password
                 </label>
-                <input
+                <FormInput
                     {...register("password")}
                     type="password"
                     className="w-full input-field"

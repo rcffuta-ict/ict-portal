@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import FormInput from "@/components/ui/FormInput";
+import FormSelect from "@/components/ui/FormSelect";
 import QRCode from "react-qr-code";
 import { registerSisterAction, getEventDetails } from "./actions";
 import {
@@ -258,31 +260,33 @@ export default function SistersConferenceReg() {
                                 </div>
 
                                 <div className="lg:grid grid-cols-2 gap-4 flex flex-col">
-                                    <FloatingInput
+                                    <FormInput
                                         label="First Name"
                                         name="firstname"
                                         placeholder="Oyin"
                                         autoComplete="given-name"
+                                        required
                                     />
-                                    <FloatingInput
+                                    <FormInput
                                         label="Last Name"
                                         name="lastname"
                                         placeholder="Olwaseyi"
                                         autoComplete="family-name"
+                                        required
                                     />
                                 </div>
 
-                                <FloatingInput
+                                <FormInput
                                     label="Email Address"
                                     name="email"
                                     type="email"
                                     placeholder="sister@example.com"
                                     autoComplete="email"
                                     onBlur={handleEmailBlur}
+                                    required
                                 />
 
-
-                                <FloatingInput
+                                <FormInput
                                     label="Phone Number"
                                     name="phone"
                                     type="tel"
@@ -290,6 +294,7 @@ export default function SistersConferenceReg() {
                                     inputMode="tel"
                                     autoComplete="tel"
                                     onBlur={handlePhoneBlur}
+                                    required
                                 />
 
                                 {!isGuest && (
@@ -299,17 +304,17 @@ export default function SistersConferenceReg() {
                                                                 Level <span className="text-pink-200">*</span>
                                                             </label>
                                             <div className="relative">
-                                                <select
+                                                <FormSelect
                                                     name="level"
                                                     required
-                                                    className="w-full h-12 appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium outline-none transition-all focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-500/10 cursor-pointer"
+                                                    className="w-full h-12 appearance-none rounded-xl px-4 text-sm font-medium"
                                                 >
                                                     <option>100L</option>
                                                     <option>200L</option>
                                                     <option>300L</option>
                                                     <option>400L</option>
                                                     <option>500L</option>
-                                                </select>
+                                                </FormSelect>
                                                 <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                                                     <svg
                                                         className="h-4 w-4"
@@ -423,23 +428,7 @@ export default function SistersConferenceReg() {
 
 // --- SUB-COMPONENTS ---
 
-function FloatingInput({ label, name, type = "text", placeholder, ...rest }: any) {
-    return (
-        <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">
-                {label} <span className="text-pink-200">*</span>
-            </label>
-            <input
-                required
-                name={name}
-                type={type}
-                className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium outline-none transition-all focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-500/10 placeholder:text-slate-400"
-                placeholder={placeholder}
-                {...rest}
-            />
-        </div>
-    );
-}
+// remove local FloatingInput in favor of shared FormInput component
 
 function InfoRow({ icon: Icon, title, subtitle }: any) {
     return (

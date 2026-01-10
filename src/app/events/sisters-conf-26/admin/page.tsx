@@ -17,6 +17,7 @@ import {
     XCircle,
     ChevronRight,
 } from "lucide-react";
+import FormInput from "@/components/ui/FormInput";
 
 export default function AdminDashboard() {
     const [mode, setMode] = useState<"dashboard" | "scanner">("dashboard");
@@ -186,7 +187,7 @@ export default function AdminDashboard() {
                         </h3>
                         <div className="relative w-full sm:w-auto">
                             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                            <input
+                            <FormInput
                                 type="text"
                                 placeholder="Search name..."
                                 value={search}

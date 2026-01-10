@@ -27,10 +27,10 @@ export default function NotFound() {
             </div>
 
             {/* 3. Action Buttons */}
-            <div className="mt-8 flex flex-col sm:flex-row gap-3 w-full max-w-xs">
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 w-full max-w-xs justify-center">
                 <Link
                     href="/"
-                    className="flex items-center justify-center gap-2 bg-rcf-navy text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-[#2a2257] transition-all hover:-translate-y-0.5"
+                    className="flex items-center justify-center gap-2 bg-rcf-navy text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-rcf-navy-light transition-all hover:-translate-y-0.5"
                 >
                     <Home className="h-4 w-4" />
                     Return Home
@@ -40,7 +40,13 @@ export default function NotFound() {
             {/* 4. Footer Help */}
             <p className="mt-12 text-xs text-slate-400">
                 If you believe this is an error, please contact the{" "}
-                <Link href="mailto:ict@rcffuta.com" className="font-bold text-rcf-navy">ICT Team</Link>.
+                <Link
+                    href="mailto:ict@rcffuta.com"
+                    className="font-bold text-rcf-navy"
+                >
+                    ICT Team
+                </Link>
+                .
             </p>
         </div>
     );

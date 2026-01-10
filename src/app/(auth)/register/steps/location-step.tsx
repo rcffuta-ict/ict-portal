@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { LocationDataSchema, type LocationData } from "@rcffuta/ict-lib";
 import { registerStepThree } from "../action";
 import { Loader2, CheckCircle } from "lucide-react";
+import FormInput from "@/components/ui/FormInput";
 
 export default function StepLocation({ userId }: { userId: string }) {
     const router = useRouter();
@@ -33,7 +34,7 @@ export default function StepLocation({ userId }: { userId: string }) {
                 <label className="text-xs font-medium text-gray-700">
                     School Address (Hostel/Lodge)
                 </label>
-                <input
+                <FormInput
                     {...register("schoolAddress")}
                     className="w-full input-field"
                     placeholder="South Gate, Success Lodge"

@@ -39,7 +39,11 @@ export async function registerSisterAction(formData: FormData) {
       level, 
     });
 
-    return { success: true, data: result };
+    return { success: true, data: {
+      phone,
+      email,
+      ...result
+    } };
 
   } catch (error: any) {
     console.error("Registration Error:", error);
