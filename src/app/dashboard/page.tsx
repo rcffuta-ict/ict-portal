@@ -7,8 +7,26 @@ import {
     Wallet,
     CalendarCheck,
 } from "lucide-react";
+import { RcfIctClient } from "@rcffuta/ict-lib";
 
-export default function DashboardHome() {
+async function getActiveTenureName() {
+    const rcf = RcfIctClient.fromEnv();
+
+    try {
+        const { data } = await rcf.supabase
+            .from("tenures")
+            .select("name")
+            .eq("is_active", true)
+            .single();
+
+        return data?.name || null;
+    } catch (error) {
+        return null; // Fallback if no tenure exists
+    }
+}
+
+export default async function DashboardHome() {
+    const tenureName = await getActiveTenureName();
     const userFirstName = "Oluwaseyi"; // We will pull this from lib later
 
     return (
@@ -18,11 +36,11 @@ export default function DashboardHome() {
                 <h1 className="text-3xl font-bold tracking-tight text-rcf-navy">
                     Welcome back, {userFirstName} 👋
                 </h1>
-                <p className="text-gray-500">
-                    Rebranding Tenure • 2nd Semester 2024/2025
-                </p>
+                {tenureName && <p className="text-gray-500">
+                    {/* Rebranding Tenure • 2nd Semester 2024/2025 */}
+                    {tenureName}
+                </p>}
             </div>
-
             {/* 2. Services Grid */}
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 <ServiceCard
