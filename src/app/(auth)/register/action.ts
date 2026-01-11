@@ -7,17 +7,49 @@ import { cookies } from 'next/headers';
 // Initialize the library with Environment Variables
 const rcf = RcfIctClient.fromEnv();
 
-
-// STEP 1A: INITIATE (Send OTP)
+// STEP 1A: INITIATE (Smart Check + Send OTP)
 export async function sendVerificationOtp(email: string, firstName: string) {
-  const rcf = RcfIctClient.asAdmin(); // Use Admin client to write to verification table safely
+  // We use standard client here; RPC handles the security via 'security definer'
+  const rcf = RcfIctClient.fromEnv(); 
+
   try {
-    await rcf.auth.initiateRegistration(email, firstName);
+    // 1. Check Auth Table directly via RPC
+    const { data: exists, error: rpcError } = await rcf.supabase
+      .rpc('check_email_exists', { email_arg: email });
+
+    if (rpcError) throw new Error(rpcError.message);
+
+    if (exists) {
+      // 1b. If they exist in Auth, let's fetch their Profile ID to help them resume
+      // We use the Admin client here just to be safe reading the profile ID
+      const adminRcf = RcfIctClient.asAdmin();
+      const { data: profile } = await adminRcf.supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .single();
+
+      return { 
+        success: false, 
+        userExists: true, 
+        userId: profile?.id, // Might be null if they have Auth but no Profile (Zombie state)
+        message: "User already registered" 
+      };
+    }
+
+    // 2. If new user, proceed with OTP
+    // We use Admin client here to write to verification_codes table if RLS is strict
+    const adminRcf = RcfIctClient.asAdmin();
+    await adminRcf.auth.initiateRegistration(email, firstName);
+    
     return { success: true };
+
   } catch (e: any) {
+    console.error("OTP Init Error:", e);
     return { success: false, error: e.message };
   }
 }
+
 
 // STEP 1B: VERIFY & CREATE (Complete Step 1)
 export async function verifyAndCreateUser(otp: string, data: BioData) {
@@ -84,6 +116,16 @@ export async function getFamiliesAction() {
     try {
         const families = await rcf.auth.getClassSets();
         return { success: true, data: families };
+    } catch (e) {
+        return { success: false, data: [] };
+    }
+}
+
+export async function getZonesAction() {
+    const rcf = RcfIctClient.fromEnv();
+    try {
+        const zones = await rcf.auth.getResidentialZones();
+        return { success: true, data: zones };
     } catch (e) {
         return { success: false, data: [] };
     }

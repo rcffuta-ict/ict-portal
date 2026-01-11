@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { BioDataSchema, type BioData } from "@rcffuta/ict-lib";
-import { sendVerificationOtp, verifyAndCreateUser } from "../action"; // Import new actions
-import { Loader2, ArrowRight, MailCheck } from "lucide-react";
+import { sendVerificationOtp, verifyAndCreateUser } from "../action";
+import {
+    Loader2,
+    ArrowRight,
+    MailCheck,
+    UserCheck,
+    LayoutDashboard,
+    ArrowRightCircle,
+} from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
 
@@ -14,10 +22,13 @@ export default function StepBio({
 }: {
     onSuccess: (id: string) => void;
 }) {
-    const [view, setView] = useState<"FORM" | "OTP">("FORM");
+    const [view, setView] = useState<"FORM" | "OTP" | "EXISTS">("FORM");
     const [serverError, setServerError] = useState("");
     const [otp, setOtp] = useState("");
     const [isVerifying, setIsVerifying] = useState(false);
+    const [existingUserId, setExistingUserId] = useState<string | null>(null);
+
+    const router = useRouter();
 
     const {
         register,
@@ -28,25 +39,29 @@ export default function StepBio({
         resolver: zodResolver(BioDataSchema),
     });
 
-    // Handle Form Submit -> Send OTP
+    // Handle Form Submit
     const onFormSubmit = async (data: BioData) => {
         setServerError("");
         const res = await sendVerificationOtp(data.email, data.firstName);
 
         if (res.success) {
-            setView("OTP"); // Switch UI
+            setView("OTP");
+        } else if (res.userExists) {
+            // User found! Switch to "Exists" view
+            setExistingUserId(res.userId);
+            setView("EXISTS");
         } else {
             setServerError(res.error || "Failed to send verification code");
         }
     };
 
-    // Handle OTP Submit -> Create User
+    // ... onOtpSubmit logic remains same ...
     const onOtpSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsVerifying(true);
         setServerError("");
 
-        const formData = getValues(); // Get the data from the form state
+        const formData = getValues();
         const res = await verifyAndCreateUser(otp, formData);
 
         if (res.success && res.userId) {
@@ -57,18 +72,70 @@ export default function StepBio({
         }
     };
 
-    // --- VIEW 1: REGISTRATION FORM ---
+    // --- VIEW 3: USER EXISTS (Smart Prompt) ---
+    if (view === "EXISTS") {
+        return (
+            <div className="text-center space-y-6 animate-fade-in py-4">
+                <div className="flex justify-center mb-2">
+                    <div className="h-16 w-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
+                        <UserCheck className="h-8 w-8" />
+                    </div>
+                </div>
+
+                <div>
+                    <h3 className="text-xl font-bold text-slate-900">
+                        Welcome Back!
+                    </h3>
+                    <p className="text-slate-500 mt-2">
+                        We found an account linked to <br />
+                        <span className="font-semibold text-slate-700">
+                            {getValues("email")}
+                        </span>
+                    </p>
+                </div>
+
+                <div className="flex flex-col gap-3 pt-2">
+                    {/* Option A: Continue Registration (Go to Step 2) */}
+                    {/* <button
+                        onClick={() => onSuccess(existingUserId!)}
+                        className="btn-primary w-full bg-blue-600 hover:bg-blue-700 h-12 text-base"
+                    >
+                        <ArrowRightCircle className="h-5 w-5 mr-2" />
+                        Continue Registration
+                    </button> */}
+
+                    {/* Option B: Go to Dashboard */}
+                    <button
+                        onClick={() => router.push("/dashboard")}
+                        className="flex items-center justify-center w-full h-12 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors"
+                    >
+                        <LayoutDashboard className="h-4 w-4 mr-2" />
+                        Go to Dashboard
+                    </button>
+                </div>
+
+                <button
+                    onClick={() => setView("FORM")}
+                    className="text-xs text-slate-400 hover:text-slate-600 underline mt-4"
+                >
+                    Use a different email
+                </button>
+            </div>
+        );
+    }
+
+    // --- VIEW 1 & 2 (Remain mostly the same, just keeping the structure) ---
     if (view === "FORM") {
         return (
+            // ... (Your Form JSX) ...
             <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
+                {/* ... Error & Inputs ... */}
                 {serverError && (
                     <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md border border-red-100">
                         {serverError}
                     </div>
                 )}
-
-                {/* ... Keep your existing input fields (First Name, Last Name, Email, etc.) ... */}
-                {/* JUST COPY YOUR PREVIOUS INPUTS HERE */}
+                {/* ... (First/Last/Email inputs etc) ... */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                         <FormInput
@@ -113,6 +180,7 @@ export default function StepBio({
                     )}
                 </div>
 
+                {/* ... Other inputs ... */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                         <FormInput
@@ -191,12 +259,14 @@ export default function StepBio({
         );
     }
 
-    // --- VIEW 2: OTP VERIFICATION ---
+    // OTP View (Keep your existing one)
     return (
+        // ... (Your OTP JSX) ...
         <form
             onSubmit={onOtpSubmit}
             className="space-y-6 text-center animate-fade-in"
         >
+            {/* ... */}
             <div className="flex justify-center mb-4">
                 <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center text-rcf-navy">
                     <MailCheck className="h-6 w-6" />
