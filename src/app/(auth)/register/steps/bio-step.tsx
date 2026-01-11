@@ -202,8 +202,8 @@ export default function StepBio({
                             className="w-full"
                         >
                             <option value="">Select</option>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
                         </FormSelect>
                         {errors.gender && (
                             <p className="text-xs text-red-500">

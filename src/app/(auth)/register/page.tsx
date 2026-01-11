@@ -8,6 +8,7 @@ import { Check } from "lucide-react";
 import StepBio from "./steps/bio-step";
 import StepAcademic from "./steps/academic-step";
 import StepLocation from "./steps/location-step";
+import { Logo } from "@/components/ui/logo";
 
 export default function RegisterPage() {
     const [currentStep, setCurrentStep] = useState(1);
@@ -16,8 +17,13 @@ export default function RegisterPage() {
     const nextStep = () => setCurrentStep((prev) => prev + 1);
 
     return (
-        <div className="animate-fade-in w-full max-w-3xl mx-auto">
+        <div className="animate-fade-in">
             {/* Header */}
+            <div className="flex justify-center md:hidden">
+                <Logo width={80} asLink />
+            </div>
+                <br className="md:hidden block"/>
+
             <div className="mb-8 text-center">
                 <h1 className="text-2xl font-bold text-rcf-navy">
                     Get Indexed
@@ -102,7 +108,7 @@ export default function RegisterPage() {
                 </AnimatePresence>
             </div>
 
-            <div className="mt-6 text-center text-sm text-gray-500">
+            {/* <div className="mt-6 text-center text-sm text-gray-500">
                 Already have an account?{" "}
                 <Link
                     href="/login"
@@ -110,7 +116,7 @@ export default function RegisterPage() {
                 >
                     Log in
                 </Link>
-            </div>
+            </div> */}
         </div>
     );
 }
