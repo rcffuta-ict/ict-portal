@@ -8,22 +8,8 @@ import {
     CalendarCheck,
 } from "lucide-react";
 import { RcfIctClient } from "@rcffuta/ict-lib";
+import { getActiveTenureName } from "@/utils/action";
 
-async function getActiveTenureName() {
-    const rcf = RcfIctClient.fromEnv();
-
-    try {
-        const { data } = await rcf.supabase
-            .from("tenures")
-            .select("name")
-            .eq("is_active", true)
-            .single();
-
-        return data?.name || null;
-    } catch (error) {
-        return null; // Fallback if no tenure exists
-    }
-}
 
 export default async function DashboardHome() {
     const tenureName = await getActiveTenureName();

@@ -16,6 +16,19 @@ import {
 } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
+import { z } from "zod";
+
+// --- 1. EXTEND SCHEMA FOR UI VALIDATION ---
+// We add confirmPassword and a check to ensure they match
+const RegistrationFormSchema = BioDataSchema.extend({
+    confirmPassword: z.string().min(1, "Please confirm your password"),
+}).refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"], // This ensures the error shows under the confirm field
+});
+
+// Infer the type from our new UI schema
+type RegistrationFormData = z.infer<typeof RegistrationFormSchema>;
 
 export default function StepBio({
     onSuccess,
@@ -35,19 +48,19 @@ export default function StepBio({
         handleSubmit,
         getValues,
         formState: { errors, isSubmitting },
-    } = useForm<BioData>({
-        resolver: zodResolver(BioDataSchema),
+    } = useForm<RegistrationFormData>({
+        resolver: zodResolver(RegistrationFormSchema),
     });
 
     // Handle Form Submit
-    const onFormSubmit = async (data: BioData) => {
+    const onFormSubmit = async (data: RegistrationFormData) => {
         setServerError("");
+        // We pass data to the server (extra fields like confirmPassword are ignored by the server action usually, or we can destructure)
         const res = await sendVerificationOtp(data.email, data.firstName);
 
         if (res.success) {
             setView("OTP");
         } else if (res.userExists) {
-            // User found! Switch to "Exists" view
             setExistingUserId(res.userId);
             setView("EXISTS");
         } else {
@@ -61,7 +74,10 @@ export default function StepBio({
         setIsVerifying(true);
         setServerError("");
 
-        const formData = getValues();
+        // We cast getValues to BioData because verifyAndCreateUser expects the strict Library Type
+        // The confirmPassword field inside getValues() will just be ignored by the backend
+        const formData = getValues() as BioData;
+
         const res = await verifyAndCreateUser(otp, formData);
 
         if (res.success && res.userId) {
@@ -95,16 +111,6 @@ export default function StepBio({
                 </div>
 
                 <div className="flex flex-col gap-3 pt-2">
-                    {/* Option A: Continue Registration (Go to Step 2) */}
-                    {/* <button
-                        onClick={() => onSuccess(existingUserId!)}
-                        className="btn-primary w-full bg-blue-600 hover:bg-blue-700 h-12 text-base"
-                    >
-                        <ArrowRightCircle className="h-5 w-5 mr-2" />
-                        Continue Registration
-                    </button> */}
-
-                    {/* Option B: Go to Dashboard */}
                     <button
                         onClick={() => router.push("/dashboard")}
                         className="flex items-center justify-center w-full h-12 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors"
@@ -124,19 +130,17 @@ export default function StepBio({
         );
     }
 
-    // --- VIEW 1 & 2 (Remain mostly the same, just keeping the structure) ---
+    // --- VIEW 1 & 2 (Registration Form) ---
     if (view === "FORM") {
         return (
-            // ... (Your Form JSX) ...
             <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
-                {/* ... Error & Inputs ... */}
                 {serverError && (
                     <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md border border-red-100">
                         {serverError}
                     </div>
                 )}
-                {/* ... (First/Last/Email inputs etc) ... */}
-                <div className="grid grid-cols-2 gap-4">
+
+                <div className="flex flex-col md:grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                         <FormInput
                             {...register("firstName")}
@@ -180,8 +184,7 @@ export default function StepBio({
                     )}
                 </div>
 
-                {/* ... Other inputs ... */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col md:grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                         <FormInput
                             {...register("phoneNumber")}
@@ -202,8 +205,8 @@ export default function StepBio({
                             className="w-full"
                         >
                             <option value="">Select</option>
-                            <option value="male">Male</option>
-                            <option value="female">Female</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
                         </FormSelect>
                         {errors.gender && (
                             <p className="text-xs text-red-500">
@@ -227,19 +230,36 @@ export default function StepBio({
                     )}
                 </div>
 
-                <div className="space-y-1">
-                    <FormInput
-                        {...register("password")}
-                        label="Password"
-                        type="password"
-                        className="w-full"
-                        placeholder="•••••••"
-                    />
-                    {errors.password && (
-                        <p className="text-xs text-red-500">
-                            {errors.password.message}
-                        </p>
-                    )}
+                {/* --- PASSWORD & CONFIRM PASSWORD GRID --- */}
+                <div className="flex flex-col md:grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                        <FormInput
+                            {...register("password")}
+                            label="Password"
+                            type="password"
+                            className="w-full"
+                            placeholder="•••••••"
+                        />
+                        {errors.password && (
+                            <p className="text-xs text-red-500">
+                                {errors.password.message}
+                            </p>
+                        )}
+                    </div>
+                    <div className="space-y-1">
+                        <FormInput
+                            {...register("confirmPassword")}
+                            label="Confirm Password"
+                            type="password"
+                            className="w-full"
+                            placeholder="•••••••"
+                        />
+                        {errors.confirmPassword && (
+                            <p className="text-xs text-red-500">
+                                {errors.confirmPassword.message}
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 <button
@@ -259,14 +279,12 @@ export default function StepBio({
         );
     }
 
-    // OTP View (Keep your existing one)
+    // OTP View
     return (
-        // ... (Your OTP JSX) ...
         <form
             onSubmit={onOtpSubmit}
             className="space-y-6 text-center animate-fade-in"
         >
-            {/* ... */}
             <div className="flex justify-center mb-4">
                 <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center text-rcf-navy">
                     <MailCheck className="h-6 w-6" />
