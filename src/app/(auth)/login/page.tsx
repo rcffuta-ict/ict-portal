@@ -1,121 +1,143 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { Loader2, Mail, Lock, ArrowRight } from "lucide-react";
-import FormInput from "@/components/ui/FormInput";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { loginAction } from "./actions";
+import {
+    Loader2,
+    Mail,
+    Lock,
+    Eye,
+    EyeOff,
+    ArrowRight,
+    AlertCircle,
+} from "lucide-react";
+import FormInput from "@/components/ui/FormInput"; // Import your component
 
 export default function LoginPage() {
+    const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         setIsLoading(true);
         setError("");
 
-        // Simulate API Call (We will connect @rcffuta/ict-lib later)
-        setTimeout(() => {
+        const formData = new FormData(e.currentTarget);
+        const res = await loginAction(formData);
+
+        if (res.success) {
+            router.refresh();
+            router.push("/dashboard");
+        } else {
+            setError(res.error || "Invalid email or password");
             setIsLoading(false);
-            // router.push('/dashboard');
-        }, 2000);
+        }
     }
 
     return (
-        <div className="animate-fade-in w-full max-w-lg mx-auto space-y-6">
+        <div className=" max-w-xl mx-auto animate-fade-in">
             {/* Header */}
-            <div className="flex flex-col space-y-2 text-center">
-                <h1 className="text-2xl font-bold tracking-tight text-rcf-navy">
+            <div className="mb-8 text-center md:text-left">
+                <h1 className="text-3xl font-bold text-rcf-navy tracking-tight">
                     Welcome Back
                 </h1>
-                <p className="text-sm text-gray-500">
-                    Enter your credentials to access the portal.
+                <p className="text-sm text-slate-500 mt-2">
+                    Enter your credentials to access the fellowship portal.
                 </p>
             </div>
 
-            {/* Error Alert */}
-            {error && (
-                <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 border border-red-100">
-                    {error}
-                </div>
-            )}
-
             {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Email Field */}
-                <div className="space-y-2">
-                    <label
-                        htmlFor="email"
-                        className="text-sm font-medium text-gray-700"
-                    >
-                        Email Address
-                    </label>
-                    <div className="relative">
-                        <Mail className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                        <FormInput
-                            id="email"
-                            type="email"
-                            placeholder="brother.david@example.com"
-                            required
-                            className="h-10 w-full rounded-md border border-gray-200 bg-white pl-10 pr-3 text-sm outline-none transition-all placeholder:text-gray-400 focus:border-rcf-navy focus:ring-1 focus:ring-rcf-navy"
-                        />
+            <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Error Alert */}
+                {error && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-100 flex items-center gap-3 text-sm text-red-600 animate-in slide-in-from-top-2">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        <span>{error}</span>
                     </div>
-                </div>
+                )}
 
-                {/* Password Field */}
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                        <label
-                            htmlFor="password"
-                            className="text-sm font-medium text-gray-700"
-                        >
-                            Password
+                {/* Email Field using FormInput */}
+                <FormInput
+                    label="Email Address"
+                    name="email"
+                    type="email"
+                    placeholder="brother.david@example.com"
+                    required
+                    leftIcon={<Mail className="h-5 w-5" />}
+                />
+
+                {/* Password Field using FormInput */}
+                <div>
+                    <div className="flex items-center justify-between ml-1 mb-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                            Password <span className="text-pink-500">*</span>
                         </label>
                         <Link
-                            href="/auth/forgot-password"
+                            href="/forgot-password"
                             className="text-xs font-medium text-rcf-navy hover:underline"
                         >
                             Forgot password?
                         </Link>
                     </div>
-                    <div className="relative">
-                        <Lock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                        <FormInput
-                            id="password"
-                            type="password"
-                            placeholder="••••••••"
-                            required
-                            className="h-10 w-full rounded-md border border-gray-200 bg-white pl-10 pr-3 text-sm outline-none transition-all placeholder:text-gray-400 focus:border-rcf-navy focus:ring-1 focus:ring-rcf-navy"
-                        />
-                    </div>
+
+                    <FormInput
+                        hideLabel // We rendered a custom label/link above
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="••••••••"
+                        required
+                        leftIcon={<Lock className="h-5 w-5" />}
+                        rightIcon={
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="focus:outline-none hover:text-slate-600"
+                                tabIndex={-1} // Prevent tab focus stopping on the eye
+                            >
+                                {showPassword ? (
+                                    <EyeOff className="h-5 w-5" />
+                                ) : (
+                                    <Eye className="h-5 w-5" />
+                                )}
+                            </button>
+                        }
+                    />
                 </div>
 
                 {/* Submit Button */}
                 <button
                     type="submit"
                     disabled={isLoading}
-                    className="group relative flex h-10 w-full items-center justify-center gap-2 rounded-md bg-rcf-navy px-4 text-sm font-semibold text-white transition-all hover:bg-rcf-navy-light disabled:cursor-not-allowed disabled:opacity-70"
+                    className="group relative w-full overflow-hidden rounded-xl bg-rcf-navy p-3.5 text-white shadow-lg shadow-blue-900/20 transition-all hover:bg-[#2a2257] hover:shadow-blue-900/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                    {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                        <>
-                            Log In
-                            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                        </>
-                    )}
+                    <div className="relative z-10 flex items-center justify-center gap-2 font-bold text-sm">
+                        {isLoading ? (
+                            <Loader2 className="animate-spin h-5 w-5" />
+                        ) : (
+                            <>
+                                <span>Access Dashboard</span>
+                                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                            </>
+                        )}
+                    </div>
                 </button>
             </form>
 
-            {/* Footer / Switch to Register */}
-            <div className="text-center text-sm text-gray-500">
-                New to the fellowship?{" "}
-                <Link
-                    href="/auth/register"
-                    className="font-semibold text-rcf-navy underline-offset-4 hover:underline"
-                >
-                    Create Profile
-                </Link>
+            {/* Footer */}
+            <div className="mt-8 text-center">
+                <p className="text-sm text-slate-500">
+                    New to the fellowship?{" "}
+                    <Link
+                        href="/register"
+                        className="font-bold text-rcf-navy hover:underline underline-offset-4"
+                    >
+                        Get Indexed
+                    </Link>
+                </p>
             </div>
         </div>
     );

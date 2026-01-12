@@ -38,7 +38,7 @@ export default async function AuthLayout({
                 <div className="absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-pink-100 blur-3xl opacity-50 z-0" />
 
                 {/* Form Container */}
-                <div className="relative z-10 w-full max-w-3xl space-y-6">
+                <div className="relative z-10 space-y-6  w-full">
                     {children}
 
                     <footer className="flex justify-center text-center md:hidden">

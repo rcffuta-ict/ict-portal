@@ -17,12 +17,12 @@ export default function RegisterPage() {
     const nextStep = () => setCurrentStep((prev) => prev + 1);
 
     return (
-        <div className="animate-fade-in">
+        <div className="animate-fade-in max-w-3xl mx-auto">
             {/* Header */}
             <div className="flex justify-center md:hidden">
                 <Logo width={80} asLink />
             </div>
-                <br className="md:hidden block"/>
+            <br className="md:hidden block" />
 
             <div className="mb-8 text-center">
                 <h1 className="text-2xl font-bold text-rcf-navy">
@@ -108,7 +108,7 @@ export default function RegisterPage() {
                 </AnimatePresence>
             </div>
 
-            {/* <div className="mt-6 text-center text-sm text-gray-500">
+            <div className="mt-6 text-center text-sm text-gray-500">
                 Already have an account?{" "}
                 <Link
                     href="/login"
@@ -116,7 +116,7 @@ export default function RegisterPage() {
                 >
                     Log in
                 </Link>
-            </div> */}
+            </div>
         </div>
     );
 }
