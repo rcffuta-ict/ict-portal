@@ -46,10 +46,6 @@ export function ProfileEdit() {
     const initialFormData = useMemo(() => {
         if (!userProfile) return null;
         
-        // Parse school address to extract lodge and room
-        const schoolAddr = userProfile.location?.schoolAddress || "";
-        const lodgeMatch = schoolAddr.match(/^(.+?),\s*Room\s+(.+)$/i);
-        
         return {
             // Bio
             firstName: userProfile.profile.firstName || "",
@@ -63,12 +59,10 @@ export function ProfileEdit() {
             // Academic
             matricNumber: userProfile.academics?.matricNumber || "",
             department: userProfile.academics?.department || "",
-            classSetId: "", // Will be populated from backend if needed
             
             // Location
             residentialZoneId: "", // Will be populated from backend if needed
-            lodgeName: lodgeMatch ? lodgeMatch[1] : "",
-            roomNumber: lodgeMatch ? lodgeMatch[2] : "",
+            schoolAddress: userProfile.location?.schoolAddress || "",
             homeAddress: userProfile.location?.homeAddress || "",
         };
     }, [userProfile]);
@@ -83,10 +77,8 @@ export function ProfileEdit() {
         dob: "",
         matricNumber: "",
         department: "",
-        classSetId: "",
         residentialZoneId: "",
-        lodgeName: "",
-        roomNumber: "",
+        schoolAddress: "",
         homeAddress: "",
     });
 
@@ -105,11 +97,6 @@ export function ProfileEdit() {
         // TODO: User will implement the actual API call here
         // Example: await rcf.user.updateProfile(formData)
         
-        // Combine lodge and room into schoolAddress
-        const schoolAddress = formData.lodgeName && formData.roomNumber 
-            ? `${formData.lodgeName}, Room ${formData.roomNumber}`
-            : "";
-        
         // Optimistic update to store
         updateStoreBio({
             firstName: formData.firstName,
@@ -127,7 +114,7 @@ export function ProfileEdit() {
         });
         
         updateStoreLocation({
-            schoolAddress: schoolAddress,
+            schoolAddress: formData.schoolAddress,
             homeAddress: formData.homeAddress,
         });
         
@@ -290,32 +277,14 @@ export function ProfileEdit() {
                     <h4 className="text-sm font-semibold text-slate-700">
                         School Residence
                     </h4>
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="col-span-2 space-y-1">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">
-                                Lodge Name
-                            </label>
-                            <input
-                                name="lodgeName"
-                                value={formData.lodgeName}
-                                onChange={handleChange}
-                                placeholder="e.g. Success Lodge"
-                                className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium outline-none focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-500/10 placeholder:text-slate-400"
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">
-                                Room No.
-                            </label>
-                            <input
-                                name="roomNumber"
-                                value={formData.roomNumber}
-                                onChange={handleChange}
-                                placeholder="e.g. 10B"
-                                className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium outline-none focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-500/10 placeholder:text-slate-400"
-                            />
-                        </div>
-                    </div>
+                    <FormInput
+                        label="School Hostel Address"
+                        name="schoolAddress"
+                        value={formData.schoolAddress}
+                        onChange={handleChange}
+                        placeholder="e.g. Success Lodge, Room 10B"
+                        className="w-full"
+                    />
                 </div>
 
                 {/* Home Address */}
@@ -331,7 +300,7 @@ export function ProfileEdit() {
                             name="homeAddress"
                             value={formData.homeAddress}
                             onChange={handleChange}
-                            className="w-full min-h-[80px] rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium outline-none transition-all focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-500/10 placeholder:text-slate-400 resize-none"
+                            className="w-full min-h-20 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium outline-none transition-all focus:border-pink-500 focus:bg-white focus:ring-4 focus:ring-pink-500/10 placeholder:text-slate-400 resize-none"
                             placeholder="e.g. 21, Allen Avenue, Ikeja, Lagos State"
                         />
                     </div>

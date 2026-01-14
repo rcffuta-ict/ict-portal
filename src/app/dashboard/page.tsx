@@ -2,11 +2,8 @@
 import Link from "next/link";
 import {
     UserCircle,
-    QrCode,
-    BookOpen,
-    Vote,
-    Wallet,
-    CalendarCheck,
+    Sparkles,
+    Code2,
 } from "lucide-react";
 // import { RcfIctClient } from "@rcffuta/ict-lib";
 // import { getActiveTenureName } from "@/utils/action";
@@ -79,6 +76,42 @@ export default function DashboardHome() {
                     icon={CalendarCheck}
                     color="bg-indigo-500"
                 /> */}
+            </div>
+
+            {/* 3. Coming Soon Banner */}
+            <div className="relative overflow-hidden rounded-2xl border border-blue-200 bg-linear-to-br from-blue-50 via-indigo-50 to-purple-50 p-8 shadow-sm">
+                {/* Decorative Elements */}
+                <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-blue-200/30 blur-2xl" />
+                <div className="absolute bottom-0 left-0 -mb-4 -ml-4 h-32 w-32 rounded-full bg-purple-200/30 blur-2xl" />
+                
+                <div className="relative z-10 flex flex-col items-center text-center space-y-4">
+                    {/* Icon */}
+                    <div className="inline-flex rounded-full bg-linear-to-br from-blue-500 to-purple-600 p-4 shadow-lg">
+                        <Sparkles className="h-8 w-8 text-white animate-pulse" />
+                    </div>
+                    
+                    {/* Heading */}
+                    <div className="space-y-2">
+                        <h2 className="text-2xl font-bold text-rcf-navy">
+                            More Services Coming Soon!
+                        </h2>
+                        <p className="text-slate-600 max-w-2xl mx-auto">
+                            The ICT Team is working hard to bring you amazing features like 
+                            <span className="font-semibold text-rcf-navy"> Attendance Tracking</span>, 
+                            {/* <span className="font-semibold text-rcf-navy"> Elections</span>,  */}
+                            <span className="font-semibold text-rcf-navy"> Event Manager</span>, and more.
+                        </p>
+                        <p className="text-sm text-slate-500 italic">
+                            Come back often to discover new tools! 🚀
+                        </p>
+                    </div>
+
+                    {/* CTA Badge */}
+                    <div className="inline-flex items-center gap-2 rounded-full bg-white/80 backdrop-blur-sm px-4 py-2 text-sm font-medium text-rcf-navy shadow-md border border-blue-100">
+                        <Code2 className="h-4 w-4" />
+                        Built with love by ICT Team
+                    </div>
+                </div>
             </div>
         </div>
     );

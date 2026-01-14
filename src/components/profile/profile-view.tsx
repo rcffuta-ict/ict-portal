@@ -46,7 +46,7 @@ export function ProfileView() {
 
         // Fellowship
         unit: unit?.name || "Not a worker yet",
-        roles: roles?.map(e=>e.title) || ["Member"],
+        roles: roles?.map(e=>e.title) || [unit ? "Worker" : "Member"],
         teams: teams || [],
     };
 
