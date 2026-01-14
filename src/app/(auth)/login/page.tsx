@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loginAction } from "./actions";
@@ -20,11 +20,27 @@ import { Logo } from "@/components/ui/logo";
 
 export default function LoginPage() {
     const router = useRouter();
+    const user = useProfileStore((state) => state.user);
     const setUser = useProfileStore((state) => state.setUser); // Get setUser action
 
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const hasRedirected = useRef(false);
+
+    // Redirect if already logged in
+    useEffect(() => {
+        // Small delay to allow Zustand persist to hydrate
+        const timer = setTimeout(() => {
+            if (user && !isLoading && !hasRedirected.current) {
+                console.log("Already logged in, redirecting to dashboard");
+                hasRedirected.current = true;
+                router.replace('/dashboard');
+            }
+        }, 100);
+
+        return () => clearTimeout(timer);
+    }, [user, isLoading, router]);
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -42,16 +58,13 @@ export default function LoginPage() {
                 // 1. Store the profile in Zustand immediately
                 setUser(res.data);
 
-                // 2. Refresh Next.js (to update Server Components/Layouts)
-                router.refresh();
-
-                // 3. Redirect to Dashboard
+                // 2. Redirect to Dashboard
                 router.push("/dashboard");
             } else {
                 setError(res.error || "Invalid email or password");
                 setIsLoading(false);
             }
-        } catch (err) {
+        } catch (_err) {
             setError("Something went wrong. Please try again.");
             setIsLoading(false);
         }

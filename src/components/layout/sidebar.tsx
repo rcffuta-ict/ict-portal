@@ -31,6 +31,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     const router = useRouter();
 
     const user = useProfileStore((state) => state.user);
+    const clearUser = useProfileStore((state) => state.clearUser);
 
     console.log(user);
 
@@ -38,8 +39,19 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         ? `${user.profile.firstName[0]}${user.profile.lastName[0]}`
         : "??";
 
-    const handleSignOut = () => {
-        router.replace("/");
+    const handleSignOut = async () => {
+        // 1. Clear Zustand store (removes from localStorage too)
+        clearUser();
+        
+        // 2. Call logout server action to clear cookies
+        try {
+            await fetch('/api/auth/logout', { method: 'POST' });
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+        
+        // 3. Redirect to home/login
+        router.replace("/login");
     };
 
     const handleNavClick = () => {

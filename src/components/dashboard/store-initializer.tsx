@@ -1,36 +1,99 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useProfileStore } from "../../lib/stores/profile.store";
 import { useRouter } from "next/navigation";
+import { verifySession } from "@/app/actions/auth";
+
+// Check session every 5 minutes
+const SESSION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+// Refresh if session hasn't been checked in 10 minutes
+const SESSION_REFRESH_THRESHOLD = 10 * 60 * 1000; // 10 minutes
 
 export function StoreInitializer() {
     const user = useProfileStore((state) => state.user);
+    const lastRefresh = useProfileStore((state) => state.lastRefresh);
+    const setUser = useProfileStore((state) => state.setUser);
+    const clearUser = useProfileStore((state) => state.clearUser);
+    
     const navigation = useRouter();
+    const hasChecked = useRef(false);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
+    const isCheckingRef = useRef(false);
 
-
+    // Initial auth check and periodic session verification
     useEffect(() => {
-
-
-        async function loadUser() {
-
-            // If we don't have userId, try to load from session (cookie)
+        async function checkAndRefreshSession() {
+            // Prevent concurrent checks
+            if (isCheckingRef.current) return;
+            
+            // If no user, redirect to login (but wait for hydration first)
             if (!user) {
-
-                // No user found: redirect to login after a short delay
-                setTimeout(() => {
+                if (hasChecked.current) {
+                    console.log("No user found, redirecting to login");
                     navigation.replace('/login');
-                }, 900);
-
+                }
                 return;
             }
 
-    
-
+            // Check if we need to refresh the session
+            const now = Date.now();
+            const timeSinceRefresh = lastRefresh ? now - lastRefresh : Infinity;
+            
+            // IMPORTANT: On first check after fresh login, skip server validation
+            // The user was just set, so we trust it for a few minutes
+            if (!hasChecked.current && timeSinceRefresh < 5 * 60 * 1000) {
+                console.log("Fresh login detected, skipping initial verification");
+                hasChecked.current = true;
+                return;
+            }
+            
+            // If session is old or beyond threshold, verify with server
+            if (timeSinceRefresh > SESSION_REFRESH_THRESHOLD) {
+                console.log("Verifying session with server...");
+                
+                isCheckingRef.current = true;
+                
+                try {
+                    const result = await verifySession();
+                    
+                    if (result.success && result.data) {
+                        // Update user data with fresh profile
+                        setUser(result.data);
+                        console.log("Session verified and refreshed");
+                    } else {
+                        // Session invalid, logout
+                        console.error("Session verification failed:", result.error);
+                        clearUser();
+                        navigation.replace('/login');
+                    }
+                } catch (error) {
+                    console.error("Session check error:", error);
+                } finally {
+                    isCheckingRef.current = false;
+                }
+            }
+            
+            hasChecked.current = true;
         }
 
-        loadUser();
-    }, []);
+        // Initial check with small delay for hydration
+        const timeoutId = setTimeout(() => {
+            checkAndRefreshSession();
+        }, 100);
+
+        // Set up periodic session verification
+        intervalRef.current = setInterval(() => {
+            checkAndRefreshSession();
+        }, SESSION_CHECK_INTERVAL);
+
+        return () => {
+            clearTimeout(timeoutId);
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+        };
+    }, [user, lastRefresh, navigation, setUser, clearUser]);
 
     return null; // This component renders nothing visually
 }

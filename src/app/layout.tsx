@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-// @ts-expect-error: allow importing global CSS without type declarations
 import "./globals.css";
 import { TenureInitializer } from "@/components/dashboard/tenure-initializer";
 
