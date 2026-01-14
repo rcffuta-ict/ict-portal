@@ -49,11 +49,11 @@ export function Copyright({
                     // If layout prop is set, force it. Otherwise adapt to screen size.
                     layout === "column"
                         ? "flex-col gap-2"
-                        : "flex-col md:flex-row md:items-center gap-y-2 gap-x-4 flex-wrap"
+                        : "flex-col md:flex-row md:items-center gap-y-2 gap-x-4 flex-wrap justify-center md:justify-start"
                 )}
             >
                 {/* 1. Legal Entity */}
-                <p className="whitespace-nowrap">
+                <p className="whitespace-nowrap text-center md:text-left">
                     &copy; {currentYear} RCF FUTA Chapter.
                 </p>
 
@@ -67,7 +67,7 @@ export function Copyright({
                 />
 
                 {/* 2. Credits & Context */}
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4 text-center md:text-left">
                     {/* Powered By */}
                     <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span>Powered by</span>
@@ -87,11 +87,11 @@ export function Copyright({
                         <>
                             <span
                                 className={clsx(
-                                    "h-1 w-1 rounded-full",
+                                    "hidden md:block h-1 w-1 rounded-full flex-shrink-0",
                                     theme.separator
                                 )}
                             />
-                            <span className="opacity-90 whitespace-nowrap">
+                            <span className="opacity-90 text-center md:text-left max-w-xs break-words">
                                 {tenure}
                             </span>
                         </>

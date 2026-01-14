@@ -1,6 +1,5 @@
 import { Copyright } from "@/components/ui/copyright";
 import { getActiveTenureName } from "@/utils/action";
-import { RcfIctClient } from "@rcffuta/ict-lib";
 
 export default async function HomeLayout({
     children,
@@ -12,8 +11,8 @@ export default async function HomeLayout({
         <>
             {children}
 
-            <footer className="w-full text-center py-6">
-                <div className="py-8 flex justify-center">
+            <footer className="w-full bg-slate-100/50 border-t border-slate-200">
+                <div className="max-w-6xl mx-auto px-6 py-8 flex justify-center">
                     <Copyright
                         tenure={tenureName}
                         variant="dark"
