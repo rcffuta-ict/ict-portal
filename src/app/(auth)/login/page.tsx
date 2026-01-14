@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loginAction } from "./actions";
+
 import {
     Loader2,
     Mail,
@@ -13,10 +14,14 @@ import {
     ArrowRight,
     AlertCircle,
 } from "lucide-react";
-import FormInput from "@/components/ui/FormInput"; // Import your component
+import FormInput from "@/components/ui/FormInput";
+import { useProfileStore } from "@/lib/stores/profile.store";
+import { Logo } from "@/components/ui/logo";
 
 export default function LoginPage() {
     const router = useRouter();
+    const setUser = useProfileStore((state) => state.setUser); // Get setUser action
+
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -27,20 +32,37 @@ export default function LoginPage() {
         setError("");
 
         const formData = new FormData(e.currentTarget);
-        const res = await loginAction(formData);
 
-        if (res.success) {
-            router.refresh();
-            router.push("/dashboard");
-        } else {
-            setError(res.error || "Invalid email or password");
+        try {
+            const res = await loginAction(formData);
+
+            if (res.success && res.data) {
+
+                // console.debug("Login Successful:", res.data);
+                // 1. Store the profile in Zustand immediately
+                setUser(res.data);
+
+                // 2. Refresh Next.js (to update Server Components/Layouts)
+                router.refresh();
+
+                // 3. Redirect to Dashboard
+                router.push("/dashboard");
+            } else {
+                setError(res.error || "Invalid email or password");
+                setIsLoading(false);
+            }
+        } catch (err) {
+            setError("Something went wrong. Please try again.");
             setIsLoading(false);
         }
     }
 
     return (
-        <div className=" max-w-xl mx-auto animate-fade-in">
-            {/* Header */}
+        <div className="w-full max-w-md mx-auto animate-fade-in">
+            <div className="flex justify-center md:hidden mb-10">
+                            <Logo width={80} asLink />
+                        </div>
+                        <br className="md:hidden block" />
             <div className="mb-8 text-center md:text-left">
                 <h1 className="text-3xl font-bold text-rcf-navy tracking-tight">
                     Welcome Back
@@ -50,9 +72,7 @@ export default function LoginPage() {
                 </p>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Error Alert */}
                 {error && (
                     <div className="p-3 rounded-lg bg-red-50 border border-red-100 flex items-center gap-3 text-sm text-red-600 animate-in slide-in-from-top-2">
                         <AlertCircle className="h-4 w-4 shrink-0" />
@@ -60,7 +80,6 @@ export default function LoginPage() {
                     </div>
                 )}
 
-                {/* Email Field using FormInput */}
                 <FormInput
                     label="Email Address"
                     name="email"
@@ -70,11 +89,10 @@ export default function LoginPage() {
                     leftIcon={<Mail className="h-5 w-5" />}
                 />
 
-                {/* Password Field using FormInput */}
                 <div>
                     <div className="flex items-center justify-between ml-1 mb-1">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                            Password <span className="text-pink-500">*</span>
+                            Password
                         </label>
                         <Link
                             href="/forgot-password"
@@ -85,7 +103,7 @@ export default function LoginPage() {
                     </div>
 
                     <FormInput
-                        hideLabel // We rendered a custom label/link above
+                        hideLabel
                         name="password"
                         type={showPassword ? "text" : "password"}
                         placeholder="••••••••"
@@ -96,7 +114,7 @@ export default function LoginPage() {
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
                                 className="focus:outline-none hover:text-slate-600"
-                                tabIndex={-1} // Prevent tab focus stopping on the eye
+                                tabIndex={-1}
                             >
                                 {showPassword ? (
                                     <EyeOff className="h-5 w-5" />
@@ -108,7 +126,6 @@ export default function LoginPage() {
                     />
                 </div>
 
-                {/* Submit Button */}
                 <button
                     type="submit"
                     disabled={isLoading}
@@ -127,7 +144,6 @@ export default function LoginPage() {
                 </button>
             </form>
 
-            {/* Footer */}
             <div className="mt-8 text-center">
                 <p className="text-sm text-slate-500">
                     New to the fellowship?{" "}

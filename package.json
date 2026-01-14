@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@rcffuta/ict-lib": "2.0.0",
+    "@rcffuta/ict-lib": "3.0.0",
     "@tailwindcss/postcss": "^4.1.18",
     "@yudiel/react-qr-scanner": "^2.5.0",
     "clsx": "^2.1.1",
@@ -24,7 +24,8 @@
     "react-qr-code": "^2.0.18",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
-    "zod": "^4.3.5"
+    "zod": "^4.3.5",
+    "zustand": "^5.0.10"
   },
   "devDependencies": {
     "@types/node": "^20",

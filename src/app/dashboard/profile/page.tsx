@@ -4,6 +4,19 @@ import { useState } from "react";
 import { ProfileView } from "@/components/profile/profile-view";
 import { ProfileEdit } from "@/components/profile/profile-edit";
 import { LayoutDashboard, Edit3 } from "lucide-react";
+import { useProfileStore } from "@/lib/stores/profile.store";
+
+// TODO: Add server action or API call to fetch user profile
+// Example:
+// import { getUserProfile } from "./actions";
+// Then in useEffect:
+// useEffect(() => {
+//     async function loadProfile() {
+//         const profile = await getUserProfile();
+//         setUser(profile);
+//     }
+//     loadProfile();
+// }, []);
 
 export default function ProfilePage() {
     const [activeTab, setActiveTab] = useState<"view" | "edit">("view");
@@ -49,7 +62,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Dynamic Content */}
-            <div className="min-h-[500px]">
+            <div className="min-h-125">
                 {activeTab === "view" ? (
                     <div className="animate-slide-up">
                         <ProfileView />

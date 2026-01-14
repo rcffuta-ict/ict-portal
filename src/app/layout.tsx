@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-// @ts-ignore: allow importing global CSS without type declarations
+// @ts-expect-error: allow importing global CSS without type declarations
 import "./globals.css";
+import { TenureInitializer } from "@/components/dashboard/tenure-initializer";
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -87,6 +88,7 @@ export default function RootLayout({
             <body
                 className={`${geistSans.variable} ${geistMono.variable} antialiased`}
             >
+                <TenureInitializer/>
                 {children}
             </body>
         </html>

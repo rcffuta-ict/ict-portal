@@ -4,30 +4,50 @@ import {
     BookOpen,
     Shield,
 } from "lucide-react";
+import { useProfileStore } from "@/lib/stores/profile.store";
 
 export function ProfileView() {
-    // Mock Data (Replace with @rcffuta/ict-lib later)
+    const userProfile = useProfileStore((state) => state.user);
+
+    // Guard: if no user data loaded yet
+    if (!userProfile) {
+        return (
+            <div className="flex items-center justify-center min-h-[500px]">
+                <p className="text-slate-500">Loading profile...</p>
+            </div>
+        );
+    }
+
+    // Destructure for easier access
+    const { profile, location, academics, roles, unit, teams } = userProfile;
+    
+    // Build display values
     const user = {
-        firstName: "Oluwaseyi",
-        lastName: "David",
-        email: "david.o@futa.edu.ng",
-        phone: "08123456789",
-        gender: "Male",
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        middleName: profile.middleName,
+        email: profile.email,
+        phone: profile.phoneNumber,
+        gender: profile.gender,
+        dob: profile.dob,
+        avatarUrl: profile.avatarUrl,
 
         // Academic
-        matric: "MEE/19/8821",
-        dept: "Mechanical Engineering",
-        faculty: "SEET",
-        level: "500L",
-        family: "Army of Light", // Calculated from Entry Year
+        matric: academics?.matricNumber || "Not Set",
+        dept: academics?.department || "Not Set",
+        faculty: academics?.faculty || "Not Set",
+        level: academics?.currentLevel || "Not Set",
+        family: academics?.family || "Not Set",
+        entryYear: academics?.entryYear,
 
         // Location
-        hostel: "South Gate, Success Lodge",
-        home: "Ikeja, Lagos",
+        hostel: location?.schoolAddress || "Not Set",
+        home: location?.homeAddress || "Not Set",
 
         // Fellowship
-        unit: "ICT Unit",
-        role: "Coordinator",
+        unit: unit?.name || "Not a worker yet",
+        roles: roles?.map(e=>e.title) || ["Member"],
+        teams: teams || [],
     };
 
     return (
@@ -52,9 +72,14 @@ export function ProfileView() {
                             {user.matric}
                         </p>
 
-                        <div className="inline-flex items-center rounded-full bg-rcf-gold px-3 py-1 text-xs font-bold text-rcf-navy mb-6">
-                            {user.role}
-                        </div>
+                        {
+                            user.roles.map((role, index) => (
+                                <div key={index} className="inline-flex items-center rounded-full bg-rcf-gold px-3 py-1 text-xs font-bold text-rcf-navy mb-6">
+                                    {role}
+                                </div>
+                            ))
+                        }
+
 
                         <div className="w-full border-t border-white/10 pt-4 grid grid-cols-2 gap-2 text-sm">
                             <div className="text-center">
@@ -118,7 +143,7 @@ export function ProfileView() {
                 {/* Emergency Section */}
                 <InfoSection title="Fellowship Data" icon={Shield}>
                     <InfoItem label="Workforce Unit" value={user.unit} />
-                    <InfoItem label="Current Role" value={user.role} />
+                    <InfoItem label="Current Role" value={user.roles.join()} />
                 </InfoSection>
             </div>
         </div>
@@ -126,7 +151,13 @@ export function ProfileView() {
 }
 
 // Helper Components for clean code
-function InfoSection({ title, icon: Icon, children }: any) {
+interface InfoSectionProps {
+    title: string;
+    icon: React.ComponentType<{ className?: string }>;
+    children: React.ReactNode;
+}
+
+function InfoSection({ title, icon: Icon, children }: InfoSectionProps) {
     return (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4 flex items-center gap-2">

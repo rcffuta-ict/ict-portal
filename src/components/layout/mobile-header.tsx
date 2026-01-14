@@ -1,14 +1,29 @@
-import { Menu } from "lucide-react";
+"use client";
 
-export function MobileHeader() {
+import { Menu, X } from "lucide-react";
+import { Logo } from "../ui/logo";
+
+interface MobileHeaderProps {
+    onMenuClick: () => void;
+    isMenuOpen: boolean;
+}
+
+export function MobileHeader({ onMenuClick, isMenuOpen }: MobileHeaderProps) {
     return (
-        <header className="flex h-16 items-center justify-between border-b bg-white px-4 md:hidden">
-            <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded bg-rcf-navy"></div>
-                <span className="font-bold text-rcf-navy">RCF FUTA</span>
+        <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 md:hidden">
+            <div className="flex items-center gap-2 py-20">
+                <Logo variant="colored" width={50} />
             </div>
-            <button className="rounded p-2 text-gray-600 hover:bg-gray-100">
-                <Menu className="h-6 w-6" />
+            <button 
+                onClick={onMenuClick}
+                className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 transition-colors"
+                aria-label="Toggle menu"
+            >
+                {isMenuOpen ? (
+                    <X className="h-6 w-6" />
+                ) : (
+                    <Menu className="h-6 w-6" />
+                )}
             </button>
         </header>
     );

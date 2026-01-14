@@ -1,9 +1,6 @@
 import { AuthBrandPanel } from "@/components/auth/auth-brand-panel";
 import { Copyright } from "@/components/ui/copyright";
 import { getActiveTenureName } from "@/utils/action";
-import { RcfIctClient } from "@rcffuta/ict-lib";
-
-
 
 
 export default async function AuthLayout({

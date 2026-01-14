@@ -1,8 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
 import { RcfIctClient } from "@rcffuta/ict-lib";
-// import { cookies } from "next/headers";
-// import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 export async function loginAction(formData: FormData) {
     const email = formData.get("email") as string;
@@ -11,17 +11,46 @@ export async function loginAction(formData: FormData) {
     const rcf = RcfIctClient.fromEnv();
 
     try {
+        // 1. Attempt Login via Library
         const { user, session } = await rcf.auth.login(email, password);
         
         if (!user || !session) {
             return { success: false, error: "Invalid credentials" };
         }
 
-        // Note: Supabase JS client usually handles cookies automatically 
-        // in middleware, but explicitly returning success lets the client redirect.
-        return { success: true };
+        // 2. CRITICAL: Manually set the cookie for Next.js Persistence
+        // Since the library uses vanilla supabase-js, we must bridge the session to Next.js cookies
+        const cookieStore = await cookies();
+        cookieStore.set("sb-access-token", session.access_token, {
+            path: "/",
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 60 * 60 * 24 * 7, // 1 week
+        });
+        
+        if (session.refresh_token) {
+            cookieStore.set("sb-refresh-token", session.refresh_token, {
+                path: "/",
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                maxAge: 60 * 60 * 24 * 7,
+            });
+        }
+
+        // 3. Fetch the Full Profile (Roles, Family, Units)
+        // We use the member service we created earlier
+        const fullProfile = await rcf.member.getFullProfile(user.id);
+
+        if (fullProfile) {
+            // Inject email if missing in profile table
+            fullProfile.profile.email = user.email || "";
+        }
+        
+
+        return { success: true, data: fullProfile };
 
     } catch (error: any) {
-        return { success: false, error: error.message };
+        console.error("Login Error:", error);
+        return { success: false, error: error.message || "Login failed" };
     }
 }

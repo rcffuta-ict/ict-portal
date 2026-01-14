@@ -1,3 +1,4 @@
+"use client";
 import Link from "next/link";
 import {
     UserCircle,
@@ -7,13 +8,15 @@ import {
     Wallet,
     CalendarCheck,
 } from "lucide-react";
-import { RcfIctClient } from "@rcffuta/ict-lib";
-import { getActiveTenureName } from "@/utils/action";
+// import { RcfIctClient } from "@rcffuta/ict-lib";
+// import { getActiveTenureName } from "@/utils/action";
+import { useProfileStore } from "@/lib/stores/profile.store";
+import { useTenureStore } from "@/lib/stores/tenure.store";
 
 
-export default async function DashboardHome() {
-    const tenureName = await getActiveTenureName();
-    const userFirstName = "Oluwaseyi"; // We will pull this from lib later
+export default function DashboardHome() {
+    const tenureName = useTenureStore(s => s.activeTenure?.name || null);
+    const userFirstName = useProfileStore(s=>s.user?.profile.firstName || "Melchizedeck"); // We will pull this from lib later
 
     return (
         <div className="space-y-8">
@@ -37,7 +40,7 @@ export default async function DashboardHome() {
                     color="bg-blue-500"
                 />
 
-                <ServiceCard
+                {/* <ServiceCard
                     href="/dashboard/attendance"
                     title="Attendance"
                     desc="Scan QR codes for Service & Unit meetings."
@@ -75,13 +78,14 @@ export default async function DashboardHome() {
                     desc="Register for conferences and retreats."
                     icon={CalendarCheck}
                     color="bg-indigo-500"
-                />
+                /> */}
             </div>
         </div>
     );
 }
 
 // Reusable Service Card Component
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ServiceCard({ href, title, desc, icon: Icon, color }: any) {
     return (
         <Link
