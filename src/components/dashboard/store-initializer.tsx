@@ -2,8 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { useProfileStore } from "../../lib/stores/profile.store";
-import { useRouter } from "next/navigation";
 import { verifySession } from "@/app/actions/auth";
+import { useLoginRedirect } from "@/lib/hooks/useLoginRedirect";
 
 // Check session every 5 minutes
 const SESSION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
@@ -16,7 +16,7 @@ export function StoreInitializer() {
     const setUser = useProfileStore((state) => state.setUser);
     const clearUser = useProfileStore((state) => state.clearUser);
     
-    const navigation = useRouter();
+    const { redirectToLogin } = useLoginRedirect();
     const hasChecked = useRef(false);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const isCheckingRef = useRef(false);
@@ -31,7 +31,7 @@ export function StoreInitializer() {
             if (!user) {
                 if (hasChecked.current) {
                     console.log("No user found, redirecting to login");
-                    navigation.replace('/login');
+                    redirectToLogin();
                 }
                 return;
             }
@@ -65,7 +65,7 @@ export function StoreInitializer() {
                         // Session invalid, logout
                         console.error("Session verification failed:", result.error);
                         clearUser();
-                        navigation.replace('/login');
+                        redirectToLogin();
                     }
                 } catch (error) {
                     console.error("Session check error:", error);
@@ -93,7 +93,7 @@ export function StoreInitializer() {
                 clearInterval(intervalRef.current);
             }
         };
-    }, [user, lastRefresh, navigation, setUser, clearUser]);
+    }, [user, lastRefresh, redirectToLogin, setUser, clearUser]);
 
     return null; // This component renders nothing visually
 }

@@ -17,11 +17,13 @@ import {
 import FormInput from "@/components/ui/FormInput";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { Logo } from "@/components/ui/logo";
+import { useLoginRedirect } from "@/lib/hooks/useLoginRedirect";
 
 export default function LoginPage() {
     const router = useRouter();
     const user = useProfileStore((state) => state.user);
-    const setUser = useProfileStore((state) => state.setUser); // Get setUser action
+    const setUser = useProfileStore((state) => state.setUser);
+    const { handleSuccessfulLogin, getReturnUrl } = useLoginRedirect();
 
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
@@ -33,14 +35,15 @@ export default function LoginPage() {
         // Small delay to allow Zustand persist to hydrate
         const timer = setTimeout(() => {
             if (user && !isLoading && !hasRedirected.current) {
-                console.log("Already logged in, redirecting to dashboard");
+                const returnUrl = getReturnUrl();
+                console.log("Already logged in, redirecting to:", returnUrl);
                 hasRedirected.current = true;
-                router.replace('/dashboard');
+                router.replace(returnUrl);
             }
         }, 100);
 
         return () => clearTimeout(timer);
-    }, [user, isLoading, router]);
+    }, [user, isLoading, router, getReturnUrl]);
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -53,18 +56,16 @@ export default function LoginPage() {
             const res = await loginAction(formData);
 
             if (res.success && res.data) {
-
-                // console.debug("Login Successful:", res.data);
                 // 1. Store the profile in Zustand immediately
                 setUser(res.data);
 
-                // 2. Redirect to Dashboard
-                router.push("/dashboard");
+                // 2. Redirect to returnTo URL or dashboard
+                handleSuccessfulLogin();
             } else {
                 setError(res.error || "Invalid email or password");
                 setIsLoading(false);
             }
-        } catch (_err) {
+        } catch {
             setError("Something went wrong. Please try again.");
             setIsLoading(false);
         }
@@ -142,7 +143,7 @@ export default function LoginPage() {
                 <button
                     type="submit"
                     disabled={isLoading}
-                    className="group relative w-full overflow-hidden rounded-xl bg-rcf-navy p-3.5 text-white shadow-lg shadow-blue-900/20 transition-all hover:bg-[#2a2257] hover:shadow-blue-900/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+                    className="group relative w-full overflow-hidden rounded-xl bg-rcf-navy p-3.5 text-white shadow-lg shadow-blue-900/20 transition-all hover:bg-rcf-navy-light hover:shadow-blue-900/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
                 >
                     <div className="relative z-10 flex items-center justify-center gap-2 font-bold text-sm">
                         {isLoading ? (

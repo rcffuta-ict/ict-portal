@@ -36,7 +36,7 @@ export default function DashboardLayout({
     // }
 
     return (
-        <div className="flex h-screen bg-slate-50">
+        <div className="flex h-screen bg-slate-50 overflow-hidden">
             {/* 2. Hydrate Zustand Store (Client Side will now have the data) */}
             <StoreInitializer />
 
@@ -46,12 +46,12 @@ export default function DashboardLayout({
                 onClose={() => setIsMobileMenuOpen(false)} 
             />
 
-            <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex flex-1 flex-col min-h-0">
                 <MobileHeader 
                     onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                     isMenuOpen={isMobileMenuOpen}
                 />
-                <main className="flex-1 overflow-y-auto p-4 md:p-8">
+                <main className="flex-1 overflow-y-auto p-4 md:p-8 overscroll-contain">
                     <div className="mx-auto max-w-6xl">{children}</div>
                 </main>
             </div>

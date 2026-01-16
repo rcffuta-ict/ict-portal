@@ -41,6 +41,31 @@
   .btn-primary {
     @apply flex h-10 items-center justify-center rounded-md bg-rcf-navy text-sm font-bold text-white transition-colors hover:bg-rcf-navy-light disabled:opacity-70;
   }
+
+  /* Safe area utilities for mobile devices with notches */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .pb-safe {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .pt-safe {
+    padding-top: calc(1rem + env(safe-area-inset-top));
+  }
 }
 /* Base Styles */
 :root {
@@ -53,6 +78,13 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), sans-serif;
   /* Next.js default font */
+}
+
+/* Support for dynamic viewport height on mobile */
+@supports (height: 100dvh) {
+  .h-screen-mobile {
+    height: 100dvh;
+  }
 }
 
 /* Print styles: only show the `.printable` area when printing */
