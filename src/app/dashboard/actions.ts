@@ -1,6 +1,6 @@
 'use server'
 
-import { RcfIctClient } from "@rcffuta/ict-lib";
+import { RcfIctClient } from "@rcffuta/ict-lib/server";
 
 export async function getUserProfile() {
     const rcf = RcfIctClient.fromEnv();

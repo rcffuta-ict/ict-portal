@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { RcfIctClient } from "@rcffuta/ict-lib";
+import { RcfIctClient } from "@rcffuta/ict-lib/server";
 
 // 1. Request OTP
 export async function requestResetAction(email: string) {

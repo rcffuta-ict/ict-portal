@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { RcfIctClient } from "@rcffuta/ict-lib";
+import { RcfIctClient } from "@rcffuta/ict-lib/server";
 
 // Hardcoded for the event
 const EVENT_SLUG = "sisters-conf-26";

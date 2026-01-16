@@ -1,5 +1,5 @@
 "use server"
-import { RcfIctClient, Tenure } from "@rcffuta/ict-lib";
+import { RcfIctClient, Tenure } from "@rcffuta/ict-lib/server";
 
 export async function getActiveTenure(): Promise<Tenure | null> {
     const rcf = RcfIctClient.fromEnv();

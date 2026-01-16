@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { RcfIctClient } from "@rcffuta/ict-lib";
+import { RcfIctClient } from "@rcffuta/ict-lib/server";
 import { cookies } from "next/headers";
 
 export async function loginAction(formData: FormData) {

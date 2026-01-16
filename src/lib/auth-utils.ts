@@ -3,7 +3,7 @@
  * Handles Supabase token refresh and validation
  */
 
-import { RcfIctClient } from "@rcffuta/ict-lib";
+import { RcfIctClient } from "@rcffuta/ict-lib/server";
 
 /**
  * Check if the current session is valid and refresh if needed

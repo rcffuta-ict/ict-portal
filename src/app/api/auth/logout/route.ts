@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { RcfIctClient } from '@rcffuta/ict-lib';
+import { RcfIctClient } from '@rcffuta/ict-lib/server';
 
 export async function POST() {
     try {

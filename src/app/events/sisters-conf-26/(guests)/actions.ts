@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { RcfIctClient } from "@rcffuta/ict-lib";
+import { RcfIctClient } from "@rcffuta/ict-lib/server";
 
 // We use the SLUG we defined in SQL, not the UUID
 const EVENT_SLUG = "sisters-conf-26"; 

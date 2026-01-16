@@ -1,8 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { RcfIctClient } from '@rcffuta/ict-lib';
-import type { BioData, AcademicData, LocationData } from '@rcffuta/ict-lib';
-import { cookies } from 'next/headers';
+import { RcfIctClient } from '@rcffuta/ict-lib/server';
+import type { BioData, AcademicData, LocationData } from '@rcffuta/ict-lib/server';
 
 // Initialize the library with Environment Variables
 // const rcf = RcfIctClient.fromEnv();

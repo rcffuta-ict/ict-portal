@@ -3,9 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-    DepartmentUtils,
-} from "@rcffuta/ict-lib";
+import { DepartmentUtils } from "@rcffuta/ict-lib";
 import { registerStepTwo, getFamiliesAction } from "../action";
 import { Loader2, ArrowRight } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
