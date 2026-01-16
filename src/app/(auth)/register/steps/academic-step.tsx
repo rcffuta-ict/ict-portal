@@ -125,6 +125,7 @@ export default function StepAcademic({
                         className="w-full input-field uppercase"
                         placeholder="ABC/21/0000"
                         isMatric={true}
+                        defaultValue={'xxx/10/1234'}
                     />
                     <p className="text-[10px] text-gray-400">
                         Format: DEPT/YY/NUM (e.g. MEE/19/8821)
