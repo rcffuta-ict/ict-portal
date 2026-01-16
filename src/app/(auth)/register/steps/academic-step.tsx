@@ -2,16 +2,25 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
-    AcademicDataSchema,
-    type AcademicData,
     DepartmentUtils,
 } from "@rcffuta/ict-lib";
-import { registerStepTwo, getFamiliesAction } from "../action"; // Import new action
+import { registerStepTwo, getFamiliesAction } from "../action";
 import { Loader2, ArrowRight } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
 import { useEffect, useState } from "react";
+import { AlertModal, useAlertModal } from "@/components/ui/alert-modal";
+
+// Make matric number optional for freshers
+const OptionalAcademicSchema = z.object({
+    matricNumber: z.string().optional(),
+    department: z.string().min(1, "Department is required"),
+    classSetId: z.string().min(1, "Family/Set is required"),
+});
+
+type OptionalAcademicData = z.infer<typeof OptionalAcademicSchema>;
 
 // Hardcode current session year for display calculation (e.g., 2025/2026 session -> 2025)
 const CURRENT_SESSION_YEAR = 2025; 
@@ -23,15 +32,20 @@ export default function StepAcademic({
     userId: string;
     onSuccess: () => void;
 }) {
-    const [families, setFamilies] = useState<any[]>([]);
+    const [families, setFamilies] = useState<Array<{
+        id: string;
+        family_name: string;
+        entry_year: number;
+    }>>([]);
     const [isLoadingFamilies, setIsLoadingFamilies] = useState(true);
+    const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
 
     const {
         register,
         handleSubmit,
         formState: { errors, isSubmitting },
-    } = useForm<AcademicData>({
-        resolver: zodResolver(AcademicDataSchema),
+    } = useForm<OptionalAcademicData>({
+        resolver: zodResolver(OptionalAcademicSchema),
     });
 
     // 1. Fetch Families on Mount
@@ -46,10 +60,34 @@ export default function StepAcademic({
         load();
     }, []);
 
-    const onSubmit = async (data: AcademicData) => {
-        const res = await registerStepTwo(userId, data);
-        if (res.success) onSuccess();
-        else alert(res.error);
+    const onSubmit = async (data: OptionalAcademicData) => {
+        // If no matric number, use a placeholder for freshers
+        const payload = {
+            matricNumber: data.matricNumber || "PENDING",
+            department: data.department,
+            classSetId: data.classSetId,
+        };
+        
+        const res = await registerStepTwo(userId, payload);
+        if (res.success) {
+            onSuccess();
+        } else {
+            showAlert({
+                type: "error",
+                title: "Registration Error",
+                message: res.error || "Failed to save academic information",
+            });
+        }
+    };
+
+    const handleSkip = () => {
+        showAlert({
+            type: "info",
+            title: "Skip Academic Step?",
+            message: "You can always add your matric number later in your profile settings. Do you want to skip this step?",
+            confirmText: "Skip",
+            onConfirm: onSuccess,
+        });
     };
 
     const departments = DepartmentUtils.getAllNames();
@@ -63,30 +101,42 @@ export default function StepAcademic({
     };
 
     return (
-        <form
-            onSubmit={handleSubmit(onSubmit)}
-            className="space-y-5 animate-fade-in"
-        >
-            {/* 1. Matric Number */}
-            <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700">
-                    Matric Number
-                </label>
-                <FormInput
-                    {...register("matricNumber")}
-                    className="w-full input-field uppercase"
-                    placeholder="ABC/21/0000"
-                    isMatric={true}
-                />
-                <p className="text-[10px] text-gray-400">
-                    Format: DEPT/YY/NUM (e.g. MEE/19/8821)
-                </p>
-                {errors.matricNumber && (
-                    <p className="text-xs text-red-500">
-                        {errors.matricNumber.message}
+        <>
+            <AlertModal
+                isOpen={isOpen}
+                onClose={closeAlert}
+                {...alertConfig}
+            />
+            
+            <form
+                onSubmit={handleSubmit(onSubmit)}
+                className="space-y-5 animate-fade-in"
+            >
+                {/* Info Banner */}
+                <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm text-blue-700">
+                    <p><strong>Freshers:</strong> Don&apos;t have a matric number yet? Leave it blank or skip this step!</p>
+                </div>
+
+                {/* 1. Matric Number */}
+                <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700">
+                        Matric Number <span className="text-gray-400 font-normal">(Optional for freshers)</span>
+                    </label>
+                    <FormInput
+                        {...register("matricNumber")}
+                        className="w-full input-field uppercase"
+                        placeholder="ABC/21/0000"
+                        isMatric={true}
+                    />
+                    <p className="text-[10px] text-gray-400">
+                        Format: DEPT/YY/NUM (e.g. MEE/19/8821)
                     </p>
-                )}
-            </div>
+                    {errors.matricNumber && (
+                        <p className="text-xs text-red-500">
+                            {errors.matricNumber.message}
+                        </p>
+                    )}
+                </div>
 
             {/* 2. Department Select */}
             <div className="space-y-1">
@@ -141,23 +191,33 @@ export default function StepAcademic({
                     </p>
                 )}
                 <p className="text-[10px] text-gray-400">
-                    Your "Family Name" follows you from 100L to 500L.
+                    Your &ldquo;Family Name&rdquo; follows you from 100L to 500L.
                 </p>
             </div>
 
-            <button
-                type="submit"
-                disabled={isSubmitting}
-                className="btn-primary w-full mt-4"
-            >
-                {isSubmitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                    <span className="flex items-center gap-2">
-                        Next Step <ArrowRight className="h-4 w-4" />
-                    </span>
-                )}
-            </button>
+            <div className="flex gap-3">
+                <button
+                    type="button"
+                    onClick={handleSkip}
+                    className="btn-secondary flex-1"
+                >
+                    Skip for Now
+                </button>
+                <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="btn-primary flex-1"
+                >
+                    {isSubmitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                        <span className="flex items-center gap-2 justify-center">
+                            Next Step <ArrowRight className="h-4 w-4" />
+                        </span>
+                    )}
+                </button>
+            </div>
         </form>
+        </>
     );
 }

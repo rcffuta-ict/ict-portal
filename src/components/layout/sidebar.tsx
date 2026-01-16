@@ -2,26 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-    LayoutDashboard,
-    UserCircle,
-    LogOut,
-    QrCode,
-} from "lucide-react";
+import { LogOut } from "lucide-react";
 import clsx from "clsx";
 import { Logo } from "../ui/logo";
 import { useProfileStore } from "@/lib/stores/profile.store";
-
-const sidebarItems = [
-    { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
-    { name: "My Identity", href: "/dashboard/profile", icon: UserCircle },
-    { name: "Tenure Manager", href: "/dashboard/tenure", icon: QrCode },
-    // { name: "Attendance", href: "/dashboard/attendance", icon: QrCode },
-    // { name: "Academics", href: "/dashboard/academics", icon: BookOpen },
-    // { name: "Elections", href: "/dashboard/voting", icon: Vote },
-    // { name: "Events", href: "/dashboard/events", icon: CalendarCheck },
-    // { name: "Financials", href: "/dashboard/dues", icon: Wallet },
-];
+import { useMemo } from "react";
+import { getSidebarItems, isUserAdmin } from "@/config/sidebar-items";
 
 interface SidebarProps {
     isOpen?: boolean;
@@ -35,7 +21,15 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     const user = useProfileStore((state) => state.user);
     const clearUser = useProfileStore((state) => state.clearUser);
 
-    console.log(user);
+    // Check if user is an admin
+    const isAdmin = useMemo(() => {
+        return isUserAdmin(user?.profile?.email);
+    }, [user?.profile?.email]);
+
+    // Get sidebar items based on admin status
+    const sidebarItems = useMemo(() => {
+        return getSidebarItems(isAdmin);
+    }, [isAdmin]);
 
     const initials = user
         ? `${user.profile.firstName[0]}${user.profile.lastName[0]}`

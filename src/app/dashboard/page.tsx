@@ -1,19 +1,31 @@
 "use client";
 import Link from "next/link";
 import {
-    UserCircle,
     Sparkles,
     Code2,
 } from "lucide-react";
-// import { RcfIctClient } from "@rcffuta/ict-lib";
-// import { getActiveTenureName } from "@/utils/action";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useTenureStore } from "@/lib/stores/tenure.store";
+import { getSidebarItems, isUserAdmin } from "@/config/sidebar-items";
+import type { SidebarItem } from "@/config/sidebar-items";
+import { useMemo } from "react";
 
 
 export default function DashboardHome() {
     const tenureName = useTenureStore(s => s.activeTenure?.name || null);
-    const userFirstName = useProfileStore(s=>s.user?.profile.firstName || "Melchizedeck"); // We will pull this from lib later
+    const user = useProfileStore(s => s.user);
+    const userFirstName = user?.profile.firstName || "Melchizedeck";
+
+    // Check if user is admin
+    const isAdmin = useMemo(() => {
+        return isUserAdmin(user?.profile?.email);
+    }, [user?.profile?.email]);
+
+    // Get service cards (exclude "Overview" for cards display)
+    const serviceCards = useMemo(() => {
+        const items = getSidebarItems(isAdmin);
+        return items.filter(item => item.name !== "Overview");
+    }, [isAdmin]);
 
     return (
         <div className="space-y-8">
@@ -22,20 +34,28 @@ export default function DashboardHome() {
                 <h1 className="text-3xl font-bold tracking-tight text-rcf-navy">
                     Welcome back, {userFirstName} 👋
                 </h1>
-                {tenureName && <p className="text-gray-500">
-                    {/* Rebranding Tenure • 2nd Semester 2024/2025 */}
-                    {tenureName}
-                </p>}
+                {tenureName && (
+                    <p className="text-gray-500">
+                        {/* Rebranding Tenure • 2nd Semester 2024/2025 */}
+                        {tenureName}
+                    </p>
+                )}
             </div>
             {/* 2. Services Grid */}
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                <ServiceCard
+                {serviceCards.map((item) => (
+                    <ServiceCard
+                        key={item.href}
+                        item={item}
+                    />
+                ))}
+                {/* <ServiceCard
                     href="/dashboard/profile"
                     title="My Identity"
                     desc="Manage bio-data, academic info & ID Card."
                     icon={UserCircle}
                     color="bg-blue-500"
-                />
+                /> */}
 
                 {/* <ServiceCard
                     href="/dashboard/attendance"
@@ -83,23 +103,32 @@ export default function DashboardHome() {
                 {/* Decorative Elements */}
                 <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-blue-200/30 blur-2xl" />
                 <div className="absolute bottom-0 left-0 -mb-4 -ml-4 h-32 w-32 rounded-full bg-purple-200/30 blur-2xl" />
-                
+
                 <div className="relative z-10 flex flex-col items-center text-center space-y-4">
                     {/* Icon */}
                     <div className="inline-flex rounded-full bg-linear-to-br from-blue-500 to-purple-600 p-4 shadow-lg">
                         <Sparkles className="h-8 w-8 text-white animate-pulse" />
                     </div>
-                    
+
                     {/* Heading */}
                     <div className="space-y-2">
                         <h2 className="text-2xl font-bold text-rcf-navy">
                             More Services Coming Soon!
                         </h2>
                         <p className="text-slate-600 max-w-2xl mx-auto">
-                            The ICT Team is working hard to bring you amazing features like 
-                            <span className="font-semibold text-rcf-navy"> Attendance Tracking</span>, 
+                            The ICT Team is working hard to bring you amazing
+                            features like
+                            <span className="font-semibold text-rcf-navy">
+                                {" "}
+                                Attendance Tracking
+                            </span>
+                            ,
                             {/* <span className="font-semibold text-rcf-navy"> Elections</span>,  */}
-                            <span className="font-semibold text-rcf-navy"> Event Manager</span>, and more.
+                            <span className="font-semibold text-rcf-navy">
+                                {" "}
+                                Event Manager
+                            </span>
+                            , and more.
                         </p>
                         <p className="text-sm text-slate-500 italic">
                             Come back often to discover new tools! 🚀
@@ -118,29 +147,48 @@ export default function DashboardHome() {
 }
 
 // Reusable Service Card Component
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ServiceCard({ href, title, desc, icon: Icon, color }: any) {
+interface ServiceCardProps {
+    item: SidebarItem;
+}
+
+function ServiceCard({ item }: ServiceCardProps) {
+    const { href, name, description, icon: Icon, color, comingSoon } = item;
+    
     return (
         <Link
-            href={href}
-            className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-lg hover:border-rcf-navy/30 hover:-translate-y-1"
+            href={comingSoon ? "#" : href}
+            className={`group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-white p-6 shadow-sm transition-all ${
+                comingSoon 
+                    ? "border-gray-300 cursor-not-allowed opacity-75" 
+                    : "border-gray-200 hover:shadow-lg hover:border-rcf-navy/30 hover:-translate-y-1"
+            }`}
+            onClick={(e) => comingSoon && e.preventDefault()}
         >
             <div className="space-y-4">
-                <div
-                    className={`inline-flex rounded-lg p-3 text-white ${color}`}
-                >
-                    <Icon className="h-6 w-6" />
+                <div className="flex items-start justify-between">
+                    <div
+                        className={`inline-flex rounded-lg p-3 text-white ${color}`}
+                    >
+                        <Icon className="h-6 w-6" />
+                    </div>
+                    {comingSoon && (
+                        <span className="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">
+                            Coming Soon
+                        </span>
+                    )}
                 </div>
                 <div className="space-y-2">
-                    <h3 className="font-bold text-gray-900 group-hover:text-rcf-navy transition-colors">
-                        {title}
+                    <h3 className={`font-bold ${comingSoon ? "text-gray-700" : "text-gray-900 group-hover:text-rcf-navy"} transition-colors`}>
+                        {name}
                     </h3>
-                    <p className="text-sm text-gray-500">{desc}</p>
+                    <p className="text-sm text-gray-500">{description}</p>
                 </div>
             </div>
 
-            {/* Decorative gradient on hover */}
-            <div className="absolute inset-x-0 bottom-0 h-1 scale-x-0 bg-rcf-navy transition-transform duration-300 group-hover:scale-x-100" />
+            {/* Decorative gradient on hover (only for active cards) */}
+            {!comingSoon && (
+                <div className="absolute inset-x-0 bottom-0 h-1 scale-x-0 bg-rcf-navy transition-transform duration-300 group-hover:scale-x-100" />
+            )}
         </Link>
     );
 }

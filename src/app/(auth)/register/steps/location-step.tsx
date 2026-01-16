@@ -9,6 +9,7 @@ import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
 import { useEffect, useState } from "react";
 import { z } from "zod";
+import { AlertModal, useAlertModal } from "@/components/ui/alert-modal";
 
 // Make all fields optional for this step
 const OptionalLocationSchema = z.object({
@@ -23,6 +24,7 @@ export default function StepLocation({ userId }: { userId: string }) {
     const router = useRouter();
     const [zones, setZones] = useState<Array<{ id: string; name: string }>>([]);
     const [isLoadingZones, setIsLoadingZones] = useState(true);
+    const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
 
     const {
         register,
@@ -59,7 +61,11 @@ export default function StepLocation({ userId }: { userId: string }) {
             if (res.success) {
                 router.push("/dashboard");
             } else {
-                alert(res.error);
+                showAlert({
+                    type: "error",
+                    title: "Registration Error",
+                    message: res.error || "Failed to save location information",
+                });
             }
         } else {
             // Skip this step entirely
@@ -72,7 +78,14 @@ export default function StepLocation({ userId }: { userId: string }) {
     };
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 animate-fade-in">
+        <>
+            <AlertModal
+                isOpen={isOpen}
+                onClose={closeAlert}
+                {...alertConfig}
+            />
+            
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 animate-fade-in">
             
             {/* Info Banner */}
             <div className="rounded-lg bg-blue-50 border border-blue-100 p-4 text-sm text-blue-700">
@@ -165,5 +178,6 @@ export default function StepLocation({ userId }: { userId: string }) {
                 </button>
             </div>
         </form>
+        </>
     );
 }

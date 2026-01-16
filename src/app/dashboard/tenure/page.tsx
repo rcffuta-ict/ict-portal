@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import { getAdminData } from "./actions";
 import {
-    Loader2,
     CalendarDays,
     Layers,
     Crown,
@@ -15,6 +14,7 @@ import { TenureTab } from "./components/tenure-tab";
 import { StructureTab } from "./components/structure-tab";
 import { CabinetTab } from "./components/cabinet-tab";
 import { FamilyTab } from "./components/family-tab";
+import { CoolLoader } from "@/components/ui/cool-loader";
 
 /**
  * Executive Console - Tenure Management Dashboard
@@ -49,9 +49,10 @@ export default function TenureDashboard() {
 
     if (loading)
         return (
-            <div className="min-h-[60vh] flex items-center justify-center">
-                <Loader2 className="animate-spin h-8 w-8 text-rcf-navy" />
-            </div>
+            <CoolLoader 
+                message="Loading Tenure Manager" 
+                subMessage="Fetching administrative data..."
+            />
         );
 
     if (!authorized)
@@ -71,7 +72,7 @@ export default function TenureDashboard() {
         <div className="space-y-8 animate-fade-in pb-20">
             <div className="flex flex-col gap-1 border-b border-slate-200 pb-6">
                 <h1 className="text-3xl font-bold text-rcf-navy">
-                    Executive Console
+                    Tenure Manager
                 </h1>
                 <p className="text-slate-500">
                     Manage tenure configuration, structure, and appointments.

@@ -42,6 +42,8 @@
     @apply flex h-10 items-center justify-center rounded-md bg-rcf-navy text-sm font-bold text-white transition-colors hover:bg-rcf-navy-light disabled:opacity-70;
   }
 
+  
+
   /* Safe area utilities for mobile devices with notches */
   .safe-top {
     padding-top: env(safe-area-inset-top);
