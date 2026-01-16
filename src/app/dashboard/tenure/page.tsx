@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -10,14 +11,17 @@ import {
     Users,
     ShieldAlert,
 } from "lucide-react";
-
-// Import Components
 import { TenureTab } from "./components/tenure-tab";
 import { StructureTab } from "./components/structure-tab";
 import { CabinetTab } from "./components/cabinet-tab";
 import { FamilyTab } from "./components/family-tab";
 
-export default function VPDashboard() {
+/**
+ * Executive Console - Tenure Management Dashboard
+ * Allows admins to manage tenures, structure, leadership, and families
+ * Access is restricted to emails in ADMIN_EMAILS environment variable
+ */
+export default function TenureDashboard() {
     const [activeTab, setActiveTab] = useState("tenure");
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -26,26 +30,31 @@ export default function VPDashboard() {
     const refresh = async () => {
         setLoading(true);
         const res = await getAdminData();
-        if (res.authorized === false) {
-            setAuthorized(false);
-        } else {
-            setData(res);
-        }
+        if (res.authorized === false) setAuthorized(false);
+        else setData(res);
         setLoading(false);
     };
 
     useEffect(() => {
-        refresh();
+        const loadData = async () => {
+            setLoading(true);
+            const res = await getAdminData();
+            if (res.authorized === false) setAuthorized(false);
+            else setData(res);
+            setLoading(false);
+        };
+        
+        loadData();
     }, []);
 
     if (loading)
         return (
-            <div className="min-h-screen flex items-center justify-center">
+            <div className="min-h-[60vh] flex items-center justify-center">
                 <Loader2 className="animate-spin h-8 w-8 text-rcf-navy" />
             </div>
         );
 
-    if (!authorized) {
+    if (!authorized)
         return (
             <div className="min-h-[60vh] flex flex-col items-center justify-center text-center p-6">
                 <ShieldAlert className="h-16 w-16 text-red-500 mb-4" />
@@ -53,28 +62,23 @@ export default function VPDashboard() {
                     Access Denied
                 </h1>
                 <p className="text-slate-500 max-w-md mt-2">
-                    Your email is not authorized to access the Executive
-                    Console. Please contact the ICT Coordinator if this is an error.
+                    Your email is not authorized for the Executive Console.
                 </p>
             </div>
         );
-    }
 
     return (
         <div className="space-y-8 animate-fade-in pb-20">
-            {/* Header */}
             <div className="flex flex-col gap-1 border-b border-slate-200 pb-6">
                 <h1 className="text-3xl font-bold text-rcf-navy">
                     Executive Console
                 </h1>
                 <p className="text-slate-500">
-                    Manage tenure configuration, appointments, and fellowship
-                    structure.
+                    Manage tenure configuration, structure, and appointments.
                 </p>
             </div>
 
-            {/* Navigation */}
-            <nav className="flex gap-4 overflow-x-auto pb-2">
+            <nav className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
                 <TabButton
                     id="tenure"
                     label="Tenure Profile"
@@ -91,7 +95,7 @@ export default function VPDashboard() {
                 />
                 <TabButton
                     id="cabinet"
-                    label="Appointments"
+                    label="Cabinet"
                     icon={Crown}
                     active={activeTab}
                     set={setActiveTab}
@@ -105,8 +109,7 @@ export default function VPDashboard() {
                 />
             </nav>
 
-            {/* Modules */}
-            <div>
+            <div className="min-h-100">
                 {activeTab === "tenure" && (
                     <TenureTab data={data} onSuccess={refresh} />
                 )}

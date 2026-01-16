@@ -6,6 +6,7 @@ import {
     LayoutDashboard,
     UserCircle,
     LogOut,
+    QrCode,
 } from "lucide-react";
 import clsx from "clsx";
 import { Logo } from "../ui/logo";
@@ -14,6 +15,7 @@ import { useProfileStore } from "@/lib/stores/profile.store";
 const sidebarItems = [
     { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
     { name: "My Identity", href: "/dashboard/profile", icon: UserCircle },
+    { name: "Tenure Manager", href: "/dashboard/tenure", icon: QrCode },
     // { name: "Attendance", href: "/dashboard/attendance", icon: QrCode },
     // { name: "Academics", href: "/dashboard/academics", icon: BookOpen },
     // { name: "Elections", href: "/dashboard/voting", icon: Vote },

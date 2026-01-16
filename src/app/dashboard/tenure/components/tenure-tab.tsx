@@ -1,17 +1,44 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { createTenureAction, closeTenureAction } from "../actions";
-import { Save, AlertCircle, Power } from "lucide-react";
+import { useState } from "react";
+import {
+    createTenureAction,
+    closeTenureAction,
+    updateTenureAction,
+} from "../actions";
+import {
+    Save,
+    AlertCircle,
+    Power,
+    Clock,
+    Layers,
+    Users,
+    CalendarCheck,
+    Edit3,
+    X,
+} from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 
 export function TenureTab({ data, onSuccess }: any) {
+    console.debug("TenureTab Data:", data);
+    const [isEditing, setIsEditing] = useState(false);
     const active = data?.activeTenure;
+    const stats = {
+        units: data?.units?.length || 0,
+        families: data?.families?.length || 0,
+    };
+
+    const daysActive = active
+        ? Math.floor(
+              (new Date().getTime() - new Date(active.start_date).getTime()) /
+                  (1000 * 3600 * 24)
+          )
+        : 0;
 
     async function handleCreate(formData: FormData) {
         if (
-            confirm(
-                "Are you sure? This will archive any existing active tenure."
-            )
+            confirm("Create new tenure? This will archive any active tenure.")
         ) {
             const res = await createTenureAction(formData);
             if (res.success) onSuccess();
@@ -22,117 +49,225 @@ export function TenureTab({ data, onSuccess }: any) {
     async function handleClose() {
         if (
             confirm(
-                "This will close the current session. All appointments will be archived."
+                "Warning: Closing this tenure archives all leadership roles. Continue?"
             )
         ) {
-            await closeTenureAction(active.id);
-            onSuccess();
+            const res = await closeTenureAction(active.id);
+            if (res.success) onSuccess();
+            else alert(res.error);
         }
     }
 
     return (
-        <div className="grid gap-8 lg:grid-cols-2">
-            {/* Active Tenure Card */}
+        <div className="space-y-8">
             {active ? (
-                <div className="bg-gradient-to-br from-rcf-navy to-[#312e81] rounded-2xl p-8 text-white shadow-xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-white/5 rounded-full blur-3xl"></div>
-
-                    <div className="relative z-10">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <p className="text-pink-300 text-xs font-bold uppercase tracking-widest mb-2">
-                                    Current Active Session
-                                </p>
-                                <h2 className="text-3xl font-serif font-bold">
-                                    {active.name}
-                                </h2>
-                                <p className="text-lg opacity-80 mt-1">
-                                    {active.session}
-                                </p>
+                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rcf-navy to-[#312e81] p-8 text-white shadow-2xl md:p-10">
+                    <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/5 blur-3xl"></div>
+                    <div className="relative z-10 grid gap-8 lg:grid-cols-2 lg:items-end">
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-4">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-green-400/30 bg-green-500/20 px-3 py-1 text-xs font-bold text-green-300">
+                                    <span className="h-2 w-2 animate-pulse rounded-full bg-green-400"></span>{" "}
+                                    Active
+                                </span>
+                                <button
+                                    onClick={() => setIsEditing(true)}
+                                    className="flex items-center gap-1.5 text-xs font-medium text-blue-200 hover:text-white bg-white/10 px-3 py-1 rounded-full"
+                                >
+                                    <Edit3 className="h-3 w-3" /> Edit
+                                </button>
                             </div>
-                            <div className="bg-green-500/20 text-green-300 px-3 py-1 rounded-full text-xs font-bold border border-green-500/30 flex items-center gap-2">
-                                <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse"></span>{" "}
-                                Active
-                            </div>
+                            <h2 className="font-serif text-4xl font-bold leading-tight md:text-5xl">
+                                {active.name}
+                            </h2>
+                            <p className="text-xl font-light text-blue-200">
+                                {active.session} Session
+                            </p>
                         </div>
-
-                        <div className="mt-8 pt-6 border-t border-white/10 flex gap-6">
-                            <button
-                                onClick={handleClose}
-                                className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-200 px-4 py-2 rounded-lg text-sm font-bold transition-all border border-red-500/30"
-                            >
-                                <Power className="h-4 w-4" /> Close Tenure
-                            </button>
-                            {/* Add 'Update' button logic here if needed */}
+                        <div className="flex flex-col gap-4 lg:items-end">
+                            <div className="flex items-center gap-4 rounded-xl bg-white/10 p-4 border border-white/10">
+                                <Clock className="h-6 w-6 text-yellow-300" />
+                                <div>
+                                    <p className="text-xs font-bold uppercase text-blue-200">
+                                        Time Elapsed
+                                    </p>
+                                    <p className="text-2xl font-bold leading-none">
+                                        {daysActive}{" "}
+                                        <span className="text-sm font-normal opacity-70">
+                                            Days
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             ) : (
-                <div className="bg-orange-50 border border-orange-100 rounded-2xl p-8 flex flex-col items-center justify-center text-center text-orange-800">
-                    <AlertCircle className="h-10 w-10 mb-4 opacity-50" />
-                    <h3 className="font-bold text-lg">No Active Tenure</h3>
-                    <p className="text-sm opacity-80 max-w-xs">
-                        The system is currently in archival mode. Initialize a
-                        new session to begin appointments.
+                <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50 p-12 text-center">
+                    <AlertCircle className="h-10 w-10 mb-4 text-orange-500 opacity-50" />
+                    <h3 className="text-xl font-bold text-slate-900">
+                        No Active Tenure
+                    </h3>
+                    <p className="max-w-md text-slate-500 mt-2">
+                        The system is archived. Initialize a new session to
+                        begin.
                     </p>
                 </div>
             )}
 
-            {/* Create / Overwrite Form */}
-            <form
-                action={handleCreate}
-                className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 h-fit"
-            >
-                <div>
-                    <h3 className="font-bold text-slate-900">
-                        Initialize New Tenure
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                        Start a new academic session.
-                    </p>
-                </div>
-
-                <div className="space-y-4">
-                    <div className="space-y-1">
-                        <FormInput
-                            label="Tenure Name"
-                            name="name"
-                            required
-                            placeholder="e.g. The Dominion Tenure"
-                            className="input-field"
-                        />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <FormInput
-                                label="Session"
-                                name="session"
-                                required
-                                placeholder="e.g. 2026/2027"
-                                className="input-field"
-                            />
+            {active ? (
+                <div className="grid gap-6 md:grid-cols-3">
+                    <MetricCard
+                        label="Units & Teams"
+                        value={stats.units}
+                        icon={Layers}
+                        color="text-blue-600"
+                        bg="bg-blue-50"
+                    />
+                    <MetricCard
+                        label="Generations"
+                        value={stats.families}
+                        icon={Users}
+                        color="text-purple-600"
+                        bg="bg-purple-50"
+                    />
+                    <MetricCard
+                        label="Start Date"
+                        value={new Date(active.start_date).toLocaleDateString()}
+                        icon={CalendarCheck}
+                        color="text-emerald-600"
+                        bg="bg-emerald-50"
+                        isDate
+                    />
+                    <div className="md:col-span-3 mt-4 rounded-xl border border-red-100 bg-red-50 p-6 flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                            <div className="rounded-full bg-red-100 p-3 text-red-600">
+                                <Power className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-red-900">
+                                    End Current Tenure
+                                </h4>
+                                <p className="text-sm text-red-700/80">
+                                    Archives all leadership roles.
+                                </p>
+                            </div>
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-500 uppercase">
-                                Start Date
-                            </label>
-                            <FormInput
-                                name="startDate"
-                                type="date"
-                                required
-                                className="input-field"
-                            />
-                        </div>
+                        <button
+                            onClick={handleClose}
+                            className="rounded-lg bg-red-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-700"
+                        >
+                            Close Session
+                        </button>
                     </div>
                 </div>
+            ) : (
+                <div className="mx-auto max-w-2xl">
+                    <form
+                        action={handleCreate}
+                        className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm space-y-6"
+                    >
+                        <h3 className="text-lg font-bold text-slate-900">
+                            Configuration
+                        </h3>
+                        <div className="space-y-4">
+                            <FormInput
+                                label="Tenure Name"
+                                name="name"
+                                required
+                                placeholder="e.g. The Dominion Tenure"
+                            />
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormInput
+                                    label="Session"
+                                    name="session"
+                                    required
+                                    placeholder="e.g. 2026/2027"
+                                />
+                                <FormInput
+                                    label="Start Date"
+                                    name="startDate"
+                                    type="date"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-rcf-navy py-3.5 text-sm font-bold text-white shadow-lg hover:bg-opacity-90">
+                            <Save className="h-4 w-4" /> Save & Activate
+                        </button>
+                    </form>
+                </div>
+            )}
 
-                <button
-                    type="submit"
-                    className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition-all flex justify-center gap-2"
+            {isEditing && active && (
+                <EditTenureModal
+                    tenure={active}
+                    onClose={() => setIsEditing(false)}
+                    onSuccess={onSuccess}
+                />
+            )}
+        </div>
+    );
+}
+
+function MetricCard({ label, value, icon: Icon, color, bg, isDate }: any) {
+    return (
+        <div className="flex items-start gap-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+            <div className={`rounded-xl p-3 ${bg} ${color}`}>
+                <Icon className="h-6 w-6" />
+            </div>
+            <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                    {label}
+                </p>
+                <p
+                    className={`mt-1 font-bold text-slate-900 ${
+                        isDate ? "text-lg" : "text-3xl"
+                    }`}
                 >
-                    <Save className="h-4 w-4" /> Save & Activate
-                </button>
-            </form>
+                    {value}
+                </p>
+            </div>
+        </div>
+    );
+}
+
+function EditTenureModal({ tenure, onClose, onSuccess }: any) {
+    async function handleUpdate(formData: FormData) {
+        formData.append("id", tenure.id);
+        const res = await updateTenureAction(formData);
+        if (res.success) {
+            onSuccess();
+            onClose();
+        } else alert(res.error);
+    }
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                    <h3 className="font-bold text-slate-900">Edit Details</h3>
+                    <button onClick={onClose}>
+                        <X className="h-5 w-5 text-slate-500" />
+                    </button>
+                </div>
+                <form action={handleUpdate} className="p-6 space-y-5">
+                    <FormInput
+                        label="Name"
+                        name="name"
+                        defaultValue={tenure.name}
+                        required
+                    />
+                    <FormInput
+                        label="Session"
+                        name="session"
+                        defaultValue={tenure.session}
+                        required
+                    />
+                    <button className="w-full py-2.5 rounded-xl bg-rcf-navy text-white font-bold text-sm">
+                        Update
+                    </button>
+                </form>
+            </div>
         </div>
     );
 }
