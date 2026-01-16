@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Home, MapPinOff } from "lucide-react";
+import { Home, MapPinOff } from "lucide-react";
 
 export default function NotFound() {
     return (
@@ -22,7 +22,7 @@ export default function NotFound() {
                 </h2>
                 <p className="text-slate-500 leading-relaxed">
                     The page you are looking for seems to have wandered off the
-                    path. Don't worry, even the lost sheep gets found.
+                    path. Don&#39;t worry, even the lost sheep gets found.
                 </p>
             </div>
 

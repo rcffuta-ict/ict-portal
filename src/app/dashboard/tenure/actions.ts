@@ -57,65 +57,63 @@ export async function getAdminData() {
     try {
         const rcf = await checkAdminAccess();
 
-        // Get active tenure
+        // 1. Get Active Tenure
         const { data: activeTenure } = await rcf.supabase
             .from('tenures')
             .select('*')
             .eq('is_active', true)
             .single();
 
-        // Fetch all master data in parallel
+        // 2. Fetch Master Data
         const [unitsRes, familiesRes, positionsRes, leadershipRes] = await Promise.all([
-            rcf.supabase
-                .from('units')
-                .select('*, members:membership_units(count)')
-                .order('name'),
-            
-            rcf.supabase
-                .from('class_sets')
-                .select('*, members:profiles(count)')
-                .order('entry_year', { ascending: false }),
-
+            rcf.supabase.from('units').select('*, members:membership_units(count)').order('name'),
+            rcf.supabase.from('class_sets').select('*, members:profiles(count)').order('entry_year', { ascending: false }),
             rcf.admin.getPositions(false),
-            
-            rcf.supabase
-                .from('leadership')
-                .select(`
-                    id, 
-                    unit_id, units(name),
-                    class_set_id, class_sets(family_name, entry_year),
-                    position:leadership_positions(title, category),
-                    profile:profiles(id, first_name, last_name, avatar_url, phone_number)
-                `)
-                .eq('tenure_id', activeTenure.id)
-                .order('created_at', { ascending: false })
+            // Fetch ALL leadership
+            activeTenure 
+                ? rcf.supabase.from('leadership')
+                    .select(`
+                        id, 
+                        unit_id, units(name),
+                        class_set_id, class_sets(family_name, entry_year),
+                        position:leadership_positions(title, category),
+                        profile:profiles(id, first_name, last_name, avatar_url, department, phone_number)
+                    `)
+                    .eq('tenure_id', activeTenure.id)
+                    .order('created_at', { ascending: false })
+                : { data: [] }
         ]);
 
-        // Transform units with member counts
+        // 3. Process Data
+        const leaders = leadershipRes.data || []; // <--- We have this
+
+        // ... (Map units and families as before) ...
         const units = (unitsRes.data || []).map((u: any) => ({
             ...u,
-            memberCount: u.members?.[0]?.count || 0
+            memberCount: u.members?.[0]?.count || 0,
+            leaders: leaders.filter((l: any) => l.unit_id === u.id).map((l:any) => ({...l.profile, role: l.position?.title}))
         }));
 
-        // Transform families with member counts
         const families = (familiesRes.data || []).map((f: any) => ({
             ...f,
-            memberCount: f.members?.[0]?.count || 0
+            memberCount: f.members?.[0]?.count || 0,
+            leaders: leaders.filter((l: any) => l.class_set_id === f.id).map((l:any) => ({...l.profile, role: l.position?.title}))
         }));
 
         return { 
             activeTenure, 
             units, 
             families, 
-            positions: positionsRes, 
-            leadership: leadershipRes.data || [],
+            positions: positionsRes,
+            leadership: leaders, // <--- CRITICAL FIX: Return the raw leadership array for the Roster
             authorized: true 
         };
-    } catch (e: any) {
-        console.error("getAdminData Error:", e);
+
+    } catch (e) {
         return { authorized: false, error: "Access Denied" };
     }
 }
+
 
 // ============================================================================
 // TENURE MANAGEMENT
@@ -295,62 +293,39 @@ export async function togglePositionAction(id: string, currentStatus: boolean, d
  * Returns formatted results with unit/team memberships
  */
 export async function searchMemberAction(query: string) {
-    // Use admin client to bypass RLS
-    const rcf = RcfIctClient.asAdmin();
+    const rcf = RcfIctClient.asAdmin(); 
 
     const { data, error } = await rcf.supabase
-        .from('profiles')
-        .select(`
-            id, 
-            first_name, 
-            last_name, 
-            phone_number,
-            avatar_url,
-            membership_units (
-                units ( name, type )
-            )
-        `)
-        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,phone_number.ilike.%${query}%`)
-        .limit(10);
+        .rpc('search_members_detailed', { 
+            query_text: query.trim() 
+        });
 
     if (error) {
-        console.error("Search Error:", error);
+        console.error("Search RPC Error:", error);
         return [];
     }
 
-    // Transform data to separate units and teams
-    const formattedData = data.map((user: any) => {
-        const units = user.membership_units
-            ?.map((m: any) => m.units)
-            .filter((u: any) => u.type === 'UNIT')
-            .map((u: any) => u.name);
-
-        const teams = user.membership_units
-            ?.map((m: any) => m.units)
-            .filter((u: any) => u.type === 'TEAM')
-            .map((u: any) => u.name);
-
-        return {
-            id: user.id,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            email: user.email,
-            phone_number: user.phone_number,
-            units: units.length > 0 ? units.join(", ") : null,
-            teams: teams.length > 0 ? teams.join(", ") : null
-        };
-    });
-
-    return formattedData;
+    return data.map((user: any) => ({
+        id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        phone_number: user.phone_number,
+        department: user.department,
+        level: user.level, // <--- Now available! (e.g. "500 Level")
+        avatar_url: user.avatar_url,
+        units: user.units?.join(", ") || null,
+        teams: user.teams?.join(", ") || null,
+        leadership: user.leadership?.map((l:any) => l.title).join(", ") || null
+    }));
 }
-
 /**
  * Assigns a member to a leadership position
  */
 export async function assignLeaderAction(formData: FormData) {
-    const rcf = await checkAdminAccess();
+    const rcf = RcfIctClient.asAdmin();
+    await checkAdminAccess();
     
-    // Handle empty strings as undefined for optional UUIDs
     const unitId = formData.get("unitId") as string;
     const classSetId = formData.get("classSetId") as string;
 
@@ -362,14 +337,18 @@ export async function assignLeaderAction(formData: FormData) {
             unitId: unitId || undefined,
             classSetId: classSetId || undefined
         });
-        
-        revalidatePath('/dashboard/tenure');
+
+        // if (error) throw error; // The admin service might throw, catch it here
+
         return { success: true };
-    } catch (e: any) {
-        return { success: false, error: e.message };
+    } catch (e: any) { 
+        // Handle Duplicate Constraint (Postgres Code 23505)
+        if (e.code === '23505' || e.message?.includes('duplicate')) {
+            return { success: false, error: "This member is already assigned to this role context." };
+        }
+        return { success: false, error: e.message }; 
     }
 }
-
 /**
  * Assigns a leader to a specific unit (used in ManageUnitModal)
  * Auto-fills tenure ID from active tenure
@@ -407,3 +386,4 @@ export async function removeUnitLeaderAction(id: string) {
         return { success: false, error: e.message };
     }
 }
+
