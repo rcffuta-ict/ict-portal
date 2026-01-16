@@ -6,7 +6,7 @@ import { RcfIctClient } from "@rcffuta/ict-lib";
 // 1. Request OTP
 export async function requestResetAction(email: string) {
     // Use Admin client to ensure we can write to verification table
-    const rcf = RcfIctClient.asAdmin();
+    const rcf = RcfIctClient.fromEnv();
     
     try {
         await rcf.auth.initiatePasswordReset(email);

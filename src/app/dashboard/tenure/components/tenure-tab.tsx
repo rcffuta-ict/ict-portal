@@ -21,7 +21,6 @@ import {
 import FormInput from "@/components/ui/FormInput";
 
 export function TenureTab({ data, onSuccess }: any) {
-    console.debug("TenureTab Data:", data);
     const [isEditing, setIsEditing] = useState(false);
     const active = data?.activeTenure;
     const stats = {

@@ -36,7 +36,7 @@ export default function LoginPage() {
         const timer = setTimeout(() => {
             if (user && !isLoading && !hasRedirected.current) {
                 const returnUrl = getReturnUrl();
-                console.log("Already logged in, redirecting to:", returnUrl);
+                // console.log("Already logged in, redirecting to:", returnUrl);
                 hasRedirected.current = true;
                 router.replace(returnUrl);
             }

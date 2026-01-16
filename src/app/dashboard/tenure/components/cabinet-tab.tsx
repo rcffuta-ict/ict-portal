@@ -25,7 +25,6 @@ import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
 
 export function CabinetTab({ data, onSuccess }: any) {
-    console.debug(data);
     const [mode, setMode] = useState<"LIST" | "APPOINT" | "CONFIGURE">("LIST");
 
     return (
@@ -98,7 +97,6 @@ export function CabinetTab({ data, onSuccess }: any) {
 
 // --- SUB-COMPONENT 1: ROSTER VIEW (THE LIST) ---
 function RosterView({ data, onSuccess }: any) {
-    console.debug("Roaster View", data)
     const leaders = data?.activeTenure ? data.leadership : []; // Leaders passed from getAdminData
     const [search, setSearch] = useState("");
 
