@@ -1,13 +1,9 @@
 import {
     LayoutDashboard,
     UserCircle,
-    QrCode,
-    BookOpen,
-    Vote,
-    Wallet,
-    CalendarCheck,
     LocationEditIcon,
     Crown,
+    SquaresUnite
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -96,6 +92,14 @@ export const adminSidebarItems: SidebarItem[] = [
         icon: LocationEditIcon,
         color: "bg-rcf-navy",
         description: "Manage tenure zones, pastors and members",
+        adminOnly: true,
+    },
+    {
+        name: "Workforce Manager",
+        href: "/dashboard/units",
+        icon: SquaresUnite,
+        color: "bg-rcf-navy",
+        description: "Manage Unit/Team members",
         adminOnly: true,
     },
 ];

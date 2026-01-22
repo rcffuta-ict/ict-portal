@@ -38,8 +38,14 @@ export function AlertModal({
         return () => document.removeEventListener("keydown", handleEscape);
     }, [isOpen, onClose]);
 
-    const handleConfirm = () => {
-        if (onConfirm) onConfirm();
+    const handleConfirm = async () => {
+        if (onConfirm) {
+            try {
+                await onConfirm();
+            } catch (error) {
+                console.error("Error in onConfirm callback:", error);
+            }
+        }
         onClose();
     };
 
@@ -90,7 +96,7 @@ export function AlertModal({
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 min-h-screen"
                     >
                         {/* Modal */}
                         <motion.div
@@ -101,20 +107,24 @@ export function AlertModal({
                             className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
                         >
                             {/* Header with Icon */}
-                            <div className={`${bgColor} ${borderColor} border-b p-6 relative`}>
+                            <div
+                                className={`${bgColor} ${borderColor} border-b p-6 relative`}
+                            >
                                 <button
                                     onClick={onClose}
                                     className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
                                 >
                                     <X className="w-5 h-5" />
                                 </button>
-                                
+
                                 <div className="flex items-start gap-4">
                                     <div className={`${iconColor} shrink-0`}>
                                         <Icon className="w-8 h-8" />
                                     </div>
                                     <div className="flex-1 pt-1">
-                                        <h3 className={`text-lg font-semibold ${titleColor}`}>
+                                        <h3
+                                            className={`text-lg font-semibold ${titleColor}`}
+                                        >
                                             {title || defaultTitle}
                                         </h3>
                                     </div>
@@ -130,22 +140,26 @@ export function AlertModal({
 
                             {/* Footer */}
                             <div className="px-6 pb-6 flex justify-end gap-3">
-                                <button
-                                    onClick={onClose}
-                                    className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
-                                >
-                                    Cancel
-                                </button>
+                                {onConfirm && (
+                                    <button
+                                        onClick={onClose}
+                                        type="button"
+                                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
                                 <button
                                     onClick={handleConfirm}
+                                    type="button"
                                     className={`px-6 py-2 rounded-lg text-white font-medium transition-all hover:shadow-lg ${
-                                        type === "error" 
-                                            ? "bg-red-500 hover:bg-red-600" 
+                                        type === "error"
+                                            ? "bg-red-500 hover:bg-red-600"
                                             : type === "success"
-                                            ? "bg-green-500 hover:bg-green-600"
-                                            : type === "warning"
-                                            ? "bg-yellow-500 hover:bg-yellow-600"
-                                            : "bg-rcf-navy hover:bg-blue-800"
+                                              ? "bg-green-500 hover:bg-green-600"
+                                              : type === "warning"
+                                                ? "bg-yellow-500 hover:bg-yellow-600"
+                                                : "bg-rcf-navy hover:bg-blue-800"
                                     }`}
                                 >
                                     {confirmText}

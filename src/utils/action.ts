@@ -73,3 +73,9 @@ export const checkAdminAccess = async () => {
     // 4. Return admin client for database operations
     return RcfIctClient.asAdmin();
 };
+
+export const checkIsAdminByEmail = async (email:string) => {
+
+    const adminEmails = (process.env.ADMIN_EMAILS || "").split(",");
+    return adminEmails.includes(email || "");
+}

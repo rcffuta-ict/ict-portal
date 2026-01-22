@@ -1,22 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ProfileView } from "@/components/profile/profile-view";
-import { ProfileEdit } from "@/components/profile/profile-edit";
+import { ProfileView } from "@/app/dashboard/profile/components/profile-view";
+import { ProfileEdit } from "@/app/dashboard/profile/components/profile-edit";
 import { LayoutDashboard, Edit3 } from "lucide-react";
-import { useProfileStore } from "@/lib/stores/profile.store";
 
-// TODO: Add server action or API call to fetch user profile
-// Example:
-// import { getUserProfile } from "./actions";
-// Then in useEffect:
-// useEffect(() => {
-//     async function loadProfile() {
-//         const profile = await getUserProfile();
-//         setUser(profile);
-//     }
-//     loadProfile();
-// }, []);
 
 export default function ProfilePage() {
     const [activeTab, setActiveTab] = useState<"view" | "edit">("view");
