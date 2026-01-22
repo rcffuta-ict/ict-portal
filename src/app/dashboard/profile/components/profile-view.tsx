@@ -32,6 +32,34 @@ export function ProfileView() {
         });
     };
 
+    const getRoleCategories = () => {
+        const categories = new Set<string>();
+
+        // 1. Check Leadership Roles
+        if (roles && roles.length > 0) {
+            roles.forEach((role) => {
+                if (role.scope === "CENTRAL") {
+                    categories.add("Central");
+                } else {
+                    // UNIT, LEVEL, or ZONE leaders are "Excos"
+                    categories.add("Excecutive");
+                }
+            });
+        }
+
+        // 2. Check Worker Status
+        if (categories.size === 0 && unit) {
+            categories.add("Worker");            
+        }
+
+        // 3. Fallback to Member
+        if (categories.size === 0) {
+            return ["Member"];
+        }
+
+        return Array.from(categories);
+    };
+
     // Build display values
     const user = {
         fullName: `${profile.firstName} ${profile.middleName ? profile.middleName + " " : ""}${profile.lastName}`,
@@ -63,10 +91,7 @@ export function ProfileView() {
         // Fellowship
         unit: unit?.name || "None",
         // If roles exist, map titles. If not, check if they have a unit to call them a "Worker", else "Member".
-        rolesDisplay:
-            roles && roles.length > 0
-                ? roles.map((r) => r.title)
-                : [unit ? "Worker" : "Member"],
+        rolesDisplay: getRoleCategories(),
 
         teamsList:
             teams && teams.length > 0
@@ -103,7 +128,7 @@ export function ProfileView() {
                             {user.firstName} <br /> {user.lastName}
                         </h2>
                         <p className="text-sm text-gray-300 mt-1 mb-4 font-mono tracking-wide">
-                            {user.matric}
+                            {user.email}
                         </p>
 
                         {/* Roles Badges */}
