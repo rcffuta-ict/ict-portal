@@ -1,49 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
+import { checkAdminAccess } from "@/utils/action";
 import { RcfIctClient } from "@rcffuta/ict-lib/server";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
-
-// ============================================================================
-// SECURITY & AUTHORIZATION
-// ============================================================================
-
-/**
- * Checks if the current user has admin access to the Executive Console
- * Validates session token and checks email against ADMIN_EMAILS whitelist
- * @returns RcfIctClient instance with admin (service role) permissions
- * @throws Error if unauthorized
- */
-const checkAdminAccess = async () => {
-    // 1. Get the session token from cookies
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value;
-
-    if (!token) {
-        throw new Error("Unauthorized: No session token found");
-    }
-
-    const rcf = RcfIctClient.fromEnv();
-
-    // 2. Validate token and get user
-    const { data: { user }, error } = await rcf.supabase.auth.getUser(token);
-
-    if (error || !user || !user.email) {
-        console.error("Auth Error:", error);
-        throw new Error("Unauthorized: Invalid session");
-    }
-
-    // 3. Check email whitelist (from environment variable)
-    const allowedEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase());
-    
-    if (!allowedEmails.includes(user.email.toLowerCase())) {
-        throw new Error("Access Denied: Your email is not whitelisted for the Executive Console.");
-    }
-    
-    // 4. Return admin client for database operations
-    return RcfIctClient.asAdmin();
-};
 
 // ============================================================================
 // DATA FETCHING

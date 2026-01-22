@@ -6,6 +6,7 @@ import {
     Vote,
     Wallet,
     CalendarCheck,
+    LocationEditIcon,
     Crown,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -85,7 +86,16 @@ export const adminSidebarItems: SidebarItem[] = [
         href: "/dashboard/tenure",
         icon: Crown,
         color: "bg-rcf-navy",
-        description: "Manage tenure configuration, structure, and appointments.",
+        description:
+            "Manage tenure configuration, structure, and appointments.",
+        adminOnly: true,
+    },
+    {
+        name: "Zone Manager",
+        href: "/dashboard/zones",
+        icon: LocationEditIcon,
+        color: "bg-rcf-navy",
+        description: "Manage tenure zones, pastors and members",
         adminOnly: true,
     },
 ];
