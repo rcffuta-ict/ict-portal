@@ -33,32 +33,56 @@ export function ProfileView() {
     };
 
     const getRoleCategories = () => {
-        const categories = new Set<string>();
+        const badges = new Set<string>();
 
-        // 1. Check Leadership Roles
+        // 1. Leadership Roles
         if (roles && roles.length > 0) {
             roles.forEach((role) => {
-                if (role.scope === "CENTRAL") {
-                    categories.add("Central");
-                } else {
-                    // UNIT, LEVEL, or ZONE leaders are "Excos"
-                    categories.add("Excecutive");
+                switch (role.scope) {
+                    case "PRESIDENT":
+                        badges.add("President");
+                        break;
+                    case "CENTRAL":
+                        badges.add("Central");
+                        break;
+                    case "ZONE":
+                        badges.add("Hall Pastor"); // Distinction for delegates
+                        break;
+                    case "UNIT":
+                    case "LEVEL":
+                    case "TEAM":
+                        badges.add("Executive"); // Unit/Team/Level Heads
+                        break;
+                    default:
+                        break;
                 }
             });
         }
 
-        // 2. Check Worker Status
-        if (categories.size === 0 && unit) {
-            categories.add("Worker");            
+        // 2. Worker Status
+        // If they are in a unit, they are a worker.
+        // Even if they are a Hall Pastor, they are likely a worker in a unit too.
+        if (unit) {
+            badges.add("Worker");
         }
 
-        // 3. Fallback to Member
-        if (categories.size === 0) {
+        // 3. Member Fallback
+        if (badges.size === 0) {
             return ["Member"];
         }
 
-        return Array.from(categories);
-    };
+        // Sort to ensure President comes first
+        return Array.from(badges).sort((a, b) => {
+            const priority = [
+                "President",
+                "Central",
+                "Executive",
+                "Hall Pastor",
+                "Worker",
+            ];
+            return priority.indexOf(a) - priority.indexOf(b);
+        });
+    };;
 
     // Build display values
     const user = {
@@ -133,14 +157,31 @@ export function ProfileView() {
 
                         {/* Roles Badges */}
                         <div className="flex flex-wrap justify-center gap-2 mb-6">
-                            {user.rolesDisplay.map((role, index) => (
-                                <span
-                                    key={index}
-                                    className="inline-flex items-center rounded-full bg-rcf-gold px-3 py-1 text-[10px] font-bold text-rcf-navy uppercase tracking-wider shadow-sm"
-                                >
-                                    {role}
-                                </span>
-                            ))}
+                            {user.rolesDisplay.map((role, index) => {
+                                let colorClass = "bg-slate-100 text-slate-700"; // Default (Worker/Member)
+
+                                if (role === "The President")
+                                    colorClass =
+                                        "bg-yellow-100 text-yellow-800 border-yellow-200";
+                                else if (role === "Central Executive")
+                                    colorClass =
+                                        "bg-purple-100 text-purple-800 border-purple-200";
+                                else if (role === "Exco")
+                                    colorClass =
+                                        "bg-blue-100 text-blue-800 border-blue-200";
+                                else if (role === "Hall Pastor")
+                                    colorClass =
+                                        "bg-orange-100 text-orange-800 border-orange-200";
+
+                                return (
+                                    <span
+                                        key={index}
+                                        className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider shadow-sm border ${colorClass}`}
+                                    >
+                                        {role}
+                                    </span>
+                                );
+                            })}
                         </div>
 
                         <div className="w-full border-t border-white/10 pt-4 grid grid-cols-2 gap-2 text-sm">
