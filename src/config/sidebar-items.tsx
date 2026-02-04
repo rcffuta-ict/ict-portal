@@ -3,7 +3,8 @@ import {
     UserCircle,
     LocationEditIcon,
     Crown,
-    SquaresUnite
+    SquaresUnite,
+    Heart
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -15,6 +16,7 @@ export interface SidebarItem {
     description?: string; // For dashboard cards
     comingSoon?: boolean;
     adminOnly?: boolean;
+    section?: string; // Section grouping for sidebar
 }
 
 // Base sidebar items available to all users
@@ -33,47 +35,61 @@ export const baseSidebarItems: SidebarItem[] = [
         color: "bg-blue-500",
         description: "Manage bio-data, academic info & ID Card.",
     },
-    // {
-    //     name: "Attendance",
-    //     href: "/dashboard/attendance",
-    //     icon: QrCode,
-    //     color: "bg-purple-500",
-    //     description: "Scan QR codes for Service & Unit meetings.",
-    //     comingSoon: true,
-    // },
-    // {
-    //     name: "Academics",
-    //     href: "/dashboard/academics",
-    //     icon: BookOpen,
-    //     color: "bg-emerald-500",
-    //     description: "CGPA Calculator & Past Questions.",
-    //     comingSoon: true,
-    // },
-    // {
-    //     name: "Elections",
-    //     href: "/dashboard/voting",
-    //     icon: Vote,
-    //     color: "bg-orange-500",
-    //     description: "Vote for FYB and Executive roles.",
-    //     comingSoon: true,
-    // },
-    // {
-    //     name: "Events",
-    //     href: "/dashboard/events",
-    //     icon: CalendarCheck,
-    //     color: "bg-indigo-500",
-    //     description: "Register for conferences and retreats.",
-    //     comingSoon: true,
-    // },
-    // {
-    //     name: "Financials",
-    //     href: "/dashboard/dues",
-    //     icon: Wallet,
-    //     color: "bg-pink-500",
-    //     description: "Pay offering, dues, and pledges.",
-    //     comingSoon: true,
-    // },
 ];
+
+// Event items
+export const eventSidebarItems: SidebarItem[] = [
+    {
+        name: "Singles Weekend",
+        href: "/events/singles-weekend-26",
+        icon: Heart,
+        color: "bg-pink-500",
+        description: "Register for Agape '26 - Feb 14-15, 2026.",
+        section: "Events",
+    },
+];
+
+// Commented items for future use
+// {
+//     name: "Attendance",
+//     href: "/dashboard/attendance",
+//     icon: QrCode,
+//     color: "bg-purple-500",
+//     description: "Scan QR codes for Service & Unit meetings.",
+//     comingSoon: true,
+// },
+// {
+//     name: "Academics",
+//     href: "/dashboard/academics",
+//     icon: BookOpen,
+//     color: "bg-emerald-500",
+//     description: "CGPA Calculator & Past Questions.",
+//     comingSoon: true,
+// },
+// {
+//     name: "Elections",
+//     href: "/dashboard/voting",
+//     icon: Vote,
+//     color: "bg-orange-500",
+//     description: "Vote for FYB and Executive roles.",
+//     comingSoon: true,
+// },
+// {
+//     name: "Events",
+//     href: "/dashboard/events",
+//     icon: CalendarCheck,
+//     color: "bg-indigo-500",
+//     description: "Register for conferences and retreats.",
+//     comingSoon: true,
+// },
+// {
+//     name: "Financials",
+//     href: "/dashboard/dues",
+//     icon: Wallet,
+//     color: "bg-pink-500",
+//     description: "Pay offering, dues, and pledges.",
+//     comingSoon: true,
+// },
 
 // Admin-only items
 export const adminSidebarItems: SidebarItem[] = [
@@ -112,11 +128,21 @@ export const adminSidebarItems: SidebarItem[] = [
 export function getSidebarItems(isAdmin: boolean): SidebarItem[] {
     const items = [...baseSidebarItems];
     
+    // Add event items
+    items.push(...eventSidebarItems);
+    
     if (isAdmin) {
         items.push(...adminSidebarItems);
     }
     
     return items;
+}
+
+/**
+ * Get event sidebar items separately (for dashboard events section)
+ */
+export function getEventSidebarItems(): SidebarItem[] {
+    return [...eventSidebarItems];
 }
 
 /**

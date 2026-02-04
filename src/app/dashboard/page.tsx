@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useTenureStore } from "@/lib/stores/tenure.store";
-import { getSidebarItems, isUserAdmin } from "@/config/sidebar-items";
+import { getSidebarItems, isUserAdmin, eventSidebarItems } from "@/config/sidebar-items";
 import type { SidebarItem } from "@/config/sidebar-items";
 import { useMemo } from "react";
 
@@ -21,10 +21,10 @@ export default function DashboardHome() {
         return isUserAdmin(user?.profile?.email);
     }, [user?.profile?.email]);
 
-    // Get service cards (exclude "Overview" for cards display)
+    // Get service cards (exclude "Overview" for cards display, also exclude events since they have their own section)
     const serviceCards = useMemo(() => {
         const items = getSidebarItems(isAdmin);
-        return items.filter(item => item.name !== "Overview");
+        return items.filter(item => item.name !== "Overview" && !item.section);
     }, [isAdmin]);
 
     return (
@@ -49,54 +49,28 @@ export default function DashboardHome() {
                         item={item}
                     />
                 ))}
-                {/* <ServiceCard
-                    href="/dashboard/profile"
-                    title="My Identity"
-                    desc="Manage bio-data, academic info & ID Card."
-                    icon={UserCircle}
-                    color="bg-blue-500"
-                /> */}
-
-                {/* <ServiceCard
-                    href="/dashboard/attendance"
-                    title="Attendance"
-                    desc="Scan QR codes for Service & Unit meetings."
-                    icon={QrCode}
-                    color="bg-purple-500"
-                />
-
-                <ServiceCard
-                    href="/dashboard/academics"
-                    title="Academic Hub"
-                    desc="CGPA Calculator & Past Questions."
-                    icon={BookOpen}
-                    color="bg-emerald-500"
-                />
-
-                <ServiceCard
-                    href="/dashboard/voting"
-                    title="Elections"
-                    desc="Vote for FYB and Executive roles."
-                    icon={Vote}
-                    color="bg-orange-500"
-                />
-
-                <ServiceCard
-                    href="/dashboard/dues"
-                    title="Financials"
-                    desc="Pay offering, dues, and pledges."
-                    icon={Wallet}
-                    color="bg-pink-500"
-                />
-
-                <ServiceCard
-                    href="/dashboard/events"
-                    title="Events"
-                    desc="Register for conferences and retreats."
-                    icon={CalendarCheck}
-                    color="bg-indigo-500"
-                /> */}
             </div>
+
+            {/* 3. Events Section */}
+            {eventSidebarItems.length > 0 && (
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-bold text-rcf-navy">Upcoming Events</h2>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-pink-100 text-pink-700 rounded-full">
+                            <span className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-pulse" />
+                            Live
+                        </span>
+                    </div>
+                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        {eventSidebarItems.map((item) => (
+                            <ServiceCard
+                                key={item.href}
+                                item={item}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* 3. Coming Soon Banner */}
             <div className="relative overflow-hidden rounded-2xl border border-blue-200 bg-linear-to-br from-blue-50 via-indigo-50 to-purple-50 p-8 shadow-sm">

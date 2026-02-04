@@ -7,7 +7,7 @@ import clsx from "clsx";
 import { Logo } from "../ui/logo";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useMemo } from "react";
-import { getSidebarItems, isUserAdmin } from "@/config/sidebar-items";
+import { isUserAdmin, eventSidebarItems, baseSidebarItems, adminSidebarItems } from "@/config/sidebar-items";
 
 interface SidebarProps {
     isOpen?: boolean;
@@ -28,7 +28,11 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
     // Get sidebar items based on admin status
     const sidebarItems = useMemo(() => {
-        return getSidebarItems(isAdmin);
+        const items = [...baseSidebarItems];
+        if (isAdmin) {
+            items.push(...adminSidebarItems);
+        }
+        return items;
     }, [isAdmin]);
 
     const initials = user
@@ -116,6 +120,44 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                         );
                     })}
                 </nav>
+
+                {/* Events Section */}
+                {eventSidebarItems.length > 0 && (
+                    <div className="mt-6 pt-4 border-t border-white/10">
+                        <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                            Events
+                        </p>
+                        <nav className="space-y-1">
+                            {eventSidebarItems.map((item) => {
+                                const isActive = pathname === item.href;
+
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        onClick={handleNavClick}
+                                        className={clsx(
+                                            "group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                                            isActive
+                                                ? "bg-white text-rcf-navy shadow-sm"
+                                                : "text-gray-300 hover:bg-white/10 hover:text-white"
+                                        )}
+                                    >
+                                        <item.icon
+                                            className={clsx(
+                                                "h-5 w-5 shrink-0 transition-colors",
+                                                isActive
+                                                    ? "text-rcf-navy"
+                                                    : "text-gray-400 group-hover:text-white"
+                                            )}
+                                        />
+                                        {item.name}
+                                    </Link>
+                                );
+                            })}
+                        </nav>
+                    </div>
+                )}
             </div>
 
             {/* 3. Footer / User Actions */}

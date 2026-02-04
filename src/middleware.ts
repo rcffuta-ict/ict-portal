@@ -17,7 +17,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Public routes that don't need authentication
-  const publicRoutes = ['/']
+  const publicRoutes = ['/', '/about', '/events/singles-weekend-26', '/events/singles-weekend-26/info']
   const isPublicRoute = publicRoutes.includes(pathname)
 
   // Handle authentication requirements

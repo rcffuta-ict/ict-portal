@@ -93,7 +93,7 @@ export default function SinglesWeekendRegistration() {
     relationshipStatus: "",
     referralSource: "",
     questions: "",
-    isRcfMember: true,
+    isRcfMember: !!user?.profile,
   });
 
   useEffect(() => {
@@ -562,8 +562,8 @@ export default function SinglesWeekendRegistration() {
                       <Users className="w-5 h-5 text-teal-600" />
                     </div>
                     <div>
-                      <p className="font-medium text-slate-800">RCF Member</p>
-                      <p className="text-sm text-slate-500">Are you an RCF member?</p>
+                      <p className="font-medium text-slate-800">RCF FUTA Member</p>
+                      <p className="text-sm text-slate-500">Are you a member of RCF FUTA?</p>
                     </div>
                   </div>
                   <button
