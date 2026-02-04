@@ -1,9 +1,11 @@
 /**
  * Auth Utilities for Session Management
  * Handles Supabase token refresh and validation
+ * Follows the pattern from AUTHENTICATION.md
  */
 
 import { RcfIctClient } from "@rcffuta/ict-lib/server";
+import { cookies } from "next/headers";
 
 /**
  * Check if the current session is valid and refresh if needed
@@ -11,9 +13,29 @@ import { RcfIctClient } from "@rcffuta/ict-lib/server";
  */
 export async function getAuthenticatedClient(): Promise<RcfIctClient | null> {
     try {
+        const cookieStore = await cookies();
+        const accessToken = cookieStore.get('sb-access-token')?.value;
+        const refreshToken = cookieStore.get('sb-refresh-token')?.value;
+
+        if (!accessToken) {
+            console.log("No access token found in cookies");
+            return null;
+        }
+
         const rcf = RcfIctClient.fromEnv();
         
-        // Get current session from Supabase
+        // Set the session manually from cookies
+        const { error: sessionError } = await rcf.supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || "",
+        });
+
+        if (sessionError) {
+            console.error("Failed to set session:", sessionError);
+            return null;
+        }
+
+        // Get current session to check expiry
         const { data: { session }, error } = await rcf.supabase.auth.getSession();
         
         if (error || !session) {
@@ -26,7 +48,7 @@ export async function getAuthenticatedClient(): Promise<RcfIctClient | null> {
         const now = Math.floor(Date.now() / 1000);
         const isExpiringSoon = expiresAt - now < 300; // 5 minutes buffer
         
-        if (isExpiringSoon) {
+        if (isExpiringSoon && refreshToken) {
             console.log("Token expiring soon, refreshing...");
             
             // Refresh the session
@@ -36,6 +58,22 @@ export async function getAuthenticatedClient(): Promise<RcfIctClient | null> {
             if (refreshError || !newSession) {
                 console.error("Token refresh failed:", refreshError);
                 return null;
+            }
+            
+            // Update cookies with new tokens
+            const isProduction = process.env.NODE_ENV === "production";
+            const cookieOptions = {
+                path: "/",
+                httpOnly: true,
+                secure: isProduction,
+                sameSite: "lax" as const,
+                maxAge: 60 * 60 * 24 * 7, // 1 week
+            };
+
+            cookieStore.set("sb-access-token", newSession.access_token, cookieOptions);
+            
+            if (newSession.refresh_token) {
+                cookieStore.set("sb-refresh-token", newSession.refresh_token, cookieOptions);
             }
             
             console.log("Session refreshed successfully");

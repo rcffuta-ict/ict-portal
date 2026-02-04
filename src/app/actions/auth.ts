@@ -38,21 +38,20 @@ export async function verifySession() {
         
         if (session) {
             const cookieStore = await cookies();
-            
-            cookieStore.set("sb-access-token", session.access_token, {
+            const isProduction = process.env.NODE_ENV === "production";
+
+            const cookieOptions = {
                 path: "/",
                 httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
+                secure: isProduction,
+                sameSite: "lax" as const,
                 maxAge: 60 * 60 * 24 * 7, // 1 week
-            });
+            };
+            
+            cookieStore.set("sb-access-token", session.access_token, cookieOptions);
             
             if (session.refresh_token) {
-                cookieStore.set("sb-refresh-token", session.refresh_token, {
-                    path: "/",
-                    httpOnly: true,
-                    secure: process.env.NODE_ENV === "production",
-                    maxAge: 60 * 60 * 24 * 7,
-                });
+                cookieStore.set("sb-refresh-token", session.refresh_token, cookieOptions);
             }
         }
         
@@ -83,26 +82,49 @@ export async function refreshSessionAction() {
         
         // Update cookies
         const cookieStore = await cookies();
-        
-        cookieStore.set("sb-access-token", session.access_token, {
+        const isProduction = process.env.NODE_ENV === "production";
+
+        const cookieOptions = {
             path: "/",
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            maxAge: 60 * 60 * 24 * 7,
-        });
+            secure: isProduction,
+            sameSite: "lax" as const,
+            maxAge: 60 * 60 * 24 * 7, // 1 week
+        };
+        
+        cookieStore.set("sb-access-token", session.access_token, cookieOptions);
         
         if (session.refresh_token) {
-            cookieStore.set("sb-refresh-token", session.refresh_token, {
-                path: "/",
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                maxAge: 60 * 60 * 24 * 7,
-            });
+            cookieStore.set("sb-refresh-token", session.refresh_token, cookieOptions);
         }
         
         return { success: true };
     } catch (error: any) {
         console.error("Token refresh failed:", error);
         return { success: false, error: error.message || "Token refresh failed" };
+    }
+}
+
+/**
+ * Logout user and clear all session cookies
+ */
+export async function logoutAction() {
+    try {
+        const cookieStore = await cookies();
+        
+        // Clear all auth cookies
+        cookieStore.delete("sb-access-token");
+        cookieStore.delete("sb-refresh-token");
+        
+        // Also try to logout from Supabase (if possible)
+        const rcf = await getAuthenticatedClient();
+        if (rcf) {
+            await rcf.supabase.auth.signOut();
+        }
+        
+        return { success: true };
+    } catch (error: any) {
+        console.error("Logout failed:", error);
+        return { success: false, error: error.message || "Logout failed" };
     }
 }

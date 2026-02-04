@@ -12,6 +12,7 @@ interface ProfileState {
     setUser: (user: FullUserProfile) => void;
     setUserId: (userId: string) => void;
     clearUser: () => void;
+    logout: () => void; // Logout with server cleanup
     markRefreshed: () => void; // Mark when session was last refreshed
     
     // Optimistic Updates
@@ -46,6 +47,24 @@ export const useProfileStore = create<ProfileState>()(
             isLoading: false,
             lastRefresh: null,
         }, false, "CLEAR_USER"),
+
+        logout: async () => {
+            // Clear local state immediately
+            set({ 
+                user: null, 
+                userId: null,
+                isLoading: false,
+                lastRefresh: null,
+            }, false, "LOGOUT");
+            
+            // Clear server-side cookies
+            try {
+                const { logoutAction } = await import('@/app/actions/auth');
+                await logoutAction();
+            } catch (error) {
+                console.error("Failed to clear server session:", error);
+            }
+        },
 
         markRefreshed: () => set({ 
             lastRefresh: Date.now() 

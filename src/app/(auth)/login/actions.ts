@@ -21,20 +21,20 @@ export async function loginAction(formData: FormData) {
         // 2. CRITICAL: Manually set the cookie for Next.js Persistence
         // Since the library uses vanilla supabase-js, we must bridge the session to Next.js cookies
         const cookieStore = await cookies();
-        cookieStore.set("sb-access-token", session.access_token, {
+        const isProduction = process.env.NODE_ENV === "production";
+
+        const cookieOptions = {
             path: "/",
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
+            secure: isProduction,
+            sameSite: "lax" as const,
             maxAge: 60 * 60 * 24 * 7, // 1 week
-        });
+        };
+
+        cookieStore.set("sb-access-token", session.access_token, cookieOptions);
         
         if (session.refresh_token) {
-            cookieStore.set("sb-refresh-token", session.refresh_token, {
-                path: "/",
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                maxAge: 60 * 60 * 24 * 7,
-            });
+            cookieStore.set("sb-refresh-token", session.refresh_token, cookieOptions);
         }
 
         // 3. Fetch the Full Profile (Roles, Family, Units)
