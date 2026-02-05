@@ -273,17 +273,17 @@ export default function SinglesWeekendRegistration() {
                               <Heart className="w-6 h-6 text-amber-400" />
                           </div>
                           <span className="text-amber-300 font-medium">
-                              RCF FUTA Singles Weekend'26
+                              RCF FUTA Singles Weekend&apos;26
                           </span>
                       </div>
 
                       <h1 className="text-4xl lg:text-5xl font-bold text-white mb-4">
-                          Agape: <span className="text-red-300">Unfailing Love.</span>
-                          <span className="block text-amber-400">2026</span>
+                          Agape:{" "}
+                          <span className="block text-amber-400">Unfailing Love.</span>
                       </h1>
 
                       <p className="text-teal-100 text-lg max-w-md mb-8">
-                          A weekend designed for singles to grow in love,
+                          A weekend designed for singles(the unmarried) to learn and grow in love,
                           purpose, and community. Join us for an unforgettable
                           experience.
                       </p>
