@@ -1,5 +1,6 @@
 "use client";
 
+import { SinglesWeekendFooter } from "@/components/events/footer";
 import { motion } from "framer-motion";
 import {
   Heart,
@@ -41,13 +42,13 @@ export default function DocsPage() {
               </div>
             </div>
             
-            <Link
+            {/* <Link
               href="/events/singles-weekend-26/admin"
               className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors text-sm font-medium"
             >
               <Users className="w-4 h-4" />
               Admin
-            </Link>
+            </Link> */}
           </div>
         </div>
       </header>
@@ -580,10 +581,7 @@ export default function DocsPage() {
           </section>
 
           {/* Footer */}
-          <div className="text-center py-8 text-sm text-slate-400">
-            <p>Powered by RCF ICT Portal • FUTA</p>
-            <p className="mt-2">❤️ Agape &apos;26 - Singles Weekend</p>
-          </div>
+          <SinglesWeekendFooter/>
         </motion.div>
       </main>
     </div>

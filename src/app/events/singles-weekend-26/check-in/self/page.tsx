@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import { findRegistrationByIdentifier, completeCheckIn } from "../actions";
+import { SinglesWeekendFooter } from "@/components/events/footer";
 
 interface VerifiedData {
   registrationId: string;
@@ -742,11 +743,7 @@ export default function SelfCheckInPage() {
             </div>
 
             {/* Footer */}
-            <div className="bg-slate-50 px-6 py-4 text-center">
-              <p className="text-xs text-slate-400 font-medium">
-                 Brought to you by the Single&rsquo;s Weekend Committee <br/> Powered by RCFFUTA ICT Team
-              </p>
-            </div>
+            <SinglesWeekendFooter/>
           </motion.div>
         )}
       </AnimatePresence>

@@ -279,11 +279,11 @@ export default function SinglesWeekendRegistration() {
 
                       <h1 className="text-4xl lg:text-5xl font-bold text-white mb-4">
                           Agape:{" "}
-                          <span className="block text-amber-400">Unfailing Love.</span>
+                          <span className="text-amber-400">Unfailing Love.</span>
                       </h1>
 
                       <p className="text-teal-100 text-lg max-w-md mb-8">
-                          A weekend designed for singles(the unmarried) to learn and grow in love,
+                          A weekend designed for singles (the unmarried) to learn and grow in love,
                           purpose, and community. Join us for an unforgettable
                           experience.
                       </p>
