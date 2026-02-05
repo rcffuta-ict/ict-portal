@@ -106,13 +106,14 @@ export default function SinglesWeekendRegistration() {
 
         if (isAuthenticated && profile) {
           setFormData((prev) => ({
-            ...prev,
-            firstName: profile.firstName || "",
-            lastName: profile.lastName || "",
-            email: profile.email || "",
-            phone: profile.phoneNumber || "",
-            level: user?.academics?.currentLevel || "",
-            gender: profile.gender || "",
+              ...prev,
+              firstName: profile.firstName || "",
+              lastName: profile.lastName || "",
+              email: profile.email || "",
+              phone: profile.phoneNumber || "",
+              level: user?.academics?.currentLevel || "",
+              gender: profile.gender || "",
+              isRcfMember: !!profile.firstName,
           }));
 
           if (profile.email) {
@@ -272,12 +273,12 @@ export default function SinglesWeekendRegistration() {
                               <Heart className="w-6 h-6 text-amber-400" />
                           </div>
                           <span className="text-amber-300 font-medium">
-                              RCF Singles Weekend
+                              RCF FUTA Singles Weekend'26
                           </span>
                       </div>
 
                       <h1 className="text-4xl lg:text-5xl font-bold text-white mb-4">
-                          Agape
+                          Agape: <span className="text-red-300">Unfailing Love.</span>
                           <span className="block text-amber-400">2026</span>
                       </h1>
 
