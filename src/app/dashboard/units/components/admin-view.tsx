@@ -2,14 +2,19 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Layers, Users, X } from "lucide-react";
+import { Search, Layers, Users, X, Crown, UserCog } from "lucide-react";
 import { UnitManager } from "./unit-manager";
+import { UnitPositionsManager } from "./unit-positions-manager";
+import { UnitLeadershipCard } from "./unit-leadership-card";
 import { getUnitDetailsAction } from "../actions";
+
+type TabType = "workers" | "positions" | "leadership";
 
 export function AdminUnitView({ data, onSuccess }: any) {
     const [search, setSearch] = useState("");
     const [selectedUnit, setSelectedUnit] = useState<any>(null);
     const [modalMembers, setModalMembers] = useState<any[]>([]);
+    const [activeTab, setActiveTab] = useState<TabType>("workers");
 
     const filtered = data.units.filter((u: any) =>
         u.name.toLowerCase().includes(search.toLowerCase()),
@@ -77,27 +82,88 @@ export function AdminUnitView({ data, onSuccess }: any) {
             {/* Modal for Admin to Manage Unit */}
             {selectedUnit && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[600px] flex flex-col overflow-hidden">
-                        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-900">
-                                {selectedUnit.name} Management
-                            </h3>
-                            <button onClick={() => setSelectedUnit(null)}>
-                                <X className="h-6 w-6 text-slate-500" />
-                            </button>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-150 flex flex-col overflow-hidden">
+                        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-slate-900">
+                                    {selectedUnit.name} Management
+                                </h3>
+                                <button onClick={() => {
+                                    setSelectedUnit(null);
+                                    setActiveTab("workers");
+                                }}>
+                                    <X className="h-6 w-6 text-slate-500" />
+                                </button>
+                            </div>
+                            
+                            {/* Tabs */}
+                            <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+                                <button
+                                    onClick={() => setActiveTab("workers")}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                        activeTab === "workers"
+                                            ? "bg-white text-rcf-navy shadow-sm"
+                                            : "text-slate-600 hover:text-slate-900"
+                                    }`}
+                                >
+                                    <Users className="h-4 w-4" />
+                                    Workers
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab("positions")}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                        activeTab === "positions"
+                                            ? "bg-white text-rcf-navy shadow-sm"
+                                            : "text-slate-600 hover:text-slate-900"
+                                    }`}
+                                >
+                                    <UserCog className="h-4 w-4" />
+                                    Positions
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab("leadership")}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                        activeTab === "leadership"
+                                            ? "bg-white text-rcf-navy shadow-sm"
+                                            : "text-slate-600 hover:text-slate-900"
+                                    }`}
+                                >
+                                    <Crown className="h-4 w-4" />
+                                    Leadership
+                                </button>
+                            </div>
                         </div>
 
-                        {/* Reuse the UnitManager inside the modal */}
+                        {/* Tab Content */}
                         <div className="flex-1 overflow-y-auto p-6">
-                            <UnitManager
-                                unit={selectedUnit}
-                                initialMembers={modalMembers}
-                                tenureId={data.tenureId}
-                                onSuccess={() => {
-                                    onSuccess(); // Refresh Admin Grid counts
-                                    handleOpen(selectedUnit); // Refresh Modal list
-                                }}
-                            />
+                            {activeTab === "workers" && (
+                                <UnitManager
+                                    unit={selectedUnit}
+                                    initialMembers={modalMembers}
+                                    tenureId={data.tenureId}
+                                    onSuccess={() => {
+                                        onSuccess(); // Refresh Admin Grid counts
+                                        handleOpen(selectedUnit); // Refresh Modal list
+                                    }}
+                                />
+                            )}
+                            
+                            {activeTab === "positions" && (
+                                <UnitPositionsManager
+                                    unit={selectedUnit}
+                                    tenureId={data.tenureId}
+                                    onSuccess={onSuccess}
+                                />
+                            )}
+                            
+                            {activeTab === "leadership" && (
+                                <UnitLeadershipCard
+                                    unitId={selectedUnit.id}
+                                    unitName={selectedUnit.name}
+                                    unitType={selectedUnit.type}
+                                    tenureId={data.tenureId}
+                                />
+                            )}
                         </div>
                     </div>
                 </div>
