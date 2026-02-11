@@ -4,7 +4,8 @@ import {
     LocationEditIcon,
     Crown,
     SquaresUnite,
-    Heart
+    Heart,
+    Calendar
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -34,6 +35,13 @@ export const baseSidebarItems: SidebarItem[] = [
         icon: UserCircle,
         color: "bg-blue-500",
         description: "Manage bio-data, academic info & ID Card.",
+    },
+    {
+        name: "Events",
+        href: "/events",
+        icon: Calendar,
+        color: "bg-purple-500",
+        description: "View all upcoming and past events.",
     },
 ];
 

@@ -8,7 +8,6 @@ import { registerSisterAction, getEventDetails } from "./actions";
 import {
     Loader2,
     CheckCircle2,
-    Download,
     MapPin,
     Calendar,
     Clock,
@@ -18,6 +17,8 @@ import {
     Ticket,
     Printer,
     ArrowLeft,
+    AlertTriangle,
+    CalendarX,
 } from "lucide-react";
 
 // --- TYPES ---
@@ -37,6 +38,7 @@ interface EventInfo {
 
 const EVENT_TIME = "10:00 AM"; // Event time constant
 const EVENT_VENUE = "RCF FUTA South Gate Auditorium"; // Event venue constant
+const IS_EVENT_CLOSED = true; // Set to true since the event is past (Feb 11, 2026)
 
 export default function SistersConferenceReg() {
     const [step, setStep] = useState<"form" | "ticket">("form");
@@ -220,137 +222,203 @@ export default function SistersConferenceReg() {
                 <div className="w-full max-w-2xl transition-all duration-500 ease-in-out">
                     {step === "form" ? (
                         <div className="animate-in fade-in slide-in-from-right-8 duration-500">
-                            <div className="mb-8 text-center lg:text-left">
-                                <h2 className="text-3xl font-bold text-slate-900 tracking-tight">
-                                    Registration
-                                </h2>
-                                <p className="text-slate-500 mt-2">
-                                    Claim your digital pass for the conference.
-                                </p>
-                            </div>
+                            {IS_EVENT_CLOSED ? (
+                                // Event Closed Message
+                                <div className="text-center">
+                                    <div className="mb-8">
+                                        <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                                            <CalendarX className="h-12 w-12 text-slate-400" />
+                                        </div>
+                                        <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-4">
+                                            Registration Closed
+                                        </h2>
+                                        <p className="text-slate-500 text-lg">
+                                            The Sisters Conference has already concluded on January 10th, 2026.
+                                        </p>
+                                    </div>
 
-                            <form
-                                onSubmit={handleSubmit}
-                                className="space-y-6 bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-100"
-                            >
-                                {/* Toggle */}
-                                <div className="grid grid-cols-2 gap-1 p-1.5 bg-slate-100 rounded-xl">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsGuest(false)}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
-                                            !isGuest
-                                                ? "bg-white text-pink-700 shadow-sm"
-                                                : "text-slate-500 hover:text-slate-700"
-                                        }`}
-                                    >
-                                        <User className="h-4 w-4" /> Member
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsGuest(true)}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
-                                            isGuest
-                                                ? "bg-white text-pink-700 shadow-sm"
-                                                : "text-slate-500 hover:text-slate-700"
-                                        }`}
-                                    >
-                                        <Users className="h-4 w-4" /> Guest
-                                    </button>
-                                </div>
+                                    <div className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-100">
+                                        <div className="flex items-center gap-4 p-6 bg-amber-50 border border-amber-200 rounded-2xl mb-6">
+                                            <AlertTriangle className="h-6 w-6 text-amber-600 flex-shrink-0" />
+                                            <div className="text-left">
+                                                <p className="font-semibold text-amber-800 mb-1">Event Completed</p>
+                                                <p className="text-amber-700 text-sm">
+                                                    This event has already taken place and registration is no longer available.
+                                                </p>
+                                            </div>
+                                        </div>
 
-                                <div className="lg:grid grid-cols-2 gap-4 flex flex-col">
-                                    <FormInput
-                                        label="First Name"
-                                        name="firstname"
-                                        placeholder="Oyin"
-                                        autoComplete="given-name"
-                                        required
-                                    />
-                                    <FormInput
-                                        label="Last Name"
-                                        name="lastname"
-                                        placeholder="Olwaseyi"
-                                        autoComplete="family-name"
-                                        required
-                                    />
-                                </div>
-
-                                <FormInput
-                                    label="Email Address"
-                                    name="email"
-                                    type="email"
-                                    placeholder="sister@example.com"
-                                    autoComplete="email"
-                                    onBlur={handleEmailBlur}
-                                    required
-                                />
-
-                                <FormInput
-                                    label="Phone Number"
-                                    name="phone"
-                                    type="tel"
-                                    placeholder="080..."
-                                    inputMode="tel"
-                                    autoComplete="tel"
-                                    onBlur={handlePhoneBlur}
-                                    required
-                                />
-
-                                {!isGuest && (
-                                    <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-6">
-                                        <div className="space-y-1">
-                                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">
-                                                                Level <span className="text-pink-200">*</span>
-                                                            </label>
-                                            <div className="relative">
-                                                <FormSelect
-                                                    name="level"
-                                                    required
-                                                    className="w-full h-12 appearance-none rounded-xl px-4 text-sm font-medium"
-                                                >
-                                                    <option>100L</option>
-                                                    <option>200L</option>
-                                                    <option>300L</option>
-                                                    <option>400L</option>
-                                                    <option>500L</option>
-                                                </FormSelect>
-                                                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
-                                                    <svg
-                                                        className="h-4 w-4"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        viewBox="0 0 24 24"
-                                                    >
-                                                        <path
-                                                            strokeLinecap="round"
-                                                            strokeLinejoin="round"
-                                                            strokeWidth="2"
-                                                            d="M19 9l-7 7-7-7"
-                                                        ></path>
-                                                    </svg>
+                                        <div className="space-y-4 text-left">
+                                            <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
+                                                <Calendar className="h-5 w-5 text-slate-500" />
+                                                <div>
+                                                    <p className="font-semibold text-slate-900">Event Date</p>
+                                                    <p className="text-slate-600 text-sm">January 10th, 2026</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
+                                                <Clock className="h-5 w-5 text-slate-500" />
+                                                <div>
+                                                    <p className="font-semibold text-slate-900">Time</p>
+                                                    <p className="text-slate-600 text-sm">{EVENT_TIME} Prompt</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
+                                                <MapPin className="h-5 w-5 text-slate-500" />
+                                                <div>
+                                                    <p className="font-semibold text-slate-900">Venue</p>
+                                                    <p className="text-slate-600 text-sm">Fellowship Auditorium, FUTA South Gate</p>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                )}
 
-                                <button
-                                    disabled={loading}
-                                    className="group relative w-full overflow-hidden rounded-xl bg-[#BE185D] p-4 text-white shadow-lg shadow-pink-600/30 transition-all hover:bg-[#9D174D] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
-                                >
-                                    <div className="flex items-center justify-center gap-2 font-bold">
-                                        {loading ? (
-                                            <Loader2 className="animate-spin h-5 w-5" />
-                                        ) : (
-                                            <>
-                                                <span>Generate Ticket</span>
-                                                <Ticket className="h-5 w-5" />
-                                            </>
-                                        )}
+                                        <div className="mt-8 p-6 bg-pink-50 border border-pink-200 rounded-2xl">
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <Sparkles className="h-5 w-5 text-pink-600" />
+                                                <h3 className="font-semibold text-pink-900">Stay Connected</h3>
+                                            </div>
+                                            <p className="text-pink-800 text-sm">
+                                                Thank you to everyone who attended! Keep an eye out for future Sisters Unit events.
+                                            </p>
+                                        </div>
                                     </div>
-                                </button>
-                            </form>
+                                </div>
+                            ) : (
+                                // Original Registration Form (when event is open)
+                                <>
+                                    <div className="mb-8 text-center lg:text-left">
+                                        <h2 className="text-3xl font-bold text-slate-900 tracking-tight">
+                                            Registration
+                                        </h2>
+                                        <p className="text-slate-500 mt-2">
+                                            Claim your digital pass for the conference.
+                                        </p>
+                                    </div>
+
+                                    <form
+                                        onSubmit={handleSubmit}
+                                        className="space-y-6 bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-100"
+                                    >
+                                        {/* Toggle */}
+                                        <div className="grid grid-cols-2 gap-1 p-1.5 bg-slate-100 rounded-xl">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsGuest(false)}
+                                                className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                                                    !isGuest
+                                                        ? "bg-white text-pink-700 shadow-sm"
+                                                        : "text-slate-500 hover:text-slate-700"
+                                                }`}
+                                            >
+                                                <User className="h-4 w-4" /> Member
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsGuest(true)}
+                                                className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                                                    isGuest
+                                                        ? "bg-white text-pink-700 shadow-sm"
+                                                        : "text-slate-500 hover:text-slate-700"
+                                                }`}
+                                            >
+                                                <Users className="h-4 w-4" /> Guest
+                                            </button>
+                                        </div>
+
+                                        <div className="lg:grid grid-cols-2 gap-4 flex flex-col">
+                                            <FormInput
+                                                label="First Name"
+                                                name="firstname"
+                                                placeholder="Oyin"
+                                                autoComplete="given-name"
+                                                required
+                                            />
+                                            <FormInput
+                                                label="Last Name"
+                                                name="lastname"
+                                                placeholder="Olwaseyi"
+                                                autoComplete="family-name"
+                                                required
+                                            />
+                                        </div>
+
+                                        <FormInput
+                                            label="Email Address"
+                                            name="email"
+                                            type="email"
+                                            placeholder="sister@example.com"
+                                            autoComplete="email"
+                                            onBlur={handleEmailBlur}
+                                            required
+                                        />
+
+                                        <FormInput
+                                            label="Phone Number"
+                                            name="phone"
+                                            type="tel"
+                                            placeholder="080..."
+                                            inputMode="tel"
+                                            autoComplete="tel"
+                                            onBlur={handlePhoneBlur}
+                                            required
+                                        />
+
+                                        {!isGuest && (
+                                            <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-6">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">
+                                                        Level <span className="text-pink-200">*</span>
+                                                    </label>
+                                                    <div className="relative">
+                                                        <FormSelect
+                                                            name="level"
+                                                            required
+                                                            className="w-full h-12 appearance-none rounded-xl px-4 text-sm font-medium"
+                                                        >
+                                                            <option>100L</option>
+                                                            <option>200L</option>
+                                                            <option>300L</option>
+                                                            <option>400L</option>
+                                                            <option>500L</option>
+                                                        </FormSelect>
+                                                        <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                                                            <svg
+                                                                className="h-4 w-4"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                viewBox="0 0 24 24"
+                                                            >
+                                                                <path
+                                                                    strokeLinecap="round"
+                                                                    strokeLinejoin="round"
+                                                                    strokeWidth="2"
+                                                                    d="M19 9l-7 7-7-7"
+                                                                ></path>
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <button
+                                            disabled={loading}
+                                            className="group relative w-full overflow-hidden rounded-xl bg-[#BE185D] p-4 text-white shadow-lg shadow-pink-600/30 transition-all hover:bg-[#9D174D] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+                                        >
+                                            <div className="flex items-center justify-center gap-2 font-bold">
+                                                {loading ? (
+                                                    <Loader2 className="animate-spin h-5 w-5" />
+                                                ) : (
+                                                    <>
+                                                        <span>Generate Ticket</span>
+                                                        <Ticket className="h-5 w-5" />
+                                                    </>
+                                                )}
+                                            </div>
+                                        </button>
+                                    </form>
+                                </>
+                            )}
                         </div>
                     ) : (
                         // TICKET VIEW
