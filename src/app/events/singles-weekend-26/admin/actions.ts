@@ -34,12 +34,16 @@ export async function getAgapeStats() {
     sisters: registrations.filter(r => r.gender.toLowerCase() === 'female').length
   };
 
-  const status = {
-    single: registrations.filter(r => r.relationship_status.toLowerCase().includes('single')).length,
-    searching: registrations.filter(r => r.relationship_status.toLowerCase().includes('searching')).length,
-    courtship: registrations.filter(r => r.relationship_status.toLowerCase().includes('courtship')).length,
-    complicated: registrations.filter(r => r.relationship_status.toLowerCase().includes('complicated')).length,
-  };
+  // Relationship status breakdown
+  const relationshipStatus: Record<string, number> = {};
+  registrations.forEach(r => {
+    const status = r.relationship_status || 'not_specified';
+    relationshipStatus[status] = (relationshipStatus[status] || 0) + 1;
+  });
+
+  // RCF Membership breakdown
+  const rcfMembers = registrations.filter(r => r.is_rcf_member).length;
+  const guests = registrations.filter(r => !r.is_rcf_member).length;
 
   // Level breakdown
   const levels: Record<string, number> = {};
@@ -60,7 +64,9 @@ export async function getAgapeStats() {
     brothers: gender.brothers,
     sisters: gender.sisters,
     levelBreakdown: levels,
-    relationshipStatus: status,
+    relationshipStatus,
+    rcfMembers,
+    guests,
     coupons,
     registrants: registrations.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   };

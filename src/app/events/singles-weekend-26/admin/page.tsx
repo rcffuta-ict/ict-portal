@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import React from "react";
 import { motion } from "framer-motion";
 import {
   Users,
@@ -18,9 +19,14 @@ import {
   ShoppingBag,
   QrCode,
   BookOpen,
-  Gift,
   Ticket,
   TrendingUp,
+  Eye,
+  X,
+  MessageCircle,
+  UserMinus,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { getAgapeStats } from "./actions";
 
@@ -40,6 +46,9 @@ interface RegistrantType {
   coupon_code: string | null;
   coupon_active: boolean;
   coupon_used_at: string | null;
+  relationship_status: string | null;
+  questions_content: string | null;
+  is_rcf_member: boolean;
 }
 
 interface StatsData {
@@ -49,6 +58,13 @@ interface StatsData {
   sisters: number;
   levelBreakdown: Record<string, number>;
   registrants: RegistrantType[];
+  relationshipStatus: Record<string, number>;
+  rcfMembers: number;
+  guests: number;
+  coupons: {
+    generated: number;
+    redeemed: number;
+  };
 }
 
 const LINKS = [
@@ -105,6 +121,7 @@ export default function AgapeAdmin() {
   const [tab, setTab] = useState<TabType>("overview");
   const [search, setSearch] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const loadData = async () => {
     setLoading(true);
@@ -134,6 +151,35 @@ export default function AgapeAdmin() {
     }
   };
 
+  const toggleRowExpansion = (attendeeId: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(attendeeId)) {
+      newExpanded.delete(attendeeId);
+    } else {
+      newExpanded.add(attendeeId);
+    }
+    setExpandedRows(newExpanded);
+  };
+
+  const getRelationshipStatusBadgeClass = (status: string) => {
+    const statusLower = status?.toLowerCase() || "";
+    if (statusLower === "single") return "bg-green-100 text-green-700";
+    if (statusLower === "in_relationship") return "bg-blue-100 text-blue-700";
+    if (statusLower === "engaged") return "bg-purple-100 text-purple-700";
+    if (statusLower === "complicated") return "bg-amber-100 text-amber-700";
+    return "bg-gray-100 text-gray-700";
+  };
+
+  const getRelationshipStatusDisplayName = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case "single": return "Single";
+      case "in_relationship": return "In a Relationship";
+      case "engaged": return "Engaged";
+      case "complicated": return "You can't exactly tell yet";
+      default: return status || "Not specified";
+    }
+  };
+
   const filteredAttendees =
     data?.registrants?.filter(
       (a) =>
@@ -141,7 +187,9 @@ export default function AgapeAdmin() {
         a.last_name.toLowerCase().includes(search.toLowerCase()) ||
         a.email.toLowerCase().includes(search.toLowerCase()) ||
         a.phone_number.includes(search) ||
-        (a.coupon_code && a.coupon_code.toLowerCase().includes(search.toLowerCase()))
+        (a.coupon_code && a.coupon_code.toLowerCase().includes(search.toLowerCase())) ||
+        (a.relationship_status && a.relationship_status.toLowerCase().includes(search.toLowerCase())) ||
+        (a.questions_content && a.questions_content.toLowerCase().includes(search.toLowerCase()))
     ) || [];
 
   const handleExportCSV = () => {
@@ -153,6 +201,9 @@ export default function AgapeAdmin() {
       "Phone",
       "Gender",
       "Level",
+      "Relationship Status",
+      "RCF Member",
+      "Questions/Comments",
       "Checked In",
       "Coupon Code",
       "Coupon Active",
@@ -165,6 +216,9 @@ export default function AgapeAdmin() {
       r.phone_number,
       r.gender,
       r.level,
+      getRelationshipStatusDisplayName(r.relationship_status || ""),
+      r.is_rcf_member ? "Yes" : "No",
+      (r.questions_content || "").replace(/[\r\n]+/g, " ").replace(/,/g, ";"),
       r.checked_in_at ? "Yes" : "No",
       r.coupon_code || "",
       r.coupon_active ? "Yes" : "No",
@@ -180,9 +234,9 @@ export default function AgapeAdmin() {
     window.URL.revokeObjectURL(url);
   };
 
-  const couponsGenerated = data?.registrants?.filter((r) => r.coupon_code).length || 0;
+  const couponsGenerated = data?.coupons?.generated || 0;
   const couponsActive = data?.registrants?.filter((r) => r.coupon_active).length || 0;
-  const couponsRedeemed = data?.registrants?.filter((r) => r.coupon_used_at).length || 0;
+  const couponsRedeemed = data?.coupons?.redeemed || 0;
 
   const getColorClasses = (color: string) => {
     const colors: Record<string, { bg: string; text: string; border: string; iconBg: string }> = {
@@ -288,7 +342,7 @@ export default function AgapeAdmin() {
                 className="space-y-6"
               >
                 {/* Stats Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
                   {[
                     {
                       label: "Total Registered",
@@ -319,11 +373,18 @@ export default function AgapeAdmin() {
                       bgLight: "bg-pink-50",
                     },
                     {
-                      label: "Coupons Active",
-                      value: couponsActive,
-                      icon: Gift,
-                      color: "from-amber-500 to-amber-600",
-                      bgLight: "bg-amber-50",
+                      label: "RCF Members",
+                      value: data?.rcfMembers || 0,
+                      icon: Users,
+                      color: "from-teal-500 to-teal-600",
+                      bgLight: "bg-teal-50",
+                    },
+                    {
+                      label: "Guests",
+                      value: data?.guests || 0,
+                      icon: UserMinus,
+                      color: "from-orange-500 to-orange-600",
+                      bgLight: "bg-orange-50",
                     },
                   ].map((stat) => (
                     <div
@@ -342,7 +403,7 @@ export default function AgapeAdmin() {
                 </div>
 
                 {/* Additional Stats */}
-                <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
+                <div className="grid gap-4 sm:gap-6 md:grid-cols-3">
                   {/* Coupon Stats */}
                   <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm">
                     <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4 flex items-center gap-2">
@@ -375,6 +436,29 @@ export default function AgapeAdmin() {
                           </span>
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Relationship Status Breakdown */}
+                  <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm">
+                    <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-3 sm:mb-4 flex items-center gap-2">
+                      <div className="p-1.5 sm:p-2 rounded-lg bg-pink-100">
+                        <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-pink-600" />
+                      </div>
+                      Relationship Status
+                    </h3>
+                    <div className="space-y-2 sm:space-y-3">
+                      {Object.entries(data?.relationshipStatus || {}).map(([status, count]) => (
+                        <div key={status} className="flex justify-between items-center py-1.5 sm:py-2">
+                          <span className="text-slate-600 text-sm sm:text-base">
+                            {getRelationshipStatusDisplayName(status)}
+                          </span>
+                          <span className="text-slate-900 font-semibold">{count}</span>
+                        </div>
+                      ))}
+                      {Object.keys(data?.relationshipStatus || {}).length === 0 && (
+                        <p className="text-slate-400 text-sm italic">No relationship status data available</p>
+                      )}
                     </div>
                   </div>
 
@@ -545,23 +629,26 @@ export default function AgapeAdmin() {
                 {/* Attendees Table */}
                 <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-150">
+                    <table className="w-full min-w-full">
                       <thead>
                         <tr className="border-b border-slate-200 bg-slate-50">
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                            Name
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-8">
+                            Details
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                            Contact
+                            Name & Contact
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                            Gender
+                            Gender & Level
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                            Level
+                            Relationship Status
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                            Status
+                            Membership
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                            Check-in Status
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                             Coupon
@@ -571,65 +658,164 @@ export default function AgapeAdmin() {
                       <tbody className="divide-y divide-slate-100">
                         {filteredAttendees.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                            <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                               No attendees found
                             </td>
                           </tr>
                         ) : (
                           filteredAttendees.map((attendee) => (
-                            <tr key={attendee.id} className="hover:bg-slate-50">
-                              <td className="px-4 py-3">
-                                <p className="text-slate-900 font-medium">
-                                  {attendee.first_name} {attendee.last_name}
-                                </p>
-                              </td>
-                              <td className="px-4 py-3">
-                                <p className="text-slate-700 text-sm">{attendee.email}</p>
-                                <p className="text-slate-400 text-xs">{attendee.phone_number}</p>
-                              </td>
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                    attendee.gender?.toLowerCase() === "male"
-                                      ? "bg-blue-100 text-blue-700"
-                                      : "bg-pink-100 text-pink-700"
-                                  }`}
-                                >
-                                  {attendee.gender?.toLowerCase() === "male" ? "Brother" : "Sister"}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-slate-700 text-sm">{attendee.level}</td>
-                              <td className="px-4 py-3">
-                                {attendee.checked_in_at ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    Checked In
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
-                                    Pending
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3">
-                                {attendee.coupon_code ? (
-                                  <div className="space-y-1">
-                                    <code className="text-xs text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
-                                      {attendee.coupon_code}
-                                    </code>
-                                    {attendee.coupon_used_at ? (
-                                      <p className="text-xs text-amber-600 font-medium">Redeemed</p>
-                                    ) : attendee.coupon_active ? (
-                                      <p className="text-xs text-green-600 font-medium">Active</p>
+                            <React.Fragment key={attendee.id}>
+                              <tr className="hover:bg-slate-50">
+                                <td className="px-4 py-3">
+                                  <button
+                                    onClick={() => toggleRowExpansion(attendee.id)}
+                                    className="p-1 rounded-lg hover:bg-slate-200 transition-colors"
+                                  >
+                                    {expandedRows.has(attendee.id) ? (
+                                      <ChevronDown className="w-4 h-4 text-slate-500" />
                                     ) : (
-                                      <p className="text-xs text-slate-400">Inactive</p>
+                                      <ChevronRight className="w-4 h-4 text-slate-500" />
+                                    )}
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="space-y-1">
+                                    <p className="text-slate-900 font-medium">
+                                      {attendee.first_name} {attendee.last_name}
+                                    </p>
+                                    <p className="text-slate-600 text-sm">{attendee.email}</p>
+                                    <p className="text-slate-400 text-xs">{attendee.phone_number}</p>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="space-y-2">
+                                    <span
+                                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                        attendee.gender?.toLowerCase() === "male"
+                                          ? "bg-blue-100 text-blue-700"
+                                          : "bg-pink-100 text-pink-700"
+                                      }`}
+                                    >
+                                      {attendee.gender?.toLowerCase() === "male" ? "Brother" : "Sister"}
+                                    </span>
+                                    <p className="text-slate-700 text-sm">{attendee.level}</p>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  {attendee.relationship_status ? (
+                                    <span
+                                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRelationshipStatusBadgeClass(
+                                        attendee.relationship_status
+                                      )}`}
+                                    >
+                                      {getRelationshipStatusDisplayName(attendee.relationship_status)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 text-sm">—</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    {attendee.is_rcf_member ? (
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
+                                        RCF Member
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                                        <UserMinus className="w-3 h-3" />
+                                        Guest
+                                      </span>
                                     )}
                                   </div>
-                                ) : (
-                                  <span className="text-slate-400 text-sm">—</span>
-                                )}
-                              </td>
-                            </tr>
+                                </td>
+                                <td className="px-4 py-3">
+                                  {attendee.checked_in_at ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      Checked In
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
+                                      Pending
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {attendee.coupon_code ? (
+                                    <div className="space-y-1">
+                                      <code className="text-xs text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                                        {attendee.coupon_code}
+                                      </code>
+                                      {attendee.coupon_used_at ? (
+                                        <p className="text-xs text-amber-600 font-medium">Redeemed</p>
+                                      ) : attendee.coupon_active ? (
+                                        <p className="text-xs text-green-600 font-medium">Active</p>
+                                      ) : (
+                                        <p className="text-xs text-slate-400">Inactive</p>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400 text-sm">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                              {/* Expanded Row */}
+                              {expandedRows.has(attendee.id) && (
+                                <tr className="bg-slate-50">
+                                  <td colSpan={7} className="px-4 py-4">
+                                    <div className="bg-white rounded-lg border border-slate-200 p-4">
+                                      <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                                        <MessageCircle className="w-4 h-4 text-slate-600" />
+                                        Questions & Comments
+                                      </h4>
+                                      {attendee.questions_content ? (
+                                        <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                                          <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                            {attendee.questions_content}
+                                          </p>
+                                        </div>
+                                      ) : (
+                                        <p className="text-sm text-slate-400 italic">No questions or comments provided.</p>
+                                      )}
+                                      
+                                      {/* Additional Details */}
+                                      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                          <h5 className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                                            Registration Details
+                                          </h5>
+                                          <div className="text-sm space-y-1">
+                                            <p><span className="text-slate-600">Email:</span> <span className="text-slate-900">{attendee.email}</span></p>
+                                            <p><span className="text-slate-600">Phone:</span> <span className="text-slate-900">{attendee.phone_number}</span></p>
+                                            <p><span className="text-slate-600">Gender:</span> <span className="text-slate-900">{attendee.gender}</span></p>
+                                            <p><span className="text-slate-600">Level:</span> <span className="text-slate-900">{attendee.level || 'Not specified'}</span></p>
+                                          </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                          <h5 className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                                            Status Information
+                                          </h5>
+                                          <div className="text-sm space-y-1">
+                                            <p><span className="text-slate-600">Relationship Status:</span> <span className="text-slate-900">{getRelationshipStatusDisplayName(attendee.relationship_status || "")}</span></p>
+                                            <p><span className="text-slate-600">RCF Member:</span> <span className="text-slate-900">{attendee.is_rcf_member ? 'Yes' : 'No (Guest)'}</span></p>
+                                            <p><span className="text-slate-600">Check-in Status:</span> 
+                                              <span className={`ml-1 ${attendee.checked_in_at ? 'text-green-600' : 'text-slate-500'}`}>
+                                                {attendee.checked_in_at ? `Checked in at ${new Date(attendee.checked_in_at).toLocaleString()}` : 'Not checked in'}
+                                              </span>
+                                            </p>
+                                            {attendee.coupon_used_at && (
+                                              <p><span className="text-slate-600">Coupon Used:</span> 
+                                                <span className="text-amber-600 ml-1">{new Date(attendee.coupon_used_at).toLocaleString()}</span>
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
                           ))
                         )}
                       </tbody>

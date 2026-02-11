@@ -14,7 +14,7 @@ import { TenureTab } from "./components/tenure-tab";
 import { StructureTab } from "./components/structure-tab";
 import { CabinetTab } from "./components/cabinet-tab";
 import { FamilyTab } from "./components/family-tab";
-import { CoolLoader } from "@/components/ui/cool-loader";
+import { CompactPreloader } from "@/components/ui/preloader";
 
 /**
  * Executive Console - Tenure Management Dashboard
@@ -49,10 +49,13 @@ export default function TenureDashboard() {
 
     if (loading)
         return (
-            <CoolLoader 
-                message="Loading Tenure Manager" 
-                subMessage="Fetching administrative data..."
-            />
+            <div className="flex items-center justify-center min-h-96">
+                <CompactPreloader 
+                    title="Loading Tenure Manager" 
+                    subtitle="Fetching administrative data..."
+                    showUserIcon={true}
+                />
+            </div>
         );
 
     if (!authorized)

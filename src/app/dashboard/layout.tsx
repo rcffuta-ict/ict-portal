@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useProfileStore } from "@/lib/stores/profile.store";
+import { Preloader } from "@/components/ui/preloader";
 // import { getUserProfile } from "./actions"; // Your Server Action
 import { StoreInitializer } from "@/components/dashboard/store-initializer";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -13,6 +15,14 @@ export default function DashboardLayout({
     children: React.ReactNode;
 }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [mounted, setMounted] = useState(false);
+    const { user, userId } = useProfileStore();
+
+    // Handle hydration mismatch
+    useEffect(() => {
+        const timer = setTimeout(() => setMounted(true), 0);
+        return () => clearTimeout(timer);
+    }, []);
 
     // Lock body scroll when mobile menu is open
     useEffect(() => {
@@ -27,6 +37,18 @@ export default function DashboardLayout({
             document.body.style.overflow = "unset";
         };
     }, [isMobileMenuOpen]);
+
+    // Show preloader while hydrating or if no user data
+    if (!mounted || (!user && !userId)) {
+        return (
+            <Preloader 
+                title="Dashboard Loading..." 
+                subtitle="Preparing your workspace"
+                showUserIcon={true}
+                variant="default"
+            />
+        );
+    }
 
     // 1. Fetch Profile on Server
     // const userData = await getUserProfile();

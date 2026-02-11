@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useTenureStore } from "@/lib/stores/tenure.store";
+import { CompactPreloader } from "@/components/ui/preloader";
 import { getSidebarItems, isUserAdmin, eventSidebarItems } from "@/config/sidebar-items";
 import type { SidebarItem } from "@/config/sidebar-items";
 import { useMemo } from "react";
@@ -26,6 +27,19 @@ export default function DashboardHome() {
         const items = getSidebarItems(isAdmin);
         return items.filter(item => item.name !== "Overview" && !item.section);
     }, [isAdmin]);
+
+    // Show loading state if user data is not yet available
+    if (!user?.profile) {
+        return (
+            <div className="flex items-center justify-center min-h-96">
+                <CompactPreloader 
+                    title="Loading Dashboard..." 
+                    subtitle="Getting your data ready" 
+                    showUserIcon={true}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8">
