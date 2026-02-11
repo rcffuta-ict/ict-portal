@@ -269,7 +269,7 @@ export default function QuestionsTab({
                       First
                                         </button>
                                         <button
-                                            onClick={() => setCurrentQuestionsPage((prev: number) => Math.max(1, prev - 1))}
+                                            onClick={() => setCurrentQuestionsPage(Math.max(1, currentQuestionsPage - 1))}
                                             disabled={currentQuestionsPage === 1}
                                             className="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                                         >
@@ -309,7 +309,7 @@ export default function QuestionsTab({
                                         </div>
 
                                         <button
-                                            onClick={() => setCurrentQuestionsPage(prev => Math.min(Math.ceil(filteredQuestions.length / questionsPerPage), prev + 1))}
+                                            onClick={() => setCurrentQuestionsPage(Math.min(Math.ceil(filteredQuestions.length / questionsPerPage), currentQuestionsPage + 1))}
                                             disabled={currentQuestionsPage >= Math.ceil(filteredQuestions.length / questionsPerPage)}
                                             className="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                                         >
