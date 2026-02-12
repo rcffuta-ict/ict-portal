@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { verifyRegistration, completeCheckIn } from "./actions";
-import { 
-  UserCheck, 
-  Gift, 
-  Clock, 
-  AlertCircle, 
+import {
+  UserCheck,
+  Gift,
+  Clock,
+  AlertCircle,
   Loader2,
   Heart,
   Calendar,
@@ -17,6 +17,7 @@ import {
   ShoppingBag,
   X,
 } from "lucide-react";
+import { SinglesWeekendFooter } from "@/components/events/footer";
 
 interface VerifiedData {
   registrationId: string;
@@ -40,7 +41,7 @@ type CheckInStep = 'loading' | 'verified' | 'checking-in' | 'complete' | 'error'
 function CheckInContent() {
   const searchParams = useSearchParams();
   const registrationId = searchParams.get("id");
-  
+
   const [step, setStep] = useState<CheckInStep>('loading');
   const [verifiedData, setVerifiedData] = useState<VerifiedData | null>(null);
   const [checkedInData, setCheckedInData] = useState<CheckedInData | null>(null);
@@ -50,13 +51,13 @@ function CheckInContent() {
   // Step 1: Verify registration
   const handleVerify = useCallback(async () => {
     if (!registrationId) return;
-    
+
     setStep('loading');
     setError(null);
-    
+
     try {
       const result = await verifyRegistration(registrationId);
-      
+
       if (!result.success) {
         setError(result.error || "Verification failed");
         setStep('error');
@@ -98,12 +99,12 @@ function CheckInContent() {
   // Step 2: Complete check-in with shopping preference
   const handleCompleteCheckIn = async (wantsCoupon: boolean) => {
     if (!verifiedData) return;
-    
+
     setStep('checking-in');
-    
+
     try {
       const result = await completeCheckIn(verifiedData.registrationId, wantsCoupon);
-      
+
       if (!result.success) {
         setError(result.error || "Check-in failed");
         setStep('error');
@@ -211,17 +212,17 @@ function CheckInContent() {
                 <rect width="100%" height="100%" fill="url(#hearts-verify)" />
               </svg>
             </div>
-            
+
             <div className="relative z-10">
               <div className="inline-flex items-center gap-2 bg-white/20 rounded-full px-4 py-1 text-sm font-medium mb-3">
                 <Heart className="h-4 w-4 fill-current" />
                 Agape &apos;26
               </div>
-              
+
               <div className="flex justify-center mb-3">
                 <UserCheck className="h-14 w-14 text-amber-300" />
               </div>
-              
+
               <h1 className="text-3xl font-bold">Almost There!</h1>
               <p className="text-teal-100 mt-1">Singles Weekend 2026</p>
             </div>
@@ -250,12 +251,12 @@ function CheckInContent() {
                   <p className="text-sm text-slate-600">Would you like a coupon for our vendors?</p>
                 </div>
               </div>
-              
+
               <p className="text-sm text-slate-600 mb-4">
-                We have amazing vendors at the event! If you&apos;re interested in shopping, 
+                We have amazing vendors at the event! If you&apos;re interested in shopping,
                 we&apos;ll give you a special coupon code you can use.
               </p>
-              
+
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => handleCompleteCheckIn(true)}
@@ -276,11 +277,7 @@ function CheckInContent() {
           </div>
 
           {/* Bottom Brand */}
-          <div className="bg-slate-50 px-6 py-4 text-center">
-            <p className="text-xs text-slate-400 font-medium">
-              Powered by RCF ICT Portal • FUTA
-            </p>
-          </div>
+          <SinglesWeekendFooter />
         </div>
       </div>
     );
@@ -309,13 +306,13 @@ function CheckInContent() {
                 <rect width="100%" height="100%" fill="url(#hearts-complete)" />
               </svg>
             </div>
-            
+
             <div className="relative z-10">
               <div className="inline-flex items-center gap-2 bg-white/20 rounded-full px-4 py-1 text-sm font-medium mb-3">
                 <Heart className="h-4 w-4 fill-current" />
                 Agape &apos;26
               </div>
-              
+
               <div className="flex justify-center mb-3">
                 {alreadyCheckedIn ? (
                   <UserCheck className="h-14 w-14 text-amber-300" />
@@ -323,7 +320,7 @@ function CheckInContent() {
                   <PartyPopper className="h-14 w-14 text-amber-300" />
                 )}
               </div>
-              
+
               <h1 className="text-3xl font-bold">
                 {alreadyCheckedIn ? "Welcome Back!" : "You're In!"}
               </h1>
@@ -344,7 +341,7 @@ function CheckInContent() {
                   <p className="text-xl font-bold text-slate-900">{checkedInData.participantName}</p>
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-3 text-sm text-slate-600 pt-3 border-t border-slate-200">
                 <Clock className="h-4 w-4 text-teal-600" />
                 <span>
@@ -363,7 +360,7 @@ function CheckInContent() {
                   </div>
                   <div className="flex-1">
                     <h3 className="font-bold text-slate-900 mb-1">Your Shopping Coupon</h3>
-                    
+
                     {checkedInData.hasUsedCoupon ? (
                       <div className="bg-slate-100 rounded-lg p-3 text-center">
                         <p className="font-mono font-bold text-lg text-slate-400 line-through">
@@ -426,11 +423,7 @@ function CheckInContent() {
           </div>
 
           {/* Bottom Brand */}
-          <div className="bg-slate-50 px-6 py-4 text-center">
-            <p className="text-xs text-slate-400 font-medium">
-              Powered by RCF ICT Portal • FUTA
-            </p>
-          </div>
+          <SinglesWeekendFooter />
         </div>
       </div>
     );
