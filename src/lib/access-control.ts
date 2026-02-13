@@ -20,26 +20,18 @@ export async function checkEnhancedAdminAccess(): Promise<{
   error?: string;
 }> {
   try {
-    // 1. Get the session token from cookies
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value;
+    // 1. Get validated session (handles refresh if needed)
+    const { valid, user } = await validateSession();
 
-    if (!token) {
-      return { isAdmin: false, user: null, error: "No session token found" };
+    if (!valid || !user || !user.email) {
+      return { isAdmin: false, user: null, error: "Invalid session" };
     }
 
     const rcf = RcfIctClient.fromEnv();
 
-    // 2. Validate token and get user
-    const { data: { user }, error } = await rcf.supabase.auth.getUser(token);
-
-    if (error || !user || !user.email) {
-      return { isAdmin: false, user: null, error: "Invalid session" };
-    }
-
-    // 3. Check email whitelist (from environment variable)
+    // 2. Check email whitelist (from environment variable)
     const allowedEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase());
-    
+
     const isEmailAdmin = allowedEmails.includes(user.email.toLowerCase());
 
     // 4. Get full profile for role-based check
@@ -81,14 +73,14 @@ export async function checkModeratorAccess(): Promise<{
 }> {
   try {
     const { valid, user } = await validateSession();
-    
+
     if (!valid || !user) {
       return { isModerator: false, user: null, error: "Invalid session" };
     }
 
     const rcf = RcfIctClient.fromEnv();
     const fullProfile = await rcf.member.getFullProfile(user.id);
-    
+
     if (!fullProfile) {
       return { isModerator: false, user: null, error: "Profile not found" };
     }
@@ -147,7 +139,7 @@ export async function requireAccess(requiredLevel: 'USER' | 'MODERATOR' | 'ADMIN
 
   const rcf = RcfIctClient.fromEnv();
   const fullProfile = await rcf.member.getFullProfile(user.id);
-  
+
   if (!fullProfile) {
     throw new Error("Profile not found");
   }

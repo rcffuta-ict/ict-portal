@@ -7,7 +7,7 @@ export async function proxy(request: NextRequest) {
 
   // Define route types
   const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/register')
-  const isPublicAsset = pathname.startsWith('/_next') || pathname.startsWith('/api') || 
+  const isPublicAsset = pathname.startsWith('/_next') || pathname.startsWith('/api') ||
                        pathname.includes('.') // Files with extensions (images, etc.)
   const isDashboardPage = pathname.startsWith('/dashboard')
 
@@ -17,7 +17,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Public routes that don't need authentication
-  const publicRoutes = ['/', '/about', '/events/singles-weekend-26', '/events/singles-weekend-26/info']
+  const publicRoutes = ['/', '/about', '/lo-app', '/events/singles-weekend-26', '/events/singles-weekend-26/info']
   const isPublicRoute = publicRoutes.includes(pathname)
 
   // Handle authentication requirements
@@ -28,12 +28,12 @@ export async function proxy(request: NextRequest) {
       loginUrl.searchParams.set('returnUrl', pathname)
       return NextResponse.redirect(loginUrl)
     }
-    
+
     // Allow access to public routes and auth pages
     if (isPublicRoute || isAuthPage) {
       return NextResponse.next()
     }
-    
+
     // For any other route, redirect to login (defensive approach)
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('returnUrl', pathname)
