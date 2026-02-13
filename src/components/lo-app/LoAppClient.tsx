@@ -131,7 +131,7 @@ export function LoAppClient({
                 const ids = newQuestions.map((q: Question) => q.id);
                 const [countsRes, userRes] = await Promise.all([
                     getStarCounts(ids),
-                    getUserStars(ids),
+                    getUserStars(ids, authenticatedUser?.id),
                 ]);
                 if (countsRes.data) setStarCounts(countsRes.data);
                 if (userRes.data) setUserStars(userRes.data);
@@ -188,6 +188,8 @@ export function LoAppClient({
     const handleToggleStar = async (questionId: string) => {
         if (!authenticatedUser) return;
 
+        console.log("User stars", userStars, questionId)
+
         const wasStarred = userStars.includes(questionId);
         setUserStars((prev) =>
             wasStarred
@@ -199,7 +201,9 @@ export function LoAppClient({
             [questionId]: (prev[questionId] || 0) + (wasStarred ? -1 : 1),
         }));
 
-        const result = await toggleStar(questionId);
+        const result = await toggleStar(questionId, authenticatedUser.id);
+
+        console.log("Toogle star result", result)
         if (!result.success) {
             setUserStars((prev) =>
                 wasStarred

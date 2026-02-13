@@ -248,9 +248,8 @@ export function AskQuestionForm({
                 event_id: taggedEvents[0].id,
                 question_text: text.trim(),
                 scripture_reference: detectedScriptures.join(", ") || undefined,
-                asker_name: authenticatedUser
-                    ? undefined
-                    : guestName.trim() || "Anonymous",
+                asker_name: displayName,
+                asker_id: authenticatedUser?.id,
             });
 
             if (result.success) {

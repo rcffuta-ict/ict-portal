@@ -1,6 +1,6 @@
 "use server";
 
-import { QAService } from "@rcffuta/ict-lib";
+import { CreateQuestionInput, QAService } from "@rcffuta/ict-lib";
 import { checkEnhancedAdminAccess } from "@/lib/access-control";
 import { validateSession } from "@/lib/auth-utils";
 import { RcfIctClient } from "@rcffuta/ict-lib/server";
@@ -68,12 +68,16 @@ export async function askQuestion(data: {
     question_text: string;
     scripture_reference?: string;
     asker_name?: string;
+    asker_id?: string;
 }) {
     try {
-        const payload: any = {
+        const payload: CreateQuestionInput = {
             event_id: data.event_id,
             question_text: data.question_text,
             scripture_reference: data.scripture_reference,
+            asked_by_profile_id: data.asker_id,
+            asker_name: data.asker_name
+
         };
 
         // Try to auto-link authenticated user's profile
@@ -86,15 +90,13 @@ export async function askQuestion(data: {
                     payload.asked_by_profile_id = fullProfile.profile.id;
                     payload.asker_name = `${fullProfile.profile.firstName} ${fullProfile.profile.lastName}`;
                 } else {
-                    payload.asker_name = data.asker_name || user.email?.split("@")[0] || "Member";
+                    payload.asker_name = data.asker_name || user.email?.split("@")[0] || "Anonymous";
                 }
             } else {
-                // Not authenticated — use provided name or default
-                payload.asker_name = data.asker_name || "Guest";
+                payload.asker_name = data.asker_name || "Anonymous";
             }
         } catch {
-            // Auth check failed — still allow the question
-            payload.asker_name = data.asker_name || "Guest";
+            payload.asker_name = data.asker_name || "Anonymous";
         }
 
         const response = await qaService.createQuestion(payload);
@@ -172,21 +174,21 @@ export async function getStarCounts(questionIds: string[]) {
     }
 }
 
-export async function getUserStars(questionIds: string[]) {
+export async function getUserStars(questionIds: string[], profileId: string="") {
     try {
-        if (questionIds.length === 0) return { success: true, data: [] };
+        if (questionIds.length === 0 || !profileId) return { success: true, data: [] };
 
-        const { valid, user } = await validateSession();
-        if (!valid || !user) return { success: true, data: [] };
+        // const { valid, user } = await validateSession();
+        // if (!valid || !user) return { success: true, data: [] };
 
-        const rcf = RcfIctClient.fromEnv();
-        const fullProfile = await rcf.member.getFullProfile(user.id);
-        if (!fullProfile) return { success: true, data: [] };
+        // const rcf = RcfIctClient.fromEnv();
+        // const fullProfile = await rcf.member.getFullProfile(user.id);
+        // if (!fullProfile) return { success: true, data: [] };
 
         const { data, error } = await ict.supabase
             .from("question_stars")
             .select("question_id")
-            .eq("profile_id", fullProfile.profile.id)
+            .eq("profile_id", profileId)
             .in("question_id", questionIds);
 
         if (error) throw new Error(error.message);
@@ -196,20 +198,20 @@ export async function getUserStars(questionIds: string[]) {
     }
 }
 
-export async function toggleStar(questionId: string) {
+export async function toggleStar(questionId: string, profileId: string) {
     try {
-        const { valid, user } = await validateSession();
-        if (!valid || !user) {
+        // const { valid, user } = await validateSession();
+        if (!profileId) {
             return { success: false, error: "Sign in to star questions" };
         }
 
-        const rcf = RcfIctClient.fromEnv();
-        const fullProfile = await rcf.member.getFullProfile(user.id);
-        if (!fullProfile) {
-            return { success: false, error: "Profile not found" };
-        }
+        // const rcf = RcfIctClient.fromEnv();
+        // const fullProfile = await rcf.member.getFullProfile(user.id);
+        // if (!fullProfile) {
+        //     return { success: false, error: "Profile not found" };
+        // }
 
-        const profileId = fullProfile.profile.id;
+        // const profileId = fullProfile.profile.id;
 
         // Check if already starred
         const { data: existing } = await ict.supabase
