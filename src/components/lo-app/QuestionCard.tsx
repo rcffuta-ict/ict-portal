@@ -86,6 +86,9 @@ interface QuestionCardProps {
     isAuthenticated: boolean;
     events: LoEvent[];
     index?: number;
+    selectable?: boolean;
+    selected?: boolean;
+    onSelect?: () => void;
 }
 
 export function QuestionCard({
@@ -99,6 +102,9 @@ export function QuestionCard({
     isAuthenticated,
     events,
     index = 0,
+    selectable = false,
+    selected = false,
+    onSelect,
 }: QuestionCardProps) {
     const [showAnswer, setShowAnswer] = useState(false);
     const [answerText, setAnswerText] = useState("");
@@ -163,8 +169,20 @@ export function QuestionCard({
             }`}
             style={{ animationDelay: `${index * 40}ms` }}
         >
-            <div className="px-4 py-3.5">
+            <div className={`px-4 py-3.5 transition-colors ${selected ? 'bg-rcf-navy/5' : ''}`}>
                 <div className="flex gap-3">
+                    {/* Selection Checkbox */}
+                    {selectable && (
+                        <div className="shrink-0 pt-1">
+                            <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={onSelect}
+                                className="w-4 h-4 rounded border-slate-300 text-rcf-navy focus:ring-rcf-navy/20 cursor-pointer"
+                            />
+                        </div>
+                    )}
+
                     {/* Avatar */}
                     <div className="shrink-0">
                         <div className="w-10 h-10 rounded-full bg-linear-to-br from-rcf-navy to-rcf-navy-light text-white flex items-center justify-center text-xs font-bold relative">

@@ -178,13 +178,6 @@ export async function getUserStars(questionIds: string[], profileId: string="") 
     try {
         if (questionIds.length === 0 || !profileId) return { success: true, data: [] };
 
-        // const { valid, user } = await validateSession();
-        // if (!valid || !user) return { success: true, data: [] };
-
-        // const rcf = RcfIctClient.fromEnv();
-        // const fullProfile = await rcf.member.getFullProfile(user.id);
-        // if (!fullProfile) return { success: true, data: [] };
-
         const { data, error } = await ict.supabase
             .from("question_stars")
             .select("question_id")
@@ -204,14 +197,6 @@ export async function toggleStar(questionId: string, profileId: string) {
         if (!profileId) {
             return { success: false, error: "Sign in to star questions" };
         }
-
-        // const rcf = RcfIctClient.fromEnv();
-        // const fullProfile = await rcf.member.getFullProfile(user.id);
-        // if (!fullProfile) {
-        //     return { success: false, error: "Profile not found" };
-        // }
-
-        // const profileId = fullProfile.profile.id;
 
         // Check if already starred
         const { data: existing } = await ict.supabase
@@ -252,6 +237,28 @@ export async function searchQuestions(eventId: string, searchTerm: string) {
         });
         if (response.error) throw new Error(response.error);
         return { success: true, data: response.data };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function clusterQuestions(questionIds: string[]) {
+    try {
+        const adminCheck = await checkEnhancedAdminAccess();
+        if (!adminCheck.isAdmin) {
+             return { success: false, error: "Unauthorized" };
+        }
+
+        if (questionIds.length < 2) {
+             return { success: false, error: "Select at least 2 questions to cluster." };
+        }
+
+        const { data, error } = await ict.supabase.rpc('cluster_questions', {
+             question_ids: questionIds
+        });
+
+        if (error) throw new Error(error.message);
+        return { success: true, data };
     } catch (error: any) {
         return { success: false, error: error.message };
     }

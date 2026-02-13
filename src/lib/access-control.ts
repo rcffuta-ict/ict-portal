@@ -5,10 +5,10 @@
 
 'use server'
 
-import { RcfIctClient } from "@rcffuta/ict-lib/server";
-import { cookies } from "next/headers";
+
 import { validateSession } from "@/lib/auth-utils";
 import { type AuthUser, createAuthUser } from "@/lib/auth-roles";
+import { ictAdmin } from "./ict";
 
 /**
  * Enhanced admin check that follows the same pattern as utils/action.ts
@@ -27,7 +27,7 @@ export async function checkEnhancedAdminAccess(): Promise<{
       return { isAdmin: false, user: null, error: "Invalid session" };
     }
 
-    const rcf = RcfIctClient.fromEnv();
+    // const rcf = RcfIctClient.fromEnv();
 
     // 2. Check email whitelist (from environment variable)
     const allowedEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase());
@@ -37,7 +37,7 @@ export async function checkEnhancedAdminAccess(): Promise<{
     // 4. Get full profile for role-based check
     let authUser: AuthUser | null = null;
     try {
-      const fullProfile = await rcf.member.getFullProfile(user.id);
+      const fullProfile = await ictAdmin.member.getFullProfile(user.id);
       if (fullProfile) {
         fullProfile.profile.email = user.email;
         authUser = createAuthUser(fullProfile, user.email);
@@ -78,8 +78,8 @@ export async function checkModeratorAccess(): Promise<{
       return { isModerator: false, user: null, error: "Invalid session" };
     }
 
-    const rcf = RcfIctClient.fromEnv();
-    const fullProfile = await rcf.member.getFullProfile(user.id);
+    // const rcf = RcfIctClient.fromEnv();
+    const fullProfile = await ictAdmin.member.getFullProfile(user.id);
 
     if (!fullProfile) {
       return { isModerator: false, user: null, error: "Profile not found" };
@@ -137,8 +137,8 @@ export async function requireAccess(requiredLevel: 'USER' | 'MODERATOR' | 'ADMIN
     throw new Error("Authentication required");
   }
 
-  const rcf = RcfIctClient.fromEnv();
-  const fullProfile = await rcf.member.getFullProfile(user.id);
+//   const rcf = RcfIctClient.fromEnv();
+  const fullProfile = await ictAdmin.member.getFullProfile(user.id);
 
   if (!fullProfile) {
     throw new Error("Profile not found");

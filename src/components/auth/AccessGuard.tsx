@@ -16,12 +16,12 @@ interface AccessGuardProps {
  * Client-side access guard component
  * Use this to protect page content based on user roles
  */
-export function AccessGuard({ 
-  children, 
-  requiredLevel, 
+export function AccessGuard({
+  children,
+  requiredLevel,
   fallbackPath = "/dashboard",
   loadingComponent,
-  errorComponent 
+  errorComponent
 }: AccessGuardProps) {
   const router = useRouter();
   const [isChecking, setIsChecking] = useState(true);
@@ -32,7 +32,7 @@ export function AccessGuard({
     async function checkAccess() {
       try {
         // Import the access control functions dynamically
-        const { checkEnhancedAdminAccess, checkModeratorAccess } = 
+        const { checkEnhancedAdminAccess, checkModeratorAccess } =
           await import("@/lib/access-control");
 
         if (requiredLevel === 'ADMIN') {

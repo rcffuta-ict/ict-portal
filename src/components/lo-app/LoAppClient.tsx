@@ -8,6 +8,7 @@ import {
     HelpCircle,
     Calendar,
 } from "lucide-react";
+import { Toast, type ToastType } from "./Toast";
 import { LoLogo } from "./LoLogo";
 import { LoAppHeader } from "./LoAppHeader";
 import { LoAppSidebar } from "./LoAppSidebar";
@@ -25,6 +26,7 @@ import {
     toggleStar,
     getStarCounts,
     getUserStars,
+    clusterQuestions,
 } from "@/app/lo-app/actions";
 
 // ─── Exported Types ───
@@ -105,6 +107,20 @@ export function LoAppClient({
         useState<Record<string, number>>(initialStarCounts);
     const [userStars, setUserStars] = useState<string[]>(initialUserStars);
 
+    const [toast, setToast] = useState<{
+        open: boolean;
+        type: ToastType;
+        message: string;
+    }>({
+        open: false,
+        type: "success",
+        message: "",
+    });
+
+    const showToast = (type: ToastType, message: string) => {
+        setToast({ open: true, type, message });
+    };
+
     // ── Data Fetching ──
     const fetchQuestions = useCallback(async () => {
         setLoading(true);
@@ -151,7 +167,20 @@ export function LoAppClient({
     }, [fetchQuestions]);
 
     // ── Handlers ──
+    const handleCluster = async (ids: string[]) => {
+        showToast("loading", "Clustering questions...");
+        const result = await clusterQuestions(ids);
+        if (result.success) {
+            showToast("success", "Questions clustered successfully");
+            // Optionally refresh or update local state if needed
+            // For now, no visible change might happen unless we show clusters
+        } else {
+             showToast("error", result.error || "Failed to cluster questions");
+        }
+    };
+
     const handleAnswer = async (id: string, text: string) => {
+        showToast("loading", "Submitting answer...");
         const result = await answerQuestion(id, text);
         if (result.success) {
             setQuestions((prev) =>
@@ -166,8 +195,9 @@ export function LoAppClient({
                         : q
                 )
             );
+            showToast("success", "Answer submitted");
         } else {
-            alert("Failed to answer: " + result.error);
+            showToast("error", result.error || "Failed to answer");
         }
     };
 
@@ -175,20 +205,20 @@ export function LoAppClient({
         id: string,
         status: "visible" | "hidden"
     ) => {
+        showToast("loading", "Updating visibility...");
         const result = await toggleVisibility(id, status);
         if (result.success) {
             setQuestions((prev) =>
                 prev.map((q) => (q.id === id ? { ...q, status } : q))
             );
+            showToast("success", `Question is now ${status}`);
         } else {
-            alert("Failed to update: " + result.error);
+            showToast("error", result.error || "Update failed");
         }
     };
 
     const handleToggleStar = async (questionId: string) => {
         if (!authenticatedUser) return;
-
-        console.log("User stars", userStars, questionId)
 
         const wasStarred = userStars.includes(questionId);
         setUserStars((prev) =>
@@ -203,7 +233,6 @@ export function LoAppClient({
 
         const result = await toggleStar(questionId, authenticatedUser.id);
 
-        console.log("Toogle star result", result)
         if (!result.success) {
             setUserStars((prev) =>
                 wasStarred
@@ -318,6 +347,7 @@ export function LoAppClient({
                             userStars={userStars}
                             onToggleStar={handleToggleStar}
                             events={events}
+                            onCluster={handleCluster}
                         />
                     )}
                 </main>
@@ -346,6 +376,14 @@ export function LoAppClient({
             <LoAppInfoModal
                 open={showInfo}
                 onClose={() => setShowInfo(false)}
+            />
+
+            {/* Toast Notifications */}
+            <Toast
+                open={toast.open}
+                type={toast.type}
+                message={toast.message}
+                onClose={() => setToast((prev) => ({ ...prev, open: false }))}
             />
         </div>
     );
