@@ -82,7 +82,7 @@ export function LoAppHeader({
                     <div className="flex items-center gap-2">
                         <LoAppInfoButton onClick={onOpenInfo} variant="compact" />
                         {isAdmin && (
-                            <div className="flex bg-white/10 p-0.5 rounded-full border border-white/10">
+                            <div className="hidden md:flex bg-white/10 p-0.5 rounded-full border border-white/10">
                                 <button
                                     onClick={() => setActiveTab("feed")}
                                     className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${

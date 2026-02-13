@@ -10,6 +10,9 @@ import {
     Loader2,
     AlertCircle,
     CheckCircle2,
+    Lock,
+    Repeat,
+    Calendar,
 } from "lucide-react";
 import type { LoEvent, AuthUser } from "./LoAppClient";
 import { askQuestion } from "@/app/lo-app/actions";
@@ -86,15 +89,22 @@ export function AskQuestionForm({
 
     // Event search filtering for autocomplete
     const filteredEvents = useMemo(() => {
-        if (!eventSearchQuery) return events.slice(0, 6);
-        const q = eventSearchQuery.toLowerCase();
-        return events
-            .filter(
+        let matches = events;
+        if (eventSearchQuery) {
+            const q = eventSearchQuery.toLowerCase();
+            matches = events.filter(
                 (e) =>
                     e.title.toLowerCase().includes(q) ||
                     e.slug.toLowerCase().includes(q)
-            )
-            .slice(0, 6);
+            );
+        }
+
+        // Split into Recurring and Upcoming
+        const recurring = matches.filter(e => e.is_recurring);
+        const upcoming = matches.filter(e => !e.is_recurring);
+
+        // Return combined list provided there are matches
+        return [...recurring, ...upcoming].slice(0, 10);
     }, [events, eventSearchQuery]);
 
     // Watch for # being typed
@@ -214,7 +224,7 @@ export function AskQuestionForm({
 
     const displayName = authenticatedUser
         ? `${authenticatedUser.firstName} ${authenticatedUser.lastName}`
-        : guestName || "Guest";
+        : guestName || "Anonymous";
 
     const displayInitials = authenticatedUser
         ? `${authenticatedUser.firstName[0]}${authenticatedUser.lastName[0] || ''}`
@@ -240,7 +250,7 @@ export function AskQuestionForm({
                 scripture_reference: detectedScriptures.join(", ") || undefined,
                 asker_name: authenticatedUser
                     ? undefined
-                    : guestName.trim() || "Guest",
+                    : guestName.trim() || "Anonymous",
             });
 
             if (result.success) {
@@ -345,40 +355,44 @@ export function AskQuestionForm({
                                     />
 
                                     {/* Event Autocomplete Dropdown */}
-                                    {showEventDropdown &&
-                                        filteredEvents.length > 0 && (
-                                            <div
-                                                ref={dropdownRef}
-                                                className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden"
-                                            >
-                                                <div className="px-3 py-2 bg-slate-50 border-b border-slate-100">
-                                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                                        Tag an event
-                                                    </span>
-                                                </div>
-                                                {filteredEvents.map(
-                                                    (event, i) => (
+                                    {showEventDropdown && filteredEvents.length > 0 && (
+                                        <div
+                                            ref={dropdownRef}
+                                            className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-80 overflow-y-auto"
+                                        >
+                                            {filteredEvents.map((event, i) => {
+                                                const showRecurringHeader = i === 0 && event.is_recurring;
+                                                const showUpcomingHeader = !event.is_recurring && (i === 0 || (i > 0 && filteredEvents[i-1].is_recurring));
+
+                                                return (
+                                                    <div key={event.id}>
+                                                        {showRecurringHeader && (
+                                                            <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center gap-1.5">
+                                                                <Repeat className="w-3 h-3 text-slate-400" />
+                                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                                                    Recurring Events
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {showUpcomingHeader && (
+                                                            <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center gap-1.5">
+                                                                <Calendar className="w-3 h-3 text-slate-400" />
+                                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                                                    Upcoming Events
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                         <button
-                                                            key={event.id}
-                                                            onClick={() =>
-                                                                insertEventTag(
-                                                                    event
-                                                                )
-                                                            }
-                                                            onMouseEnter={() =>
-                                                                setDropdownIndex(
-                                                                    i
-                                                                )
-                                                            }
+                                                            onClick={() => insertEventTag(event)}
+                                                            onMouseEnter={() => setDropdownIndex(i)}
                                                             className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
-                                                                i ===
-                                                                dropdownIndex
+                                                                i === dropdownIndex
                                                                     ? "bg-rcf-navy/5"
                                                                     : "hover:bg-slate-50"
                                                             }`}
                                                         >
                                                             <div
-                                                                className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                                                                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
                                                                     event.is_active
                                                                         ? "bg-green-100"
                                                                         : "bg-slate-100"
@@ -393,33 +407,39 @@ export function AskQuestionForm({
                                                                 />
                                                             </div>
                                                             <div className="min-w-0 flex-1">
-                                                                <p className="text-sm font-semibold text-slate-900 truncate">
-                                                                    {
-                                                                        event.title
-                                                                    }
-                                                                </p>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <p className="text-sm font-semibold text-slate-900 truncate">
+                                                                        {event.title}
+                                                                    </p>
+                                                                    {event.is_exclusive && (
+                                                                        <Lock className="w-3 h-3 text-amber-500" />
+                                                                    )}
+                                                                </div>
                                                                 <p className="text-[11px] text-slate-500 truncate">
-                                                                    #
-                                                                    {event.slug}
+                                                                    #{event.slug}
                                                                     {event.is_active && (
                                                                         <span className="ml-2 text-green-600">
-                                                                            •
-                                                                            Live
+                                                                            • Live
+                                                                        </span>
+                                                                    )}
+                                                                    {event.is_exclusive && (
+                                                                        <span className="ml-1 text-amber-600">
+                                                                            • Exclusive
                                                                         </span>
                                                                     )}
                                                                 </p>
                                                             </div>
-                                                            {i ===
-                                                                dropdownIndex && (
+                                                            {i === dropdownIndex && (
                                                                 <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-mono shrink-0">
                                                                     Enter ↵
                                                                 </span>
                                                             )}
                                                         </button>
-                                                    )
-                                                )}
-                                            </div>
-                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Detected Tags Display */}

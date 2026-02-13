@@ -18,8 +18,11 @@ export async function getActiveEvents() {
     try {
         const { data: events, error } = await ict.supabase
             .from("events")
-            .select("id, title, slug, description, date, is_active, created_at")
-            .order("date", { ascending: false });
+            .select("id, title, slug, description, date, is_active, created_at, is_recurring, is_exclusive")
+            // .or(`date.gte.${new Date().toISOString()},is_recurring.eq.true`)
+            // .eq('is_active', true)
+            .order('is_recurring', { ascending: true })
+            .order('date', { ascending: true });
 
         if (error) throw new Error(error.message);
         return { success: true, data: events };

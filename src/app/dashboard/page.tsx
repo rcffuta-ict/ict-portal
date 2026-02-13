@@ -3,19 +3,62 @@ import Link from "next/link";
 import {
     Sparkles,
     Code2,
+    Calendar,
 } from "lucide-react";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useTenureStore } from "@/lib/stores/tenure.store";
 import { CompactPreloader } from "@/components/ui/preloader";
 import { getSidebarItems, isUserAdmin, eventSidebarItems } from "@/config/sidebar-items";
 import type { SidebarItem } from "@/config/sidebar-items";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { getEvents } from "@/app/events/actions";
 
 
 export default function DashboardHome() {
     const tenureName = useTenureStore(s => s.activeTenure?.name || null);
     const user = useProfileStore(s => s.user);
     const userFirstName = user?.profile.firstName || "Melchizedeck";
+    const [dynamicEvents, setDynamicEvents] = useState<SidebarItem[]>([]);
+
+    useEffect(() => {
+        async function fetchEvents() {
+            const { success, data } = await getEvents();
+            if (success && data && Array.isArray(data)) {
+                // Determine 'upcoming' or 'active' events logic if needed here
+                // User said "only load events that are not exclusive"
+                // Assuming we want active events.
+                const today = new Date();
+                today.setHours(0,0,0,0);
+
+                const mappedEvents: SidebarItem[] = data
+                    .filter((e: any) => {
+                        // Filter logic:
+                        // 1. Must be active
+                        // 2. Must NOT be exclusive
+                        // 3. Must be upcoming or recurring? Usually dashboards show current/future.
+                        // Let's include upcoming + recurring.
+                        const eDate = new Date(e.date);
+                        const isUpcoming = eDate >= today;
+                        // Recurring check? If is_recurring is boolean.
+                        // We need access to is_recurring field which might be missing in older event definitions
+                        // but getEvents uses select('*').
+                        const isRecurring = e.is_recurring === true;
+
+                        return e.is_active && !e.is_exclusive && (isUpcoming || isRecurring);
+                    })
+                    .map((e: any) => ({
+                        name: e.title,
+                        href: `/events/${e.slug}`,
+                        icon: Calendar,
+                        color: "bg-purple-500", // Default color
+                        description: e.description || `Event on ${new Date(e.date).toLocaleDateString()}`,
+                        section: "Events"
+                    }));
+                setDynamicEvents(mappedEvents);
+            }
+        }
+        fetchEvents();
+    }, []);
 
     // Check if user is admin
     const isAdmin = useMemo(() => {
@@ -32,9 +75,9 @@ export default function DashboardHome() {
     if (!user?.profile) {
         return (
             <div className="flex items-center justify-center min-h-96">
-                <CompactPreloader 
-                    title="Loading Dashboard..." 
-                    subtitle="Getting your data ready" 
+                <CompactPreloader
+                    title="Loading Dashboard..."
+                    subtitle="Getting your data ready"
                     showUserIcon={true}
                 />
             </div>
@@ -66,7 +109,7 @@ export default function DashboardHome() {
             </div>
 
             {/* 3. Events Section */}
-            {eventSidebarItems.length > 0 && (
+            {(eventSidebarItems.length > 0 || dynamicEvents.length > 0) && (
                 <div className="space-y-4">
                     <div className="flex items-center gap-2">
                         <h2 className="text-xl font-bold text-rcf-navy">Upcoming Events</h2>
@@ -76,11 +119,16 @@ export default function DashboardHome() {
                         </span>
                     </div>
                     <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                        {eventSidebarItems.map((item) => (
-                            <ServiceCard
-                                key={item.href}
-                                item={item}
-                            />
+                        {/* Combine static and dynamic events, deduping by href */}
+                        {[...eventSidebarItems, ...dynamicEvents]
+                            .filter((item, index, self) =>
+                                index === self.findIndex((t) => t.href === item.href)
+                            )
+                            .map((item) => (
+                                <ServiceCard
+                                    key={item.href}
+                                    item={item}
+                                />
                         ))}
                     </div>
                 </div>
@@ -141,13 +189,13 @@ interface ServiceCardProps {
 
 function ServiceCard({ item }: ServiceCardProps) {
     const { href, name, description, icon: Icon, color, comingSoon } = item;
-    
+
     return (
         <Link
             href={comingSoon ? "#" : href}
             className={`group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-white p-6 shadow-sm transition-all ${
-                comingSoon 
-                    ? "border-gray-300 cursor-not-allowed opacity-75" 
+                comingSoon
+                    ? "border-gray-300 cursor-not-allowed opacity-75"
                     : "border-gray-200 hover:shadow-lg hover:border-rcf-navy/30 hover:-translate-y-1"
             }`}
             onClick={(e) => comingSoon && e.preventDefault()}

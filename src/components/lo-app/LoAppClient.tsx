@@ -62,6 +62,8 @@ export interface LoEvent {
     date?: string;
     is_active?: boolean;
     created_at?: string;
+    is_recurring?: boolean;
+    is_exclusive?: boolean;
 }
 
 // ─── Props ───

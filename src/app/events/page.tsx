@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Calendar,
@@ -12,19 +12,27 @@ import {
   Sparkles,
   CalendarDays,
   Eye,
+  Plus,
+  Repeat,
+  Lock,
 } from "lucide-react";
 import { getEvents } from "./actions";
 import { CompactPreloader } from "@/components/ui/preloader";
 import Link from "next/link";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
+import { useProfileStore } from "@/lib/stores/profile.store";
+import { isUserAdmin } from "@/config/sidebar-items";
+import { EventModal } from "@/components/events/EventModal";
 
-interface Event {
+export interface Event {
   id: string;
   slug: string;
   title: string;
   description: string | null;
   date: string;
   is_active: boolean;
+  is_recurring: boolean;
+  is_exclusive: boolean;
   created_at: string;
   config: Record<string, unknown> | null;
 }
@@ -37,6 +45,11 @@ export default function EventsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+
+  const { user } = useProfileStore();
+  const isAdmin = useMemo(() => isUserAdmin(user?.profile?.email), [user?.profile?.email]);
 
   const loadEvents = async () => {
     setLoading(true);
@@ -44,7 +57,7 @@ export default function EventsPage() {
     try {
       const result = await getEvents();
       if (result.success) {
-        setEvents(result.data || []);
+        setEvents(result.data as Event[] || []);
       } else {
         setError(result.error || "Failed to load events");
       }
@@ -60,9 +73,19 @@ export default function EventsPage() {
     loadEvents();
   }, []);
 
+  const handleCreateClick = () => {
+      setEditingEvent(null);
+      setIsModalOpen(true);
+  };
+
+  const handleEditClick = (event: Event) => {
+      setEditingEvent(event);
+      setIsModalOpen(true);
+  };
+
   // Filter events based on search and filter type
   const filteredEvents = events.filter((event) => {
-    const matchesSearch = 
+    const matchesSearch =
       event.title.toLowerCase().includes(search.toLowerCase()) ||
       event.description?.toLowerCase().includes(search.toLowerCase()) ||
       event.slug.toLowerCase().includes(search.toLowerCase());
@@ -76,6 +99,9 @@ export default function EventsPage() {
       case "upcoming":
         return isAfter(eventDate, today) || eventDate.getTime() === today.getTime();
       case "past":
+        // Recurring events are arguably never "past" in the same way, but let's stick to date logic or user preference.
+        // If it's recurring, maybe show it in upcoming?
+        // For now standard date logic.
         return isBefore(eventDate, today);
       case "active":
         return event.is_active;
@@ -96,9 +122,9 @@ export default function EventsPage() {
     return (
       <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-blue-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <CompactPreloader 
-            title="Loading Events..." 
-            subtitle="Fetching upcoming events and details" 
+          <CompactPreloader
+            title="Loading Events..."
+            subtitle="Fetching upcoming events and details"
             showUserIcon={false}
           />
         </div>
@@ -108,6 +134,13 @@ export default function EventsPage() {
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-blue-50">
+      <EventModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={loadEvents}
+        event={editingEvent}
+      />
+
       {/* Header */}
       <div className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -121,15 +154,27 @@ export default function EventsPage() {
                 <p className="text-slate-600">Discover upcoming events and activities</p>
               </div>
             </div>
-            <div className="flex items-center gap-4 text-sm text-slate-600">
-              <div className="flex items-center gap-1">
-                <CalendarDays className="h-4 w-4" />
-                <span>{events.length} Total</span>
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4 text-sm text-slate-600">
+              <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1">
+                    <CalendarDays className="h-4 w-4" />
+                    <span>{events.length} Total</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Sparkles className="h-4 w-4 text-blue-500" />
+                    <span className="text-blue-600 font-medium">{upcomingCount} Upcoming</span>
+                  </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Sparkles className="h-4 w-4 text-blue-500" />
-                <span className="text-blue-600 font-medium">{upcomingCount} Upcoming</span>
-              </div>
+
+              {isAdmin && (
+                <button
+                    onClick={handleCreateClick}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors shadow-sm ml-4"
+                >
+                    <Plus className="h-4 w-4" />
+                    Create Event
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -151,8 +196,8 @@ export default function EventsPage() {
           </div>
 
           {/* Filter Buttons */}
-          <div className="flex items-center gap-2">
-            <Filter className="h-5 w-5 text-slate-500" />
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
+            <Filter className="h-5 w-5 text-slate-500 shrink-0" />
             {[
               { key: "all", label: "All", count: events.length },
               { key: "upcoming", label: "Upcoming", count: upcomingCount },
@@ -162,7 +207,7 @@ export default function EventsPage() {
               <button
                 key={filterOption.key}
                 onClick={() => setFilter(filterOption.key as FilterType)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                   filter === filterOption.key
                     ? "bg-blue-600 text-white shadow-lg"
                     : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"
@@ -204,8 +249,8 @@ export default function EventsPage() {
               {search || filter !== "all" ? "No events found" : "No events available"}
             </h3>
             <p className="text-slate-500 max-w-md mx-auto">
-              {search || filter !== "all" 
-                ? "Try adjusting your search or filter criteria." 
+              {search || filter !== "all"
+                ? "Try adjusting your search or filter criteria."
                 : "Check back later for upcoming events and activities."
               }
             </p>
@@ -230,7 +275,92 @@ export default function EventsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: index * 0.1 }}
               >
-                <EventCard event={event} />
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group h-full flex flex-col">
+                  {/* Header */}
+                  <div className="p-6 pb-4 flex-1">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                          event.is_active ? "bg-blue-100 text-blue-600" :
+                           "bg-slate-100 text-slate-500"
+                        }`}>
+                          <Calendar className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
+                            {event.title}
+                          </h3>
+                          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">
+                            {event.slug}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1 items-end">
+                        {event.is_active && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-medium rounded-full">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                            Active
+                            </span>
+                        )}
+                        {event.is_exclusive && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-medium rounded-full">
+                            <Lock className="w-3 h-3" />
+                            Exclusive
+                            </span>
+                        )}
+                         {event.is_recurring && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-medium rounded-full">
+                            <Repeat className="w-3 h-3" />
+                            Recurring
+                            </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Description */}
+                    {event.description && (
+                      <p className="text-slate-600 text-sm line-clamp-3 mb-4">
+                        {event.description}
+                      </p>
+                    )}
+
+                    {/* Event Info */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Calendar className="h-4 w-4" />
+                        <span>{format(new Date(event.date), "MMMM do, yyyy")}</span>
+                         {/* Status calculation logic could be reused here if needed */}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Clock className="h-4 w-4" />
+                        <span>Created {format(new Date(event.created_at), "MMM do, yyyy")}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 mt-auto flex items-center justify-between">
+                    <Link
+                      href={`/events/${event.slug}`}
+                      className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm group-hover:translate-x-1 transition-all"
+                    >
+                      <Eye className="h-4 w-4" />
+                      View Details
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
+
+                    {isAdmin && (
+                        <button
+                            onClick={() => handleEditClick(event)}
+                            className="text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                            Edit
+                        </button>
+                    )}
+                  </div>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -254,7 +384,7 @@ function EventCard({ event }: { event: Event }) {
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-              isUpcoming ? "bg-blue-100 text-blue-600" : 
+              isUpcoming ? "bg-blue-100 text-blue-600" :
               isPast ? "bg-slate-100 text-slate-500" : "bg-green-100 text-green-600"
             }`}>
               <Calendar className="h-5 w-5" />
@@ -268,7 +398,7 @@ function EventCard({ event }: { event: Event }) {
               </p>
             </div>
           </div>
-          
+
           {event.is_active && (
             <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
@@ -296,7 +426,7 @@ function EventCard({ event }: { event: Event }) {
               <span className="ml-auto text-slate-400 font-medium">Past</span>
             )}
           </div>
-          
+
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Clock className="h-4 w-4" />
             <span>Created {format(new Date(event.created_at), "MMM do, yyyy")}</span>
