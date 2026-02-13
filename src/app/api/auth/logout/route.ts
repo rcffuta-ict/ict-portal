@@ -5,7 +5,7 @@ import { RcfIctClient } from '@rcffuta/ict-lib/server';
 export async function POST() {
     try {
         const cookieStore = await cookies();
-        
+
         // Try to sign out from Supabase first
         try {
             const rcf = RcfIctClient.fromEnv();
@@ -14,11 +14,11 @@ export async function POST() {
             console.error('Supabase signOut error:', error);
             // Continue with cookie cleanup even if Supabase signOut fails
         }
-        
+
         // Delete authentication cookies
         cookieStore.delete('sb-access-token');
         cookieStore.delete('sb-refresh-token');
-        
+
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Logout error:', error);

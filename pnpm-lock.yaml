@@ -12,8 +12,8 @@ importers:
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.71.1(react@19.2.3))
       '@rcffuta/ict-lib':
-        specifier: ^3.1.15
-        version: 3.1.15
+        specifier: ^3.3.3
+        version: 3.3.3
       '@tailwindcss/postcss':
         specifier: ^4.1.18
         version: 4.1.18
@@ -449,8 +449,8 @@ packages:
     resolution: {integrity: sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==}
     engines: {node: '>=12.4.0'}
 
-  '@rcffuta/ict-lib@3.1.15':
-    resolution: {integrity: sha512-U1o7wDqCMTaSYzYvHQRv9oePINCYpd8YKvCEC4ZmQPxUOiy7i+AL06apbOb/srM3oxm3+H+UvvAAAdy2pgWNng==, tarball: https://npm.pkg.github.com/download/@rcffuta/ict-lib/3.1.15/d5ad227e75bc419d99331f0327c9fba3be6c4257}
+  '@rcffuta/ict-lib@3.3.3':
+    resolution: {integrity: sha512-RIAoX589+HTkKGVnmazB5yRRfh7k2sQdIMyFTMPXy9cHdehlR/MmJvNn/d/VCUMU0WpNtPyFI6rKjY1oJBRybw==, tarball: https://npm.pkg.github.com/download/@rcffuta/ict-lib/3.3.3/50f48cf6a8f07f126d4a6a208c297a95a4f60fcf}
 
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
@@ -2481,7 +2481,7 @@ snapshots:
 
   '@nolyfill/is-core-module@1.0.39': {}
 
-  '@rcffuta/ict-lib@3.1.15':
+  '@rcffuta/ict-lib@3.3.3':
     dependencies:
       '@supabase/supabase-js': 2.90.1
       dotenv: 17.2.3

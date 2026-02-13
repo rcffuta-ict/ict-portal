@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+//@ts-ignore
 import "./globals.css";
 import { TenureInitializer } from "@/components/dashboard/tenure-initializer";
 import { Suspense } from "react";

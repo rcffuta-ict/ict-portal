@@ -42,14 +42,14 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     const handleSignOut = async () => {
         // 1. Clear Zustand store (removes from localStorage too)
         clearUser();
-        
+
         // 2. Call logout server action to clear cookies
         try {
             await fetch('/api/auth/logout', { method: 'POST' });
         } catch (error) {
             console.error('Logout error:', error);
         }
-        
+
         // 3. Redirect to home/login
         router.replace("/login");
     };
@@ -74,14 +74,14 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             <aside
                 className={clsx(
                     "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-rcf-navy text-white transition-transform duration-300 ease-in-out",
-                    "h-full md:h-screen", // Use h-full on mobile, h-screen on desktop
                     "md:relative md:translate-x-0",
                     "safe-top safe-bottom", // Safe area padding for mobile devices
                     isOpen ? "translate-x-0" : "-translate-x-full"
                 )}
                 style={{
-                    // Additional mobile browser height fix
-                    height: isOpen ? '100dvh' : '100vh',
+                    // Use dynamic viewport height for better mobile support
+                    height: '100vh',
+                    maxHeight: '-webkit-fill-available',
                 }}
             >
             {/* 1. Brand / Logo Area */}

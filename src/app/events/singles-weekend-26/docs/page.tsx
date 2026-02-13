@@ -41,14 +41,7 @@ export default function DocsPage() {
                 <p className="text-sm text-slate-500">Event Documentation</p>
               </div>
             </div>
-            
-            {/* <Link
-              href="/events/singles-weekend-26/admin"
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors text-sm font-medium"
-            >
-              <Users className="w-4 h-4" />
-              Admin
-            </Link> */}
+
           </div>
         </div>
       </header>
@@ -83,39 +76,15 @@ export default function DocsPage() {
           </div>
 
           {/* Quick Links */}
-          <div className="grid md:grid-cols-3 gap-4">
-            <Link 
-              href="/events/singles-weekend-26/check-in/self"
-              className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-lg transition-all group"
-            >
-              <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                <UserCheck className="w-6 h-6 text-teal-600" />
-              </div>
-              <h3 className="font-semibold text-slate-900">Self Check-In</h3>
-              <p className="text-sm text-slate-500 mt-1">For attendees to check themselves in</p>
-            </Link>
-            
-            <Link 
-              href="/events/singles-weekend-26/vendor"
-              className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-lg transition-all group"
-            >
-              <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                <ShoppingBag className="w-6 h-6 text-amber-600" />
-              </div>
-              <h3 className="font-semibold text-slate-900">Vendor Scanner</h3>
-              <p className="text-sm text-slate-500 mt-1">For vendors to validate coupons</p>
-            </Link>
-            
-            <Link 
-              href="/events/singles-weekend-26/admin"
-              className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-lg transition-all group"
-            >
-              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+          <div className="grid md:grid-cols-2 gap-4">
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-5">
+              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4">
                 <Users className="w-6 h-6 text-purple-600" />
               </div>
-              <h3 className="font-semibold text-slate-900">Admin Dashboard</h3>
-              <p className="text-sm text-slate-500 mt-1">Manage registrations and stats</p>
-            </Link>
+              <h3 className="font-semibold text-slate-900 mb-2">Admin Access</h3>
+              <p className="text-sm text-slate-500">For admin access, please contact the event committee</p>
+            </div>
           </div>
 
           {/* Overview Section */}
@@ -127,22 +96,22 @@ export default function DocsPage() {
               System Overview
             </h2>
             <p className="text-slate-600 leading-relaxed mb-6">
-              The Agape &apos;26 event system handles attendee check-in and a shopping coupon program. 
+              The Agape &apos;26 event system handles attendee check-in and a shopping coupon program.
               Here&apos;s how the entire flow works from registration to event day.
             </p>
-            
+
             <div className="grid md:grid-cols-2 gap-6">
               <div className="bg-linear-to-br from-teal-50 to-teal-100/50 rounded-xl p-5">
                 <h4 className="font-semibold text-teal-900 mb-2">Check-In System</h4>
                 <p className="text-sm text-teal-700">
-                  Attendees can check themselves in using their phone number or email. 
-                  They&apos;ll be asked if they want a shopping coupon.
+                  Event staff/admins check in attendees using their phone number or email.
+                  Attendees are asked if they want a shopping coupon.
                 </p>
               </div>
               <div className="bg-linear-to-br from-amber-50 to-amber-100/50 rounded-xl p-5">
                 <h4 className="font-semibold text-amber-900 mb-2">Coupon System</h4>
                 <p className="text-sm text-amber-700">
-                  Coupons are one-time use. Vendors scan or enter the code to validate 
+                  Coupons are one-time use. Vendors scan or enter the code to validate
                   and invalidate coupons for shopping redemption.
                 </p>
               </div>
@@ -155,8 +124,17 @@ export default function DocsPage() {
               <div className="w-10 h-10 bg-teal-100 rounded-xl flex items-center justify-center">
                 <UserCheck className="w-5 h-5 text-teal-600" />
               </div>
-              Attendee Check-In Flow
+              Attendee Check-In Process
             </h2>
+
+            <div className="bg-blue-50 rounded-xl p-4 mb-6 border border-blue-200">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Check-in is managed by event committee. Attendees will be checked in by the team at the event entrance.
+                </p>
+              </div>
+            </div>
 
             <div className="space-y-6">
               {/* Step 1 */}
@@ -166,13 +144,13 @@ export default function DocsPage() {
                   <div className="w-0.5 h-full bg-teal-200 mt-2" />
                 </div>
                 <div className="pb-8">
-                  <h3 className="font-semibold text-slate-900 mb-2">Access Self Check-In</h3>
+                  <h3 className="font-semibold text-slate-900 mb-2">Admin Access Check-In Portal</h3>
                   <p className="text-slate-600 text-sm mb-3">
-                    Attendees visit the self check-in page by scanning a QR code or using the direct link.
+                    Event staff/admins access the check-in portal (admin dashboard) to manage attendee check-ins.
                   </p>
                   <div className="flex items-center gap-2 text-sm">
                     <Smartphone className="w-4 h-4 text-slate-400" />
-                    <code className="bg-slate-100 px-2 py-1 rounded text-xs">/events/singles-weekend-26/check-in/self</code>
+                    <code className="bg-slate-100 px-2 py-1 rounded text-xs">/events/singles-weekend-26/admin</code>
                   </div>
                 </div>
               </div>
@@ -184,9 +162,9 @@ export default function DocsPage() {
                   <div className="w-0.5 h-full bg-teal-200 mt-2" />
                 </div>
                 <div className="pb-8">
-                  <h3 className="font-semibold text-slate-900 mb-2">Enter Identification</h3>
+                  <h3 className="font-semibold text-slate-900 mb-2">Verify Attendee Identity</h3>
                   <p className="text-slate-600 text-sm mb-3">
-                    Attendee enters their phone number or email used during registration.
+                    Staff enters the attendee's phone number or email to look up their registration.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs">
@@ -258,7 +236,7 @@ export default function DocsPage() {
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-800">
-                  <strong>Important:</strong> Each coupon can only be used <strong>once</strong>. 
+                  <strong>Important:</strong> Each coupon can only be used <strong>once</strong>.
                   Once a vendor invalidates a coupon, it cannot be used again.
                 </p>
               </div>
@@ -412,102 +390,28 @@ export default function DocsPage() {
             </div>
           </section>
 
-          {/* Admin Features */}
+          {/* Event Management */}
           <section className="bg-white rounded-2xl border border-slate-200 p-8">
             <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
                 <Users className="w-5 h-5 text-blue-600" />
               </div>
-              Admin Dashboard Features
+              Event Management
             </h2>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="bg-slate-50 rounded-xl p-5">
-                <h4 className="font-semibold text-slate-900 mb-3">📊 Overview Tab</h4>
-                <ul className="text-sm text-slate-600 space-y-2">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Total registrations and check-in stats
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Gender breakdown (Brothers/Sisters)
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Coupon statistics (issued, active, redeemed)
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Level breakdown chart
-                  </li>
-                </ul>
-              </div>
-              
-              <div className="bg-slate-50 rounded-xl p-5">
-                <h4 className="font-semibold text-slate-900 mb-3">🔗 Quick Links Tab</h4>
-                <ul className="text-sm text-slate-600 space-y-2">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Copy links for all event pages
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Copy with share message for WhatsApp
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Pre-formatted WhatsApp broadcast template
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Direct links to open each page
-                  </li>
-                </ul>
-              </div>
-              
-              <div className="bg-slate-50 rounded-xl p-5">
-                <h4 className="font-semibold text-slate-900 mb-3">👥 Attendees Tab</h4>
-                <ul className="text-sm text-slate-600 space-y-2">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Full list of all registrants
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Search by name, email, or phone
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Check-in status and time
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Coupon code and usage status
-                  </li>
-                </ul>
-              </div>
-              
-              <div className="bg-slate-50 rounded-xl p-5">
-                <h4 className="font-semibold text-slate-900 mb-3">📥 Export Feature</h4>
-                <ul className="text-sm text-slate-600 space-y-2">
-                  <li className="flex items-start gap-2">
-                    <Download className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Export all data to CSV
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Includes all registration details
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Check-in times and coupon status
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                    Ready for Excel/Google Sheets
-                  </li>
-                </ul>
+            <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm text-blue-800 font-medium mb-2">
+                    Need Admin Access?
+                  </p>
+                  <p className="text-sm text-blue-700">
+                    If you need access to event management features such as viewing registrations,
+                    check-in statistics, or exporting attendee data, please reach out to the event committee.
+                    The committee will provide you with the necessary access and guidance.
+                  </p>
+                </div>
               </div>
             </div>
           </section>
@@ -528,9 +432,9 @@ export default function DocsPage() {
                   <ArrowRight className="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" />
                 </summary>
                 <p className="text-slate-600 text-sm mt-3">
-                  They should try both their phone number and email. The system handles multiple phone formats 
-                  (08012345678, +2348012345678, etc.). If still not found, check the admin dashboard to verify 
-                  their registration exists.
+                  They should try both their phone number and email. The system handles multiple phone formats
+                  (08012345678, +2348012345678, etc.). If still not found, please contact the event committee
+                  to verify the registration.
                 </p>
               </details>
 
@@ -540,7 +444,7 @@ export default function DocsPage() {
                   <ArrowRight className="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" />
                 </summary>
                 <p className="text-slate-600 text-sm mt-3">
-                  Yes, but they&apos;ll see a &quot;Welcome Back&quot; screen showing they&apos;re already checked in. 
+                  Yes, but they&apos;ll see a &quot;Welcome Back&quot; screen showing they&apos;re already checked in.
                   Their coupon (if they have one) will still be displayed with its current status.
                 </p>
               </details>
@@ -551,7 +455,7 @@ export default function DocsPage() {
                   <ArrowRight className="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" />
                 </summary>
                 <p className="text-slate-600 text-sm mt-3">
-                  The vendor can switch to manual entry mode and type in the coupon code directly. 
+                  The vendor can switch to manual entry mode and type in the coupon code directly.
                   The system does case-insensitive matching so AGAPE26-ABC123 and agape26-abc123 both work.
                 </p>
               </details>
@@ -562,8 +466,8 @@ export default function DocsPage() {
                   <ArrowRight className="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" />
                 </summary>
                 <p className="text-slate-600 text-sm mt-3">
-                  No, once a coupon is invalidated it cannot be used again. This is by design to prevent 
-                  fraud. If there&apos;s an error, an admin would need to manually update the database.
+                  No, once a coupon is invalidated it cannot be used again. This is by design to prevent
+                  fraud. If there&apos;s an error, please contact the event committee for assistance.
                 </p>
               </details>
 
@@ -573,7 +477,7 @@ export default function DocsPage() {
                   <ArrowRight className="w-5 h-5 text-slate-400 group-open:rotate-90 transition-transform" />
                 </summary>
                 <p className="text-slate-600 text-sm mt-3">
-                  The format is <code className="bg-white px-1 rounded">AGAPE26-XXXXXXXX</code> where AGAPE26 
+                  The format is <code className="bg-white px-1 rounded">AGAPE26-XXXXXXXX</code> where AGAPE26
                   identifies the event and XXXXXXXX is a random 8-character alphanumeric code unique to each attendee.
                 </p>
               </details>
