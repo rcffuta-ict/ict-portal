@@ -17,7 +17,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Public routes that don't need authentication
-  const publicRoutes = ['/', '/about', '/lo-app', '/events/singles-weekend-26', '/events/singles-weekend-26/docs', '/events/singles-weekend-26/check-in/self']
+  const publicRoutes = ['/', '/forgot-password', '/about', '/lo-app', '/events/singles-weekend-26', '/events/singles-weekend-26/docs', '/events/singles-weekend-26/check-in/self']
   const isPublicRoute = publicRoutes.includes(pathname)
 
   // Handle authentication requirements
