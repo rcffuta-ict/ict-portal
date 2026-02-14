@@ -1,6 +1,6 @@
 'use server'
 
-import { ict, ictAdmin } from "@/lib/ict";
+import { ictAdmin } from "@/lib/ict";
 
 const EVENT_SLUG = "singles-weekend-26";
 
@@ -10,44 +10,44 @@ const EVENT_SLUG = "singles-weekend-26";
 export async function findRegistrationByIdentifier(identifier: string) {
   try {
     // Get event first
-    const { data: event, error: eventError } = await ict.supabase
+    const { data: event, error: eventError } = await ictAdmin.supabase
       .from('events')
       .select('id')
       .eq('slug', EVENT_SLUG)
       .single();
 
     if (eventError || !event) {
-      return { 
-        success: false, 
-        error: "Event not found." 
+      return {
+        success: false,
+        error: "Event not found."
       };
     }
 
     // Try to find by phone or email
     const isEmail = identifier.includes('@');
-    
+
     let registration = null;
     let regError = null;
 
     if (isEmail) {
       // Search by email
-      const result = await ict.supabase
+      const result = await ictAdmin.supabase
         .from('event_registrations')
         .select('id, first_name, last_name, email, phone_number, gender, checked_in_at, coupon_code, coupon_active, coupon_used_at')
         .eq('event_id', event.id)
         .eq('email', identifier)
         .single();
-      
+
       registration = result.data;
       regError = result.error;
     } else {
       // Search by phone - handle multiple formats
       // Normalize the input phone number
       const normalizedPhone = identifier.replace(/\s+/g, '').replace(/-/g, '');
-      
+
       // Generate possible phone formats to search
       const phoneVariants: string[] = [];
-      
+
       if (normalizedPhone.startsWith('+234')) {
         // Input: +2348012345678 -> also try 08012345678
         phoneVariants.push(normalizedPhone);
@@ -71,22 +71,22 @@ export async function findRegistrationByIdentifier(identifier: string) {
       }
 
       // Search for any of the phone variants
-      const result = await ict.supabase
+      const result = await ictAdmin.supabase
         .from('event_registrations')
         .select('id, first_name, last_name, email, phone_number, gender, checked_in_at, coupon_code, coupon_active, coupon_used_at')
         .eq('event_id', event.id)
         .in('phone_number', phoneVariants)
         .limit(1)
         .single();
-      
+
       registration = result.data;
       regError = result.error;
     }
 
     if (regError || !registration) {
-      return { 
-        success: false, 
-        error: isEmail 
+      return {
+        success: false,
+        error: isEmail
           ? "No registration found with this email. Please check and try again."
           : "No registration found with this phone number. Please check and try again."
       };
@@ -129,9 +129,9 @@ export async function findRegistrationByIdentifier(identifier: string) {
 
   } catch (error) {
     console.error('Find registration error:', error);
-    return { 
-      success: false, 
-      error: "An unexpected error occurred. Please try again." 
+    return {
+      success: false,
+      error: "An unexpected error occurred. Please try again."
     };
   }
 }
@@ -142,23 +142,23 @@ export async function findRegistrationByIdentifier(identifier: string) {
  */
 export async function verifyRegistration(registrationId: string) {
   try {
-    const { data: registration, error: regError } = await ict.supabase
+    const { data: registration, error: regError } = await ictAdmin.supabase
       .from('event_registrations')
       .select('*, events(*)')
       .eq('id', registrationId)
       .single();
 
     if (regError || !registration) {
-      return { 
-        success: false, 
-        error: "Registration not found. Please ensure your QR code is valid." 
+      return {
+        success: false,
+        error: "Registration not found. Please ensure your QR code is valid."
       };
     }
 
     if (registration.events?.slug !== EVENT_SLUG) {
-      return { 
-        success: false, 
-        error: "Invalid QR code for this event." 
+      return {
+        success: false,
+        error: "Invalid QR code for this event."
       };
     }
 
@@ -196,9 +196,9 @@ export async function verifyRegistration(registrationId: string) {
 
   } catch (error) {
     console.error('Verification error:', error);
-    return { 
-      success: false, 
-      error: "An unexpected error occurred. Please try again." 
+    return {
+      success: false,
+      error: "An unexpected error occurred. Please try again."
     };
   }
 }
@@ -208,23 +208,23 @@ export async function verifyRegistration(registrationId: string) {
  */
 export async function completeCheckIn(registrationId: string, wantsCoupon: boolean) {
   try {
-    const { data: registration, error: regError } = await ict.supabase
+    const { data: registration, error: regError } = await ictAdmin.supabase
       .from('event_registrations')
       .select('*, events(*)')
       .eq('id', registrationId)
       .single();
 
     if (regError || !registration) {
-      return { 
-        success: false, 
-        error: "Registration not found." 
+      return {
+        success: false,
+        error: "Registration not found."
       };
     }
 
     if (registration.events?.slug !== EVENT_SLUG) {
-      return { 
-        success: false, 
-        error: "Invalid registration for this event." 
+      return {
+        success: false,
+        error: "Invalid registration for this event."
       };
     }
 
@@ -248,7 +248,7 @@ export async function completeCheckIn(registrationId: string, wantsCoupon: boole
 
     // Process check-in
     const checkInTime = new Date().toISOString();
-    
+
     // Generate coupon code ONLY if they want shopping
     // coupon_active = true means the coupon is valid and not yet used
     let couponCode = registration.coupon_code || null;
@@ -269,15 +269,15 @@ export async function completeCheckIn(registrationId: string, wantsCoupon: boole
       updateData.coupon_active = true;
     }
 
-    const { error: updateError } = await ict.supabase
+    const { error: updateError } = await ictAdmin.supabase
       .from('event_registrations')
       .update(updateData)
       .eq('id', registrationId);
 
     if (updateError) {
-      return { 
-        success: false, 
-        error: "Failed to process check-in. Please try again." 
+      return {
+        success: false,
+        error: "Failed to process check-in. Please try again."
       };
     }
 
@@ -295,9 +295,9 @@ export async function completeCheckIn(registrationId: string, wantsCoupon: boole
 
   } catch (error) {
     console.error('Check-in error:', error);
-    return { 
-      success: false, 
-      error: "An unexpected error occurred. Please contact support." 
+    return {
+      success: false,
+      error: "An unexpected error occurred. Please contact support."
     };
   }
 }
@@ -309,24 +309,24 @@ export async function completeCheckIn(registrationId: string, wantsCoupon: boole
 export async function processCheckIn(registrationId: string) {
   try {
     // 1. Fetch the registration
-    const { data: registration, error: regError } = await ict.supabase
+    const { data: registration, error: regError } = await ictAdmin.supabase
       .from('event_registrations')
       .select('*, events(*)')
       .eq('id', registrationId)
       .single();
 
     if (regError || !registration) {
-      return { 
-        success: false, 
-        error: "Registration not found. Please ensure your QR code is valid." 
+      return {
+        success: false,
+        error: "Registration not found. Please ensure your QR code is valid."
       };
     }
 
     // 2. Verify this is for the correct event
     if (registration.events?.slug !== EVENT_SLUG) {
-      return { 
-        success: false, 
-        error: "Invalid QR code for this event." 
+      return {
+        success: false,
+        error: "Invalid QR code for this event."
       };
     }
 
@@ -348,16 +348,16 @@ export async function processCheckIn(registrationId: string) {
 
     // 4. Process check-in
     const checkInTime = new Date().toISOString();
-    
+
     // 5. Generate coupon code if not exists
     let couponCode = registration.coupon_code;
     if (!couponCode) {
       couponCode = `AG26-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
     }
 
-    const { error: updateError } = await ict.supabase
+    const { error: updateError } = await ictAdmin.supabase
       .from('event_registrations')
-      .update({ 
+      .update({
         checked_in_at: checkInTime,
         coupon_active: true,
         coupon_code: couponCode
@@ -365,9 +365,9 @@ export async function processCheckIn(registrationId: string) {
       .eq('id', registrationId);
 
     if (updateError) {
-      return { 
-        success: false, 
-        error: "Failed to process check-in. Please try again." 
+      return {
+        success: false,
+        error: "Failed to process check-in. Please try again."
       };
     }
 
@@ -383,9 +383,9 @@ export async function processCheckIn(registrationId: string) {
 
   } catch (error) {
     console.error('Check-in error:', error);
-    return { 
-      success: false, 
-      error: "An unexpected error occurred. Please contact support." 
+    return {
+      success: false,
+      error: "An unexpected error occurred. Please contact support."
     };
   }
 }
@@ -397,7 +397,7 @@ export async function processCheckIn(registrationId: string) {
 export async function validateCoupon(couponCode: string) {
   try {
     // Get event
-    const { data: event } = await ict.supabase
+    const { data: event } = await ictAdmin.supabase
       .from('events')
       .select('id, config')
       .eq('slug', EVENT_SLUG)
@@ -409,7 +409,7 @@ export async function validateCoupon(couponCode: string) {
 
     // Normalize the input - trim spaces
     const normalizedInput = couponCode.trim();
-    
+
     if (!normalizedInput || normalizedInput.length < 4) {
       return { success: false, error: "Invalid coupon code format" };
     }
@@ -421,7 +421,7 @@ export async function validateCoupon(couponCode: string) {
 
     // Build search variants
     const searchVariants: string[] = [normalizedInput];
-    
+
     // If input has dash, also try without
     if (normalizedInput.includes('-')) {
       searchVariants.push(normalizedInput.replace(/-/g, ''));
@@ -435,13 +435,13 @@ export async function validateCoupon(couponCode: string) {
 
     // Search for any variant (case-insensitive)
     for (const variant of searchVariants) {
-      const result = await ict.supabase
+      const result = await ictAdmin.supabase
         .from('event_registrations')
         .select('*')
         .eq('event_id', event.id)
         .ilike('coupon_code', variant)
         .maybeSingle();
-      
+
       if (result.data) {
         registration = result.data;
         break;
@@ -462,7 +462,7 @@ if (!registration) {
   return { success: false, error: "Invalid coupon code" };
 }
 
-    
+
 
     // if (regError || !registration) {
     //   return { success: false, error: "Invalid coupon code" };
@@ -470,8 +470,8 @@ if (!registration) {
 
     // Check if coupon is still active (not yet used)
     if (!registration.coupon_active) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: "Coupon has already been used"
       };
     }
@@ -500,7 +500,7 @@ export async function redeemCoupon(registrationId: string) {
     // This handles the "already redeemed" check at the database level.
     const { data: updatedRow, error } = await ictAdmin.supabase
       .from('event_registrations')
-      .update({ 
+      .update({
         coupon_active: false,
         coupon_used_at: new Date().toISOString()
       })
@@ -508,7 +508,7 @@ export async function redeemCoupon(registrationId: string) {
       .is('coupon_used_at', null) // Only update if not already redeemed
       .select('first_name, last_name, coupon_code')
       .maybeSingle();
-    
+
 
 
     if (error) {
@@ -516,16 +516,16 @@ export async function redeemCoupon(registrationId: string) {
       return { success: false, error: "Database error occurred." };
     }
 
-    // If updatedRow is null, it means the .eq() or .is() filters failed 
+    // If updatedRow is null, it means the .eq() or .is() filters failed
     // (i.e., ID is wrong OR it was already redeemed)
     if (!updatedRow) {
-      return { 
-        success: false, 
-        error: "Coupon is invalid or has already been redeemed." 
+      return {
+        success: false,
+        error: "Coupon is invalid or has already been redeemed."
       };
     }
 
-    return { 
+    return {
       success: true,
       data: {
         participantName: `${updatedRow.first_name} ${updatedRow.last_name}`,

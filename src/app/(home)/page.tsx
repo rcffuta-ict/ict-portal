@@ -23,9 +23,9 @@ export default function ComingSoon() {
 
     if (!mounted) {
         return (
-            <Preloader 
-                title="RCF FUTA Portal" 
-                subtitle="Loading your experience..." 
+            <Preloader
+                title="RCF FUTA Portal"
+                subtitle="Loading your experience..."
             />
         );
     }
@@ -57,12 +57,12 @@ export default function ComingSoon() {
                                 <User className="h-4 w-4" />
                                 Welcome Back, {profile?.firstName || 'Friend'}!
                             </div>
-                            
+
                             <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
                                 Portal Under Construction
                             </h1>
                             <p className="text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
-                                We&apos;re building an amazing new experience for RCF FUTA. 
+                                We&apos;re building an amazing new experience for RCF FUTA.
                                 While we work on the full portal, you can access your dashboard and available features.
                             </p>
                         </div>
@@ -93,13 +93,13 @@ export default function ComingSoon() {
                                     Events
                                 </Link>
 
-                                <Link
+                                {/* <Link
                                     href="/api/auth/logout"
                                     className="group flex items-center justify-center gap-2 bg-gray-100 text-gray-700 border-2 border-gray-300 px-6 py-4 rounded-xl font-medium text-base hover:bg-red-500 hover:text-white hover:border-red-500 transition-all hover:-translate-y-1 hover:shadow-lg"
                                 >
                                     <LogOut className="h-4 w-4 group-hover:scale-110 transition-transform" />
                                     Logout
-                                </Link>
+                                </Link> */}
                             </div>
                         </div>
 
@@ -125,12 +125,12 @@ export default function ComingSoon() {
                                 <Sparkles className="h-4 w-4" />
                                 Coming Soon
                             </div>
-                            
+
                             <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
                                 RCF FUTA Portal
                             </h1>
                             <p className="text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
-                                We&apos;re building an amazing digital experience for the RCF FUTA community. 
+                                We&apos;re building an amazing digital experience for the RCF FUTA community.
                                 Stay tuned for updates!
                             </p>
                         </div>
@@ -141,7 +141,7 @@ export default function ComingSoon() {
                                 Join Us Early
                             </h2>
                             <p className="text-gray-600 mb-6">
-                                Be among the first to experience the new RCF FUTA digital portal. 
+                                Be among the first to experience the new RCF FUTA digital portal.
                                 Register now to get early access when we launch.
                             </p>
 

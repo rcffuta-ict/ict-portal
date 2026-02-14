@@ -189,7 +189,7 @@ export default function OverviewTab({
                       onClick={() =>
                         copyToClipboard(
                           link.id,
-                          `${link.shareText}\n${window.location.origin}${link.path}`
+                          `${window.location.origin}${link.path}`
                         )
                       }
                       className="p-1.5 sm:p-2 rounded-lg hover:bg-white/50 transition-colors"
