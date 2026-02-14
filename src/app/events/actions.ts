@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 
 function isUserAdmin(email: string | null | undefined): boolean {
     if (!email) return false;
-    const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS || "";
+    const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS || process.env.ADMIN_EMAILS || "";
     // Handle comma-separated list
     const allowedEmails = adminEmails.split(",").map(e => e.trim().toLowerCase());
     return allowedEmails.includes(email.toLowerCase());
@@ -114,11 +114,13 @@ export async function createEvent(data: {
   is_active: boolean;
   is_recurring: boolean;
   is_exclusive: boolean;
-}) {
+
+}, email: string) {
   try {
     // Check authentication and authorization
-    const user = await getCurrentUser();
-    if (!user || !user.profile?.email || !isUserAdmin(user.profile.email)) {
+    // const user = await getCurrentUser();
+    // console.log("User:", user);
+    if (!email || !isUserAdmin(email)) {
         return { success: false, error: "Unauthorized: Admin access required" };
     }
 

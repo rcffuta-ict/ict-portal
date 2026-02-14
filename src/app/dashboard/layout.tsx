@@ -39,14 +39,18 @@ export default function DashboardLayout({
     }, [isMobileMenuOpen]);
 
     // Show preloader while hydrating or if no user data
+    // But Render StoreInitializer in the background if mounted
     if (!mounted || (!user && !userId)) {
         return (
-            <Preloader 
-                title="Dashboard Loading..." 
-                subtitle="Preparing your workspace"
-                showUserIcon={true}
-                variant="default"
-            />
+            <>
+                {mounted && <StoreInitializer />}
+                <Preloader
+                    title="Dashboard Loading..."
+                    subtitle="Preparing your workspace"
+                    showUserIcon={true}
+                    variant="default"
+                />
+            </>
         );
     }
 
@@ -63,13 +67,13 @@ export default function DashboardLayout({
             <StoreInitializer />
 
             {/* Sidebar - responsive */}
-            <Sidebar 
-                isOpen={isMobileMenuOpen} 
-                onClose={() => setIsMobileMenuOpen(false)} 
+            <Sidebar
+                isOpen={isMobileMenuOpen}
+                onClose={() => setIsMobileMenuOpen(false)}
             />
 
             <div className="flex flex-1 flex-col min-h-0">
-                <MobileHeader 
+                <MobileHeader
                     onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                     isMenuOpen={isMobileMenuOpen}
                 />

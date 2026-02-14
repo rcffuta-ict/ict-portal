@@ -5,7 +5,9 @@ import {
     Crown,
     SquaresUnite,
     Heart,
-    Calendar
+    Calendar,
+    MessageCircle,
+    Info
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -42,6 +44,13 @@ export const baseSidebarItems: SidebarItem[] = [
         icon: Calendar,
         color: "bg-purple-500",
         description: "View all upcoming and past events.",
+    },
+    {
+        name: "Lo! App",
+        href: "/lo-app",
+        icon: MessageCircle,
+        color: "bg-pink-600",
+        description: "Ask questions, star interesting topics & join the discussion.",
     },
 ];
 
@@ -135,14 +144,14 @@ export const adminSidebarItems: SidebarItem[] = [
  */
 export function getSidebarItems(isAdmin: boolean): SidebarItem[] {
     const items = [...baseSidebarItems];
-    
+
     // Add event items
     items.push(...eventSidebarItems);
-    
+
     if (isAdmin) {
         items.push(...adminSidebarItems);
     }
-    
+
     return items;
 }
 
@@ -160,9 +169,9 @@ export function getEventSidebarItems(): SidebarItem[] {
  */
 export function isUserAdmin(userEmail: string | null | undefined): boolean {
     if (!userEmail) return false;
-    
+
     const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS || "";
     const allowedEmails = adminEmails.split(",").map(e => e.trim().toLowerCase());
-    
+
     return allowedEmails.includes(userEmail.toLowerCase());
 }

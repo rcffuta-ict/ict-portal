@@ -34,7 +34,7 @@ export default function LoginPage() {
     useEffect(() => {
         // Small delay to allow Zustand persist to hydrate
         const timer = setTimeout(() => {
-            if (user && !isLoading && !hasRedirected.current) {
+            if (user && user.profile && !isLoading && !hasRedirected.current) {
                 const returnUrl = getReturnUrl();
                 // console.log("Already logged in, redirecting to:", returnUrl);
                 hasRedirected.current = true;

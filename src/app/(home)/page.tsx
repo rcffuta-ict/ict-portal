@@ -3,10 +3,11 @@
 
 import { Logo } from "@/components/ui/logo";
 import { Preloader } from "@/components/ui/preloader";
-import { LogInIcon, Sparkles, UserPlus, User, Calendar, Settings, LogOut } from "lucide-react";
+import { LogInIcon, Sparkles, UserPlus, User, Calendar, Settings, LogOut, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useEffect, useState } from "react";
+import { LoLogo } from "@/components/lo-app/LoLogo";
 
 export default function ComingSoon() {
     const { user, userId } = useProfileStore();
@@ -91,6 +92,13 @@ export default function ComingSoon() {
                                 >
                                     <Calendar className="h-5 w-5 group-hover:scale-110 transition-transform" />
                                     Events
+                                </Link>
+
+                                <Link
+                                    href="/lo-app"
+                                    className="group flex items-center justify-center gap-2 bg-white text-pink-600 border-2 border-pink-600 px-8 py-4 rounded-xl font-bold text-base hover:bg-pink-600 hover:text-white transition-all hover:-translate-y-1 hover:shadow-lg"
+                                >
+                                    <LoLogo/>
                                 </Link>
 
                                 {/* <Link

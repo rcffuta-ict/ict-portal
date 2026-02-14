@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar,
   Clock,
@@ -15,6 +15,7 @@ import {
   Plus,
   Repeat,
   Lock,
+  ArrowRight,
 } from "lucide-react";
 import { getEvents } from "./actions";
 import { CompactPreloader } from "@/components/ui/preloader";
@@ -23,6 +24,9 @@ import { format, isAfter, isBefore, startOfDay } from "date-fns";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { isUserAdmin } from "@/config/sidebar-items";
 import { EventModal } from "@/components/events/EventModal";
+import { Badge } from "@/components/ui/badge";
+import { Logo } from "@/components/ui/logo";
+import { EventCard } from "@/components/events/EventCard";
 
 export interface Event {
   id: string;
@@ -99,9 +103,6 @@ export default function EventsPage() {
       case "upcoming":
         return isAfter(eventDate, today) || eventDate.getTime() === today.getTime();
       case "past":
-        // Recurring events are arguably never "past" in the same way, but let's stick to date logic or user preference.
-        // If it's recurring, maybe show it in upcoming?
-        // For now standard date logic.
         return isBefore(eventDate, today);
       case "active":
         return event.is_active;
@@ -120,20 +121,18 @@ export default function EventsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-blue-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <CompactPreloader
-            title="Loading Events..."
-            subtitle="Fetching upcoming events and details"
-            showUserIcon={false}
-          />
-        </div>
+      <div className="min-h-screen bg-white">
+        <CompactPreloader
+          title="Loading Events..."
+          subtitle="Fetching upcoming events and details"
+          showUserIcon={false}
+        />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-blue-50">
+    <div className="min-h-screen bg-slate-50/50">
       <EventModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -141,118 +140,159 @@ export default function EventsPage() {
         event={editingEvent}
       />
 
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-linear-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                <Calendar className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-slate-900">Events</h1>
-                <p className="text-slate-600">Discover upcoming events and activities</p>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4 text-sm text-slate-600">
-              <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-1">
-                    <CalendarDays className="h-4 w-4" />
-                    <span>{events.length} Total</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Sparkles className="h-4 w-4 text-blue-500" />
-                    <span className="text-blue-600 font-medium">{upcomingCount} Upcoming</span>
-                  </div>
-              </div>
+      {/* Hero Section */}
+      <section className="relative pt-20 pb-16 overflow-hidden">
+        <div className="absolute inset-0 bg-slate-900 overflow-hidden pointer-events-none">
+          <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-blue-600/20 blur-[120px]" />
+          <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-600/20 blur-[120px]" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full opacity-10"
+               style={{backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)', backgroundSize: '40px 40px'}} />
+        </div>
 
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12"
+          >
+            <Logo variant="white" asLink width={160} height={60} />
+          </motion.div>
+
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+            <div className="max-w-2xl">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-6"
+              >
+                <Sparkles className="w-4 h-4" />
+                Experience the Fellowship
+              </motion.div>
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+                className="text-4xl md:text-6xl font-black text-white mb-6 tracking-tight"
+              >
+                RCF FUTA <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-400 to-indigo-400">Events</span>
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="text-lg text-slate-400 leading-relaxed"
+              >
+                Join us in our journey of spiritual growth and community building. From weekly fellowship to grand conventions, stay updated with all our activities.
+              </motion.p>
+            </div>
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+              className="flex flex-wrap gap-4"
+            >
+              <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-4 rounded-2xl">
+                <div className="text-3xl font-bold text-white">{events.length}</div>
+                <div className="text-slate-400 text-xs font-medium uppercase tracking-wider">Total Events</div>
+              </div>
+              <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-4 rounded-2xl">
+                <div className="text-3xl font-bold text-blue-400">{upcomingCount}</div>
+                <div className="text-slate-400 text-xs font-medium uppercase tracking-wider">Upcoming</div>
+              </div>
               {isAdmin && (
                 <button
                     onClick={handleCreateClick}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors shadow-sm ml-4"
+                    className="flex items-center gap-2 px-6 h-18 bg-blue-600 text-white rounded-2xl hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/20 group"
                 >
-                    <Plus className="h-4 w-4" />
-                    Create Event
+                    <Plus className="h-5 w-5 group-hover:rotate-90 transition-transform" />
+                    <span className="font-bold">Create New Event</span>
                 </button>
               )}
-            </div>
+            </motion.div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Search and Filters */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
-          {/* Search */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Controls */}
+        <div className="sticky top-4 z-30 bg-white/80 backdrop-blur-xl border border-slate-200 rounded-3xl p-4 shadow-xl shadow-slate-200/50 mb-12 flex flex-col md:flex-row gap-4 items-center">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search events..."
+              placeholder="Search by title, description or slug..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm"
+              className="w-full pl-12 pr-4 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 placeholder:text-slate-400 font-medium"
             />
           </div>
 
-          {/* Filter Buttons */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
-            <Filter className="h-5 w-5 text-slate-500 shrink-0" />
+          <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-2xl self-stretch md:self-auto overflow-x-auto no-scrollbar">
             {[
-              { key: "all", label: "All", count: events.length },
-              { key: "upcoming", label: "Upcoming", count: upcomingCount },
-              { key: "active", label: "Active", count: activeCount },
-              { key: "past", label: "Past", count: events.length - upcomingCount },
-            ].map((filterOption) => (
+              { key: "all", label: "All Events" },
+              { key: "upcoming", label: "Upcoming" },
+              { key: "active", label: "Active" },
+              { key: "past", label: "Past" },
+            ].map((option) => (
               <button
-                key={filterOption.key}
-                onClick={() => setFilter(filterOption.key as FilterType)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                  filter === filterOption.key
-                    ? "bg-blue-600 text-white shadow-lg"
-                    : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"
+                key={option.key}
+                onClick={() => setFilter(option.key as FilterType)}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+                  filter === option.key
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                {filterOption.label}
-                <span className="ml-1 opacity-75">({filterOption.count})</span>
+                {option.label}
               </button>
             ))}
           </div>
         </div>
 
         {/* Error State */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-8">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                <ExternalLink className="h-4 w-4 text-red-600" />
-              </div>
-              <div>
-                <h3 className="text-red-900 font-semibold">Error Loading Events</h3>
-                <p className="text-red-700 text-sm">{error}</p>
-              </div>
-            </div>
-            <button
-              onClick={loadEvents}
-              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-red-50 border border-red-200 rounded-2xl p-6 mb-12 overflow-hidden"
             >
-              Try Again
-            </button>
-          </div>
-        )}
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center shrink-0">
+                  <AlertCircle className="h-6 w-6 text-red-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-red-900 font-bold">Failed to load events</h3>
+                  <p className="text-red-700 text-sm opacity-80">{error}</p>
+                </div>
+                <button
+                  onClick={loadEvents}
+                  className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors text-sm font-bold"
+                >
+                  Retry Action
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Events Grid */}
+        {/* Grid */}
         {filteredEvents.length === 0 ? (
-          <div className="text-center py-16">
-            <Calendar className="h-16 w-16 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-slate-900 mb-2">
-              {search || filter !== "all" ? "No events found" : "No events available"}
-            </h3>
-            <p className="text-slate-500 max-w-md mx-auto">
-              {search || filter !== "all"
-                ? "Try adjusting your search or filter criteria."
-                : "Check back later for upcoming events and activities."
-              }
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-24 bg-white rounded-4xl border border-slate-200 shadow-sm"
+          >
+            <div className="w-24 h-24 bg-slate-50 rounded-4xl flex items-center justify-center mx-auto mb-6">
+              <Calendar className="h-12 w-12 text-slate-300" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 mb-4">No events found</h3>
+            <p className="text-slate-500 max-w-sm mx-auto mb-8 font-medium">
+              We couldn&apos;t find any events matching your current filters or search query.
             </p>
             {(search || filter !== "all") && (
               <button
@@ -260,191 +300,34 @@ export default function EventsPage() {
                   setSearch("");
                   setFilter("all");
                 }}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-8 py-3 bg-slate-900 text-white rounded-2xl hover:bg-slate-800 transition-colors font-bold"
               >
-                Clear Filters
+                Reset all filters
               </button>
             )}
-          </div>
+          </motion.div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredEvents.map((event, index) => (
-              <motion.div
-                key={event.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: index * 0.1 }}
-              >
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group h-full flex flex-col">
-                  {/* Header */}
-                  <div className="p-6 pb-4 flex-1">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                          event.is_active ? "bg-blue-100 text-blue-600" :
-                           "bg-slate-100 text-slate-500"
-                        }`}>
-                          <Calendar className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
-                            {event.title}
-                          </h3>
-                          <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">
-                            {event.slug}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-1 items-end">
-                        {event.is_active && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-medium rounded-full">
-                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                            Active
-                            </span>
-                        )}
-                        {event.is_exclusive && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-medium rounded-full">
-                            <Lock className="w-3 h-3" />
-                            Exclusive
-                            </span>
-                        )}
-                         {event.is_recurring && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-medium rounded-full">
-                            <Repeat className="w-3 h-3" />
-                            Recurring
-                            </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Description */}
-                    {event.description && (
-                      <p className="text-slate-600 text-sm line-clamp-3 mb-4">
-                        {event.description}
-                      </p>
-                    )}
-
-                    {/* Event Info */}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-slate-500">
-                        <Calendar className="h-4 w-4" />
-                        <span>{format(new Date(event.date), "MMMM do, yyyy")}</span>
-                         {/* Status calculation logic could be reused here if needed */}
-                      </div>
-
-                      <div className="flex items-center gap-2 text-sm text-slate-500">
-                        <Clock className="h-4 w-4" />
-                        <span>Created {format(new Date(event.created_at), "MMM do, yyyy")}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 mt-auto flex items-center justify-between">
-                    <Link
-                      href={`/events/${event.slug}`}
-                      className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm group-hover:translate-x-1 transition-all"
-                    >
-                      <Eye className="h-4 w-4" />
-                      View Details
-                      <ChevronRight className="h-4 w-4" />
-                    </Link>
-
-                    {isAdmin && (
-                        <button
-                            onClick={() => handleEditClick(event)}
-                            className="text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg transition-colors"
-                        >
-                            Edit
-                        </button>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <AnimatePresence mode="popLayout">
+              {filteredEvents.map((event, index) => (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  index={index}
+                  isAdmin={isAdmin}
+                  onEdit={handleEditClick}
+                />
+              ))}
+            </AnimatePresence>
           </div>
         )}
       </div>
+
+      {/* Search and Alert Icons are missing imports or definitions, fixing below */}
     </div>
   );
 }
 
-// Event Card Component
-function EventCard({ event }: { event: Event }) {
-  const eventDate = new Date(event.date);
-  const today = startOfDay(new Date());
-  const isUpcoming = isAfter(eventDate, today) || eventDate.getTime() === today.getTime();
-  const isPast = isBefore(eventDate, today);
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group">
-      {/* Header */}
-      <div className="p-6 pb-4">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-              isUpcoming ? "bg-blue-100 text-blue-600" :
-              isPast ? "bg-slate-100 text-slate-500" : "bg-green-100 text-green-600"
-            }`}>
-              <Calendar className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                {event.title}
-              </h3>
-              <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">
-                {event.slug}
-              </p>
-            </div>
-          </div>
-
-          {event.is_active && (
-            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              Active
-            </span>
-          )}
-        </div>
-
-        {/* Description */}
-        {event.description && (
-          <p className="text-slate-600 text-sm line-clamp-3 mb-4">
-            {event.description}
-          </p>
-        )}
-
-        {/* Event Info */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Calendar className="h-4 w-4" />
-            <span>{format(eventDate, "MMMM do, yyyy")}</span>
-            {isUpcoming && (
-              <span className="ml-auto text-blue-600 font-medium">Upcoming</span>
-            )}
-            {isPast && (
-              <span className="ml-auto text-slate-400 font-medium">Past</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Clock className="h-4 w-4" />
-            <span>Created {format(new Date(event.created_at), "MMM do, yyyy")}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="px-6 py-4 bg-slate-50 border-t border-slate-100">
-        <Link
-          href={`/events/${event.slug}`}
-          className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm group-hover:translate-x-1 transition-all"
-        >
-          <Eye className="h-4 w-4" />
-          View Details
-          <ChevronRight className="h-4 w-4" />
-        </Link>
-      </div>
-    </div>
-  );
-}
+const AlertCircle = ({ className }: { className?: string }) => (
+  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+);

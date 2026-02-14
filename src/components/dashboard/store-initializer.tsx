@@ -15,7 +15,7 @@ export function StoreInitializer() {
     const lastRefresh = useProfileStore((state) => state.lastRefresh);
     const setUser = useProfileStore((state) => state.setUser);
     const clearUser = useProfileStore((state) => state.clearUser);
-    
+
     const { redirectToLogin } = useLoginRedirect();
     const hasChecked = useRef(false);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -26,20 +26,43 @@ export function StoreInitializer() {
         async function checkAndRefreshSession() {
             // Prevent concurrent checks
             if (isCheckingRef.current) return;
-            
-            // If no user, redirect to login (but wait for hydration first)
-            if (!user) {
-                if (hasChecked.current) {
-                    console.log("No user found, redirecting to login");
-                    redirectToLogin();
-                }
-                return;
-            }
 
-            // Check if we need to refresh the session
             const now = Date.now();
             const timeSinceRefresh = lastRefresh ? now - lastRefresh : Infinity;
-            
+
+            // If we have no user, we MUST verify with server
+            // This happens on first load or if state was cleared but cookies remain
+            if (!user) {
+                console.log("No user in store, verifying session with server...");
+                isCheckingRef.current = true;
+                try {
+                    const result = await verifySession();
+                    if (result.success && result.data) {
+                        setUser(result.data);
+                        console.log("Session restored from server");
+                        hasChecked.current = true;
+                        return;
+                    } else {
+                        // NO VALID SESSION FOUND
+                        console.error("No valid session found:", result.error);
+
+                        // User Request: "if there is No valid session found,clear all states and then take me to login"
+                        clearUser();
+                        redirectToLogin();
+                        return;
+                    }
+                } catch (error) {
+                    console.error("Initial session check error:", error);
+                    // On hard error, also safer to clear and redirect
+                    clearUser();
+                    redirectToLogin();
+                } finally {
+                    isCheckingRef.current = false;
+                }
+            }
+
+            // If we got here, we have a user. Check if refresh is needed.
+
             // IMPORTANT: On first check after fresh login, skip server validation
             // The user was just set, so we trust it for a few minutes
             if (!hasChecked.current && timeSinceRefresh < 5 * 60 * 1000) {
@@ -47,16 +70,16 @@ export function StoreInitializer() {
                 hasChecked.current = true;
                 return;
             }
-            
+
             // If session is old or beyond threshold, verify with server
             if (timeSinceRefresh > SESSION_REFRESH_THRESHOLD) {
                 console.log("Verifying session with server...");
-                
+
                 isCheckingRef.current = true;
-                
+
                 try {
                     const result = await verifySession();
-                    
+
                     if (result.success && result.data) {
                         // Update user data with fresh profile
                         setUser(result.data);
@@ -73,7 +96,7 @@ export function StoreInitializer() {
                     isCheckingRef.current = false;
                 }
             }
-            
+
             hasChecked.current = true;
         }
 

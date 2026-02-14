@@ -13,7 +13,7 @@ export async function loginAction(formData: FormData) {
     try {
         // 1. Attempt Login via Library
         const { user, session } = await rcf.auth.login(email, password);
-        
+
         if (!user || !session) {
             return { success: false, error: "Invalid credentials" };
         }
@@ -32,7 +32,7 @@ export async function loginAction(formData: FormData) {
         };
 
         cookieStore.set("sb-access-token", session.access_token, cookieOptions);
-        
+
         if (session.refresh_token) {
             cookieStore.set("sb-refresh-token", session.refresh_token, cookieOptions);
         }
@@ -45,7 +45,7 @@ export async function loginAction(formData: FormData) {
             // Inject email if missing in profile table
             fullProfile.profile.email = user.email || "";
         }
-        
+
 
         return { success: true, data: fullProfile };
 
