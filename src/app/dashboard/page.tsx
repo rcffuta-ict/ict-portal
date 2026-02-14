@@ -67,9 +67,10 @@ export default function DashboardHome() {
 
     // Get service cards (exclude "Overview" for cards display, also exclude events since they have their own section)
     const serviceCards = useMemo(() => {
-        const items = getSidebarItems(isAdmin);
+        // Pass user object to support role-based items (Zone Manager, etc.)
+        const items = getSidebarItems(user || null, isAdmin);
         return items.filter(item => item.name !== "Overview" && !item.section);
-    }, [isAdmin]);
+    }, [user, isAdmin]);
 
     // Show loading state if user data is not yet available
     if (!user?.profile) {

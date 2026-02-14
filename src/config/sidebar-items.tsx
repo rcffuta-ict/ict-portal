@@ -6,10 +6,10 @@ import {
     SquaresUnite,
     Heart,
     Calendar,
-    MessageCircle,
-    Info
+    MessageCircle
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { FullUserProfile, LeadershipRole } from "@rcffuta/ict-lib";
 
 export interface SidebarItem {
     name: string;
@@ -66,91 +66,115 @@ export const eventSidebarItems: SidebarItem[] = [
     },
 ];
 
-// Commented items for future use
-// {
-//     name: "Attendance",
-//     href: "/dashboard/attendance",
-//     icon: QrCode,
-//     color: "bg-purple-500",
-//     description: "Scan QR codes for Service & Unit meetings.",
-//     comingSoon: true,
-// },
-// {
-//     name: "Academics",
-//     href: "/dashboard/academics",
-//     icon: BookOpen,
-//     color: "bg-emerald-500",
-//     description: "CGPA Calculator & Past Questions.",
-//     comingSoon: true,
-// },
-// {
-//     name: "Elections",
-//     href: "/dashboard/voting",
-//     icon: Vote,
-//     color: "bg-orange-500",
-//     description: "Vote for FYB and Executive roles.",
-//     comingSoon: true,
-// },
-// {
-//     name: "Events",
-//     href: "/dashboard/events",
-//     icon: CalendarCheck,
-//     color: "bg-indigo-500",
-//     description: "Register for conferences and retreats.",
-//     comingSoon: true,
-// },
-// {
-//     name: "Financials",
-//     href: "/dashboard/dues",
-//     icon: Wallet,
-//     color: "bg-pink-500",
-//     description: "Pay offering, dues, and pledges.",
-//     comingSoon: true,
-// },
+// Specific manager items
+export const tenureManagerItem: SidebarItem = {
+    name: "Tenure Manager",
+    href: "/dashboard/tenure",
+    icon: Crown,
+    color: "bg-rcf-navy",
+    description: "Manage tenure configuration, structure, and appointments.",
+    adminOnly: true,
+};
 
-// Admin-only items
+export const zoneManagerItem: SidebarItem = {
+    name: "Zone Manager",
+    href: "/dashboard/zones",
+    icon: LocationEditIcon,
+    color: "bg-rcf-navy",
+    description: "Manage tenure zones, pastors and members",
+};
+
+export const workforceManagerItem: SidebarItem = {
+    name: "Workforce Manager",
+    href: "/dashboard/units",
+    icon: SquaresUnite,
+    color: "bg-rcf-navy",
+    description: "Manage Unit/Team members",
+};
+
+// Legacy admin items export for backward compatibility if needed,
+// but we should rely on getSidebarItems logic.
 export const adminSidebarItems: SidebarItem[] = [
-    {
-        name: "Tenure Manager",
-        href: "/dashboard/tenure",
-        icon: Crown,
-        color: "bg-rcf-navy",
-        description:
-            "Manage tenure configuration, structure, and appointments.",
-        adminOnly: true,
-    },
-    {
-        name: "Zone Manager",
-        href: "/dashboard/zones",
-        icon: LocationEditIcon,
-        color: "bg-rcf-navy",
-        description: "Manage tenure zones, pastors and members",
-        adminOnly: true,
-    },
-    {
-        name: "Workforce Manager",
-        href: "/dashboard/units",
-        icon: SquaresUnite,
-        color: "bg-rcf-navy",
-        description: "Manage Unit/Team members",
-        adminOnly: true,
-    },
+    tenureManagerItem,
+    zoneManagerItem,
+    workforceManagerItem
 ];
 
 /**
- * Get sidebar items filtered by admin status
- * @param isAdmin - Whether the user is an admin
+ * Check if user has specific leadership scope
+ */
+function hasLeadershipScope(user: FullUserProfile | null, scopes: LeadershipRole['scope'][]): boolean {
+    if (!user || !user.roles) return false;
+    return user.roles.some(role => scopes.includes(role.scope));
+}
+
+/**
+ * Get sidebar items filtered by user access rights
+ * @param user - The user's full profile. If null, only base items are returned.
+ * @param isAdminOverride - Optional boolean to force admin status (e.g. from email check)
  * @returns Filtered sidebar items
  */
-export function getSidebarItems(isAdmin: boolean): SidebarItem[] {
+export function getSidebarItems(user: FullUserProfile | null | boolean, isAdminOverride?: boolean): SidebarItem[] {
     const items = [...baseSidebarItems];
 
     // Add event items
     items.push(...eventSidebarItems);
 
-    if (isAdmin) {
-        items.push(...adminSidebarItems);
+    // Determines admin status
+    // Support legacy boolean call signature: getSidebarItems(isAdmin: boolean)
+    let isAdmin = false;
+    let currentUser: FullUserProfile | null = null;
+
+    if (typeof user === 'boolean') {
+        isAdmin = user;
+    } else {
+        currentUser = user;
+        // If override is provided, use it, otherwise check email if user exists
+        isAdmin = isAdminOverride ?? (currentUser ? isUserAdmin(currentUser.profile.email) : false);
     }
+
+    // 1. Tenure Manager - Admins Only
+    if (isAdmin) {
+        items.push(tenureManagerItem);
+    }
+
+    // 2. Zone Manager - Admins OR Leadership Scope = ZONE
+    // "ensure that both admins ... and anyone in a leadership position with scope that is ZONE can access Zone manager"
+    const hasZoneAccess = isAdmin || hasLeadershipScope(currentUser, ['ZONE']);
+    if (hasZoneAccess && !items.includes(zoneManagerItem)) {
+         // Check strictly if isAdmin already added it? No, separated logic above.
+         // Actually, if we just push based on conditions, we might duplicate if logic overlaps,
+         // but here conditions are:
+         // Tenure: Admin
+         // Zone: Admin OR ZoneScope
+         // Workforce: Admin OR UnitScope
+         // So if Admin, we add Tenure.
+         // Then if Admin (true), we add Zone.
+         // Then if Admin (true), we add Workforce.
+         // So Admin gets all 3.
+         // Non-admin ZoneScope gets Zone.
+         // Non-admin UnitScope gets Workforce.
+
+         // Wait, if isAdmin is true, we should add them if they are not already added.
+         // But I am not adding them in a block.
+         // logic:
+         // if (isAdmin) push(tenure)
+         // if (isAdmin || scopeZone) push(zone)
+         // if (isAdmin || scopeUnit) push(workforce)
+
+         // This works fine.
+        items.push(zoneManagerItem);
+    }
+
+    // 3. Workforce Manager - Admins OR Leadership Scope = UNIT or TEAM
+    const hasWorkforceAccess = isAdmin || hasLeadershipScope(currentUser, ['UNIT', 'TEAM']);
+    if (hasWorkforceAccess && !items.includes(workforceManagerItem)) {
+        items.push(workforceManagerItem);
+    }
+
+    // De-duplicate just in case (though logic above should prevent it if items are unique obj references)
+    // Actually items.includes works by reference.
+    // If I add separate consts, it works.
 
     return items;
 }
