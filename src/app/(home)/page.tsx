@@ -98,7 +98,7 @@ export default function ComingSoon() {
                                     href="/lo-app"
                                     className="group flex items-center justify-center gap-2 bg-white text-pink-600 border-2 border-pink-600 px-8 py-4 rounded-xl font-bold text-base hover:bg-pink-600 hover:text-white transition-all hover:-translate-y-1 hover:shadow-lg"
                                 >
-                                    <LoLogo mode="full" variant="dark"/>
+                                    <LoLogo mode="full" variant="light"/>
                                 </Link>
 
                                 {/* <Link
