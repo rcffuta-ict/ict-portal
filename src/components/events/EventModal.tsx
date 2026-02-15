@@ -96,7 +96,7 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
 
       let result;
       if (isEditing && event) {
-        result = await updateEvent(event.id, payload);
+        result = await updateEvent(event.id, payload, user?.profile.email || "");
       } else {
         result = await createEvent(payload, user?.profile.email || "");
       }
@@ -134,18 +134,18 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
             className="relative w-full max-w-2xl bg-white rounded-4xl shadow-2xl overflow-hidden border border-slate-200"
           >
             {/* Elegant Header */}
-            <div className="relative h-32 bg-slate-900 flex items-center px-8 sm:px-10 overflow-hidden">
-               {/* Background elements */}
-               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 blur-[80px] rounded-full -mr-20 -mt-20" />
-               <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-600/10 blur-[60px] rounded-full -ml-10 -mb-10" />
-               <div className="absolute inset-0 opacity-10"
-                    style={{backgroundImage: 'radial-gradient(circle at 1px 1px, white 0.5px, transparent 0)', backgroundSize: '24px 24px'}} />
+             <div className="relative h-24 sm:h-32 bg-slate-900 flex items-center px-6 sm:px-10 overflow-hidden">
+                {/* Background elements */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 blur-[80px] rounded-full -mr-20 -mt-20" />
+                <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-600/10 blur-[60px] rounded-full -ml-10 -mb-10" />
+                <div className="absolute inset-0 opacity-10"
+                     style={{backgroundImage: 'radial-gradient(circle at 1px 1px, white 0.5px, transparent 0)', backgroundSize: '24px 24px'}} />
 
-               <div className="relative z-10 flex flex-col gap-1">
-                  <div className="flex items-center gap-2 px-3 py-1 bg-white/10 border border-white/20 rounded-full w-fit">
-                    <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white/80">Admin Console</span>
-                  </div>
+                <div className="relative z-10 flex flex-col gap-1">
+                   <div className="flex items-center gap-2 px-3 py-1 bg-white/10 border border-white/20 rounded-full w-fit">
+                     <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                     <span className="text-[10px] font-black uppercase tracking-widest text-white/80">Admin Console</span>
+                   </div>
                   <h2 className="text-3xl font-black text-white">
                     {isEditing ? 'Modify' : 'Launch'} <span className="text-blue-400">Event</span>
                   </h2>
@@ -159,7 +159,7 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
                </button>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="p-8 sm:p-10 space-y-8 max-h-[70vh] overflow-y-auto no-scrollbar">
+            <form onSubmit={handleSubmit(onSubmit)} className="p-6 sm:p-10 space-y-8 max-h-[85vh] sm:max-h-[70vh] overflow-y-auto no-scrollbar">
               {error && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
@@ -273,19 +273,19 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-5 pt-8">
+              <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-3 sm:gap-5 pt-4 sm:pt-8 border-t border-slate-100 mt-4 sm:mt-0">
                 <button
                   type="button"
                   onClick={onClose}
                   disabled={isSubmitting}
-                  className="px-8 py-4 text-sm font-black text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest"
+                  className="w-full sm:w-auto px-8 py-4 text-sm font-black text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-widest rounded-3xl hover:bg-slate-50"
                 >
                   Discard
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="relative flex items-center gap-3 px-10 py-4 bg-slate-900 hover:bg-blue-600 text-white rounded-3xl transition-all font-black uppercase tracking-widest text-sm shadow-2xl shadow-slate-900/10 disabled:opacity-50 group"
+                  className="w-full sm:w-auto relative flex items-center justify-center gap-3 px-10 py-4 bg-slate-900 hover:bg-blue-600 text-white rounded-3xl transition-all font-black uppercase tracking-widest text-sm shadow-2xl shadow-slate-900/10 disabled:opacity-50 group"
                 >
                   {isSubmitting ? (
                     <>

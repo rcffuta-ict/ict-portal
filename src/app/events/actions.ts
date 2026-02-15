@@ -1,6 +1,6 @@
 'use server'
 
-import { ict, ictAdmin, getCurrentUser } from "@/lib/ict";
+import { ict, ictAdmin } from "@/lib/ict";
 import { revalidatePath } from "next/cache";
 
 function isUserAdmin(email: string | null | undefined): boolean {
@@ -174,11 +174,11 @@ export async function updateEvent(id: string, data: {
   is_active?: boolean;
   is_recurring?: boolean;
   is_exclusive?: boolean;
-}) {
+}, email: string) {
   try {
     // Check authentication and authorization
-    const user = await getCurrentUser();
-    if (!user || !user.profile?.email || !isUserAdmin(user.profile.email)) {
+    // const user = await getCurrentUser();
+    if (!email || !isUserAdmin(email)) {
         return { success: false, error: "Unauthorized: Admin access required" };
     }
 

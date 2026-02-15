@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Heart,
@@ -19,9 +19,11 @@ import {
   Sparkles,
   ArrowRight,
   Download,
+  Lock,
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import { findRegistrationByIdentifier, completeCheckIn } from "../actions";
+import { getEventDetails } from "../../actions";
 import { SinglesWeekendFooter } from "@/components/events/footer";
 
 interface VerifiedData {
@@ -54,6 +56,24 @@ export default function SelfCheckInPage() {
   const [checkedInData, setCheckedInData] = useState<CheckedInData | null>(null);
   const [alreadyCheckedIn, setAlreadyCheckedIn] = useState(false);
   const couponRef = useRef<HTMLDivElement>(null);
+  const [eventClosed, setEventClosed] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  useEffect(() => {
+    const checkStatus = async () => {
+         try {
+            const data = await getEventDetails();
+            if (data && !data.is_active) {
+                setEventClosed(true);
+            }
+         } catch (e) {
+             console.error("Failed to check event status", e);
+         } finally {
+             setInitialLoading(false);
+         }
+    };
+    checkStatus();
+  }, []);
 
   // Format coupon code for display (show full code, uppercase)
   const formatCouponCode = (code: string) => code.toUpperCase();
@@ -315,6 +335,28 @@ export default function SelfCheckInPage() {
         <div className="absolute bottom-0 left-0 -ml-32 -mb-32 h-96 w-96 rounded-full bg-amber-200 blur-3xl opacity-30" />
       </div>
 
+      {initialLoading ? (
+        <div className="bg-white rounded-3xl shadow-2xl p-10 max-w-md w-full text-center">
+             <Loader2 className="h-10 w-10 text-teal-600 animate-spin mx-auto" />
+        </div>
+      ) : eventClosed ? (
+        <div className="bg-white rounded-3xl shadow-2xl p-10 max-w-md w-full text-center space-y-6">
+            <div className="h-20 w-20 mx-auto bg-slate-100 rounded-full flex items-center justify-center">
+                <Lock className="h-10 w-10 text-slate-400" />
+            </div>
+            <div>
+                <h2 className="text-2xl font-bold text-slate-900">Check-In Closed</h2>
+                <p className="text-slate-500 mt-2">
+                    Self check-in for Singles Weekend &apos;26 is now closed.
+                </p>
+            </div>
+            <div className="space-y-3">
+                <p className="text-sm text-slate-500">
+                    Please visit the registration desk if you need assistance.
+                </p>
+            </div>
+        </div>
+      ) : (
       <AnimatePresence mode="wait">
         {/* Step 1: Identify */}
         {step === "identify" && (
@@ -739,6 +781,7 @@ export default function SelfCheckInPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      )}
     </div>
   );
 }

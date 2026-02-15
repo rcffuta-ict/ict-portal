@@ -3,11 +3,12 @@
 import { motion } from "framer-motion";
 import {
   Calendar,
-  Clock,
+  CalendarDays,
   Repeat,
   Lock,
   ArrowRight,
-  Sparkles
+  Tag,
+  Settings2
 } from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -44,7 +45,7 @@ export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
             </div>
             <div>
               <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
-                <Sparkles className="w-3 h-3 text-blue-500" />
+                <Tag className="w-3 h-3 text-blue-500" />
                 {event.slug}
               </div>
               <h3 className="text-xl font-black text-slate-900 group-hover:text-blue-600 transition-colors duration-300 line-clamp-1">
@@ -86,7 +87,7 @@ export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
           <div className="space-y-4 mb-4">
             <div className="flex items-center gap-3 text-sm text-slate-900 font-bold">
               <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-                <Clock className="h-4 w-4" />
+                <CalendarDays className="h-4 w-4" />
               </div>
               {format(new Date(event.date), "MMMM do, yyyy")}
             </div>
@@ -110,7 +111,7 @@ export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
                 className="p-3 text-slate-400 hover:text-blue-600 transition-colors bg-white rounded-xl shadow-sm border border-slate-100"
                 title="Edit Event"
               >
-                <Calendar className="h-5 w-5" />
+                <Settings2 className="h-5 w-5" />
               </button>
             )}
           </div>

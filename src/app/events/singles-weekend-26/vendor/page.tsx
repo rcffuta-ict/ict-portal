@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Scanner } from "@yudiel/react-qr-scanner";
 import { validateCoupon, redeemCoupon } from "../check-in/actions";
+import { getEventDetails } from "../actions";
 import FormInput from "@/components/ui/FormInput";
 import {
     ShoppingBag,
@@ -15,6 +16,7 @@ import {
     ScanLine,
     AlertTriangle,
     UserCheck,
+    Lock,
 } from "lucide-react";
 
 interface CouponData {
@@ -25,23 +27,41 @@ interface CouponData {
 
 export default function VendorScanner() {
     const [mode, setMode] = useState<"scan" | "manual">("scan");
+    const [eventClosed, setEventClosed] = useState(false);
+    const [initialLoading, setInitialLoading] = useState(true);
     const [scanning, setScanning] = useState(true);
     const [couponInput, setCouponInput] = useState("");
     const [loading, setLoading] = useState(false);
-    
+
     const [validatedCoupon, setValidatedCoupon] = useState<CouponData | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<{ name: string; code: string } | null>(null);
 
+    useEffect(() => {
+        const checkStatus = async () => {
+             try {
+                const data = await getEventDetails();
+                if (data && !data.is_active) {
+                    setEventClosed(true);
+                }
+             } catch (e) {
+                 console.error("Failed to check event status", e);
+             } finally {
+                 setInitialLoading(false);
+             }
+        };
+        checkStatus();
+    }, []);
+
     const handleScan = async (results: { rawValue: string }[]) => {
         if (!scanning || !results || results.length === 0) return;
-        
+
         const text = results[0].rawValue;
         if (!text) return;
-        
+
         setScanning(false);
         if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(50);
-        
+
         await validateCouponCode(text);
     };
 
@@ -49,12 +69,12 @@ export default function VendorScanner() {
         setLoading(true);
         setError(null);
         setValidatedCoupon(null);
-        
+
         try {
             const result = await validateCoupon(code);
 
             // console.debug("Validation result for code", code, ":", result);
-            
+
             if (result.success && result.data) {
                 if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([100, 50, 100]);
                 setValidatedCoupon(result.data);
@@ -72,18 +92,18 @@ export default function VendorScanner() {
     const handleManualSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!couponInput.trim()) return;
-        
+
         await validateCouponCode(couponInput.trim());
     };
 
     const handleRedeem = async () => {
         if (!validatedCoupon) return;
-        
+
         setLoading(true);
-        
+
         try {
             const result = await redeemCoupon(validatedCoupon.registrationId);
-            
+
             if (result.success) {
                 if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
                 setSuccess({
@@ -109,6 +129,30 @@ export default function VendorScanner() {
         setTimeout(() => setScanning(true), 300);
     };
 
+    if (initialLoading) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+                <Loader2 className="h-10 w-10 text-amber-500 animate-spin" />
+            </div>
+        );
+    }
+
+    if (eventClosed) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+                <div className="bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center border border-slate-700">
+                    <div className="h-20 w-20 bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Lock className="h-10 w-10 text-slate-400" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-white mb-2">Vendor Portal Closed</h1>
+                    <p className="text-slate-400 mb-6">
+                        The vendor portal for Agape &apos;26 is now closed.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-slate-900 font-sans">
             {/* Header */}
@@ -123,7 +167,7 @@ export default function VendorScanner() {
                             <p className="text-slate-400 text-xs">Agape &apos;26 Coupon System</p>
                         </div>
                     </div>
-                    
+
                     {/* Mode Toggle */}
                     <div className="flex gap-1 bg-slate-700 p-1 rounded-lg">
                         <button
@@ -153,7 +197,7 @@ export default function VendorScanner() {
                             <h2 className="text-2xl font-bold text-green-700 mb-2">Coupon Invalidated!</h2>
                             <p className="text-slate-600 mb-1">{success.name}</p>
                             <p className="font-mono text-lg font-bold text-slate-900">{success.code}</p>
-                            
+
                             <div className="mt-8 pt-6 border-t border-slate-100">
                                 <button className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold animate-pulse">
                                     Tap to Scan Next
@@ -195,7 +239,7 @@ export default function VendorScanner() {
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
-                        
+
                         <div className="bg-white/10 rounded-xl p-4 mb-4">
                             <p className="text-amber-100 text-sm mb-1">Attendee</p>
                             <p className="font-bold text-lg">{validatedCoupon.participantName}</p>
