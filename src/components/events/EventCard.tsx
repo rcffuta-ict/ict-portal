@@ -8,11 +8,13 @@ import {
   Lock,
   ArrowRight,
   Tag,
-  Settings2
+  Settings2,
+  PencilIcon
 } from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { Event } from "@/app/events/page";
+import { truncate } from "@/lib/utils";
 
 interface EventCardProps {
   event: Event;
@@ -46,7 +48,9 @@ export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
             <div>
               <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
                 <Tag className="w-3 h-3 text-blue-500" />
-                {event.slug}
+                <span className="truncate max-w-30" title={event.slug}>
+                  {truncate(event.slug, 20)}
+                </span>
               </div>
               <h3 className="text-xl font-black text-slate-900 group-hover:text-blue-600 transition-colors duration-300 line-clamp-1">
                 {event.title}
@@ -78,8 +82,8 @@ export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
 
           {/* Description */}
           {event.description && (
-            <p className="text-slate-500 text-sm leading-relaxed line-clamp-3 mb-8 font-medium italic">
-              &ldquo;{event.description}&rdquo;
+            <p className="text-slate-500 text-sm leading-relaxed line-clamp-2 mb-8 font-medium italic">
+              &ldquo;{truncate(event.description, 180)}&rdquo;
             </p>
           )}
 
@@ -111,7 +115,7 @@ export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
                 className="p-3 text-slate-400 hover:text-blue-600 transition-colors bg-white rounded-xl shadow-sm border border-slate-100"
                 title="Edit Event"
               >
-                <Settings2 className="h-5 w-5" />
+                <PencilIcon className="h-5 w-5" />
               </button>
             )}
           </div>

@@ -15,7 +15,11 @@ import {
   Lock,
   Repeat,
   Activity,
-  CalendarDays
+  CalendarDays,
+  ClipboardList,
+  GraduationCap,
+  Users,
+  UserPlus
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { createEvent, updateEvent } from "@/app/events/actions";
@@ -37,7 +41,24 @@ interface EventFormData {
   is_active: boolean;
   is_recurring: boolean;
   is_exclusive: boolean;
+  // Registration config
+  requires_registration: boolean;
+  reg_fields: string[];
+  reg_allow_guest: boolean;
+  reg_allow_alumni: boolean;
+  reg_allow_students: boolean;
 }
+
+const PROFILE_FIELDS = [
+  { id: "firstName", label: "First Name" },
+  { id: "lastName", label: "Last Name" },
+  { id: "email", label: "Email Address" },
+  { id: "phone", label: "Phone Number" },
+  { id: "gender", label: "Gender" },
+  { id: "level", label: "Academic Level" },
+  { id: "department", label: "Department" },
+  { id: "matricNumber", label: "Matric Number" },
+];
 
 export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -51,6 +72,11 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
       is_recurring: false,
       is_exclusive: false,
       date: new Date().toISOString().slice(0, 16),
+      requires_registration: false,
+      reg_fields: ["firstName", "lastName", "email"],
+      reg_allow_guest: true,
+      reg_allow_alumni: true,
+      reg_allow_students: true,
     }
   });
 
@@ -67,6 +93,15 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
         setValue("is_active", event.is_active);
         setValue("is_recurring", !!event.is_recurring);
         setValue("is_exclusive", !!event.is_exclusive);
+
+        // Registration config
+        const config = event.config as any;
+        const regConfig = config?.registration || {};
+        setValue("requires_registration", !!regConfig.enabled);
+        setValue("reg_fields", regConfig.fields || ["firstName", "lastName", "email"]);
+        setValue("reg_allow_guest", regConfig.allowGuest ?? true);
+        setValue("reg_allow_alumni", regConfig.allowAlumni ?? true);
+        setValue("reg_allow_students", regConfig.allowStudents ?? true);
       } else {
         reset({
           is_active: true,
@@ -75,23 +110,56 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
           date: new Date().toISOString().slice(0, 16),
           title: "",
           slug: "",
-          description: ""
+          description: "",
+          requires_registration: false,
+          reg_fields: ["firstName", "lastName", "email"],
+          reg_allow_guest: true,
+          reg_allow_alumni: true,
+          reg_allow_students: true,
         });
       }
     }
   }, [isOpen, event, setValue, reset]);
 
   const isRecurring = watch("is_recurring");
-  const currentTitle = watch("title");
+  const requiresRegistration = watch("requires_registration");
+  const selectedFields = watch("reg_fields") || [];
+
+  const handleFieldToggle = (fieldId: string) => {
+    const current = [...selectedFields];
+    if (current.includes(fieldId)) {
+      setValue("reg_fields", current.filter(f => f !== fieldId));
+    } else {
+      setValue("reg_fields", [...current, fieldId]);
+    }
+  };
 
   const onSubmit = async (data: EventFormData) => {
     setIsSubmitting(true);
     setError(null);
 
     try {
+      // Build config object
+      const config = {
+        ...(event?.config as any || {}),
+        registration: {
+          enabled: data.requires_registration,
+          fields: data.reg_fields,
+          allowGuest: data.reg_allow_guest,
+          allowAlumni: data.reg_allow_alumni,
+          allowStudents: data.reg_allow_students,
+        }
+      };
+
       const payload = {
-        ...data,
+        title: data.title,
+        slug: data.slug,
+        description: data.description,
+        is_active: data.is_active,
+        is_recurring: data.is_recurring,
+        is_exclusive: data.is_exclusive,
         date: new Date(data.date).toISOString(),
+        config: config
       };
 
       let result;
@@ -197,15 +265,23 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
                   </div>
                 </div>
 
-                {/* Slug */}
                 <div className="space-y-2.5">
                   <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">URL Identifier (Slug)</label>
                   <div className="relative group">
-                    <Link2 className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
+                    {isEditing ? (
+                      <Lock className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 transition-colors" />
+                    ) : (
+                      <Link2 className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
+                    )}
                     <input
                       {...register("slug", { required: true })}
                       placeholder="singles-weekend-26"
-                      className="w-full pl-14 pr-5 py-4 bg-slate-100/50 border border-slate-100 rounded-3xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-mono text-xs font-bold text-slate-500"
+                      readOnly={isEditing}
+                      className={`w-full pl-14 pr-5 py-4 border border-slate-100 rounded-3xl outline-none transition-all font-mono text-xs font-bold ${
+                        isEditing
+                          ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
+                          : 'bg-slate-100/50 text-slate-500 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'
+                      }`}
                     />
                   </div>
                 </div>
@@ -269,6 +345,97 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
                        </div>
                     </label>
                   </div>
+                </div>
+
+                {/* Registration Configuration */}
+                <div className="md:col-span-2 space-y-6 pt-4 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Registration Protocol</label>
+                      <h3 className="text-lg font-black text-slate-900 px-1 italic">Collect Attendee Details?</h3>
+                    </div>
+                    <label className="relative flex items-center gap-4 p-3 bg-blue-50 border border-blue-100 rounded-2xl cursor-pointer hover:bg-white hover:border-blue-400 transition-all">
+                       <input type="checkbox" {...register("requires_registration")} className="peer sr-only" />
+                       <div className="w-12 h-6 bg-slate-200 peer-checked:bg-blue-600 rounded-full transition-colors relative after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-6" />
+                    </label>
+                  </div>
+
+                  <AnimatePresence>
+                    {requiresRegistration && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-8 overflow-hidden"
+                      >
+                        {/* Fields Selection */}
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2 text-slate-900 font-bold mb-2">
+                             <ClipboardList className="w-4 h-4 text-blue-500" />
+                             <span className="text-sm">Select Profile Data Points to Collect</span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {PROFILE_FIELDS.map((field) => {
+                              const isSelected = selectedFields.includes(field.id);
+                              return (
+                                <button
+                                  key={field.id}
+                                  type="button"
+                                  onClick={() => handleFieldToggle(field.id)}
+                                  className={`flex items-center gap-2 p-3 rounded-2xl border transition-all text-left ${
+                                    isSelected
+                                      ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm'
+                                      : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <div className={`w-4 h-4 rounded-md flex items-center justify-center border ${isSelected ? 'bg-blue-600 border-blue-600' : 'bg-slate-50 border-slate-200'}`}>
+                                    {isSelected && <Check className="w-3 h-3 text-white" />}
+                                  </div>
+                                  <span className="text-xs font-bold whitespace-nowrap">{field.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Attendee Types */}
+                        <div className="space-y-4">
+                           <div className="flex items-center gap-2 text-slate-900 font-bold mb-2">
+                             <GraduationCap className="w-4 h-4 text-indigo-500" />
+                             <span className="text-sm">Delegation Eligibility</span>
+                          </div>
+                          <div className="flex flex-wrap gap-4">
+                             <label className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-100 rounded-3xl cursor-pointer hover:bg-white hover:border-indigo-200 transition-all">
+                               <input type="checkbox" {...register("reg_allow_students")} className="peer sr-only" />
+                               <div className="w-10 h-5 bg-slate-200 peer-checked:bg-indigo-600 rounded-full transition-colors relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5" />
+                               <div className="flex flex-col">
+                                  <span className="text-xs font-black text-slate-900">Current Students</span>
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">FUTA Undergrads</span>
+                               </div>
+                             </label>
+
+                             <label className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-100 rounded-3xl cursor-pointer hover:bg-white hover:border-indigo-200 transition-all">
+                               <input type="checkbox" {...register("reg_allow_alumni")} className="peer sr-only" />
+                               <div className="w-10 h-5 bg-slate-200 peer-checked:bg-teal-600 rounded-full transition-colors relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5" />
+                               <div className="flex flex-col">
+                                  <span className="text-xs font-black text-slate-900">Alumni</span>
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Graduated Members</span>
+                               </div>
+                             </label>
+
+                             <label className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-100 rounded-3xl cursor-pointer hover:bg-white hover:border-indigo-200 transition-all">
+                               <input type="checkbox" {...register("reg_allow_guest")} className="peer sr-only" />
+                               <div className="w-10 h-5 bg-slate-200 peer-checked:bg-amber-600 rounded-full transition-colors relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5" />
+                               <div className="flex flex-col">
+                                  <span className="text-xs font-black text-slate-900">Guests</span>
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">External Visitors</span>
+                               </div>
+                             </label>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 

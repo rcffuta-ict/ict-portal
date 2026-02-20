@@ -114,7 +114,7 @@ export async function createEvent(data: {
   is_active: boolean;
   is_recurring: boolean;
   is_exclusive: boolean;
-
+  config?: any;
 }, email: string) {
   try {
     // Check authentication and authorization
@@ -148,7 +148,8 @@ export async function createEvent(data: {
         date: data.date,
         is_active: data.is_active,
         is_recurring: data.is_recurring,
-        is_exclusive: data.is_exclusive
+        is_exclusive: data.is_exclusive,
+        config: data.config || {}
       });
 
     if (error) {
@@ -174,6 +175,7 @@ export async function updateEvent(id: string, data: {
   is_active?: boolean;
   is_recurring?: boolean;
   is_exclusive?: boolean;
+  config?: any;
 }, email: string) {
   try {
     // Check authentication and authorization
@@ -194,6 +196,7 @@ export async function updateEvent(id: string, data: {
         ...(data.is_active !== undefined && { is_active: data.is_active }),
         ...(data.is_recurring !== undefined && { is_recurring: data.is_recurring }),
         ...(data.is_exclusive !== undefined && { is_exclusive: data.is_exclusive }),
+        ...(data.config !== undefined && { config: data.config }),
       })
       .eq('id', id);
 
@@ -209,5 +212,91 @@ export async function updateEvent(id: string, data: {
   } catch (error: any) {
     console.error('Error updating event:', error);
     return { success: false, error: error.message || "Failed to update event" };
+  }
+}
+
+export async function registerForEvent(data: {
+  event_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone_number: string;
+  gender?: string;
+  level?: string;
+  department?: string;
+  matric_number?: string;
+  is_rcf_member?: boolean;
+}) {
+  try {
+    // Basic check for existing registration
+    const { data: existing } = await ict.supabase
+      .from('event_registrations')
+      .select('id')
+      .eq('event_id', data.event_id)
+      .eq('email', data.email)
+      .maybeSingle();
+
+    if (existing) {
+      return { success: false, error: "You are already registered for this event", alreadyRegistered: true };
+    }
+
+    const { data: registration, error } = await ict.supabase
+      .from('event_registrations')
+      .insert({
+        event_id: data.event_id,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email: data.email,
+        phone_number: data.phone_number,
+        gender: data.gender,
+        level: data.level,
+        department: data.department,
+        matric_number: data.matric_number,
+        is_rcf_member: data.is_rcf_member || false
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error registering for event:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data: registration };
+  } catch (error: any) {
+    console.error('Error in registerForEvent:', error);
+    return { success: false, error: error.message || "Failed to register" };
+  }
+}
+
+export async function getEventRegistrationStats(eventId: string) {
+  try {
+    const { count, error: countError } = await ict.supabase
+      .from('event_registrations')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_id', eventId);
+
+    const { data: recent, error: recentError } = await ict.supabase
+      .from('event_registrations')
+      .select('first_name, last_name, gender')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (countError || recentError) {
+      console.error('Error fetching registration stats:', countError || recentError);
+      return { success: false, error: 'Failed to fetch stats' };
+    }
+
+    return {
+      success: true,
+      data: {
+        total: count || 0,
+        recent: recent || []
+      }
+    };
+  } catch (error) {
+    console.error('Unexpected error in getEventRegistrationStats:', error);
+    return { success: false, error: 'An error occurred' };
   }
 }
