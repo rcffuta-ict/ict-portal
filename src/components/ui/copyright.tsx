@@ -54,7 +54,7 @@ export function Copyright({
             >
                 {/* 1. Legal Entity */}
                 <p className="whitespace-nowrap text-center md:text-left">
-                    &copy; {currentYear} RCF FUTA Chapter.
+                    &copy; {currentYear} RCF FUTA Chapter
                 </p>
 
                 {/* Separator (Hidden on mobile stack, visible on desktop row) */}

@@ -34,7 +34,7 @@ import {
 import { getEventBySlug, getEventRegistrationStats } from "../actions";
 import { CompactPreloader } from "@/components/ui/preloader";
 import Link from "next/link";
-import { format, isAfter, isBefore, startOfDay, differenceInDays, differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
+import { format, isAfter, isBefore, startOfDay, differenceInDays, differenceInHours, differenceInMinutes, differenceInSeconds, parseISO } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { GenericFooter } from "@/components/events/footer";
@@ -95,18 +95,20 @@ export default function EventDetailsPage() {
     }
   };
 
-  useEffect(() => {
-    if (slug) {
-      loadEvent();
+  const eventDate = useMemo(() => {
+    if (!event?.date) return new Date();
+    try {
+      return parseISO(event.date);
+    } catch (e) {
+      return new Date(event.date);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
+  }, [event?.date]);
 
   // Countdown Logic
   useEffect(() => {
     if (!event) return;
 
-    const target = new Date(event.date);
+    const target = eventDate;
     const interval = setInterval(() => {
       const now = new Date();
       if (isAfter(now, target)) {
@@ -124,11 +126,18 @@ export default function EventDetailsPage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [event]);
+  }, [eventDate, event]);
 
   const isAdmin = useMemo(() => {
     return !!user?.profile?.email && (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).includes(user.profile.email.toLowerCase());
   }, [user]);
+
+  useEffect(() => {
+    if (slug) {
+      loadEvent();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
 
   const regConfig: any = useMemo(() => event?.config?.registration || {}, [event]);
 
@@ -171,7 +180,7 @@ export default function EventDetailsPage() {
     );
   }
 
-  const eventDate = new Date(event.date);
+  // const eventDate = new Date(event.date); // Moved to useMemo above
   const today = startOfDay(new Date());
   const isUpcoming = isAfter(eventDate, today) || eventDate.getTime() === today.getTime();
 
@@ -259,8 +268,7 @@ export default function EventDetailsPage() {
                     <CalendarDays className="h-6 w-6" />
                   </div>
                   <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Date</div>
-                    <div className="font-bold text-white text-lg">{format(eventDate, "MMM do, yyyy")}</div>
+                    <div className="font-bold text-white text-lg">{format(eventDate, "EEEE, MMM do, yyyy")}</div>
                   </div>
                 </div>
 
@@ -270,7 +278,7 @@ export default function EventDetailsPage() {
                   </div>
                   <div>
                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Time</div>
-                    <div className="font-bold text-white text-lg">{format(eventDate, "HH:mm")} <span className="text-slate-600 text-sm font-medium">WAT</span></div>
+                    <div className="font-bold text-white text-lg">{format(eventDate, "h:mm a")} <span className="text-slate-600 text-sm font-medium">WAT</span></div>
                   </div>
                 </div>
 
@@ -286,6 +294,23 @@ export default function EventDetailsPage() {
                   </div>
                 )}
               </motion.div>
+
+              {event.is_active && regConfig.enabled && (
+                <motion.div
+                   initial={{ opacity: 0, y: 20 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   transition={{ delay: 0.3 }}
+                   className="mt-12"
+                >
+                   <Link
+                      href={`/events/${slug}/register`}
+                      className="inline-flex items-center gap-4 px-10 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-3xl font-black uppercase tracking-widest text-[12px] shadow-2xl shadow-blue-500/20 transition-all border border-blue-400/20 group"
+                   >
+                      Secure Your Spot
+                      <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                   </Link>
+                </motion.div>
+              )}
             </div>
 
             <motion.div
@@ -393,10 +418,10 @@ export default function EventDetailsPage() {
                animate={{ opacity: 1, y: 0 }}
                className="bg-white rounded-[40px] border border-slate-200 shadow-2xl shadow-slate-200/40 p-12 overflow-hidden relative group"
             >
-              <div className="absolute top-0 right-0 p-12 opacity-[0.02] scale-150 group-hover:rotate-12 transition-transform duration-1000">
+              <div className="absolute top-0 right-0 p-12 opacity-[0.02] md:scale-150 group-hover:rotate-12 transition-transform duration-1000">
                  <BookOpen className="w-64 h-64" />
               </div>
-              <h2 className="text-3xl font-black text-slate-900 mb-10 flex items-center gap-4">
+              <h2 className="text-xl md:text-3xl font-black text-slate-900 mb-10 flex items-center gap-4">
                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/20">
                     <Sparkles className="w-5 h-5 text-white" />
                  </div>

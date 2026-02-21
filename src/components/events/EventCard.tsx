@@ -9,12 +9,15 @@ import {
   ArrowRight,
   Tag,
   Settings2,
-  PencilIcon
+  PencilIcon,
+  Clock,
+  Ticket
 } from "lucide-react";
 import Link from "next/link";
-import { format } from "date-fns";
+import { format, parseISO, startOfDay, isAfter } from "date-fns";
 import { Event } from "@/app/events/page";
 import { truncate } from "@/lib/utils";
+import { useMemo } from "react";
 
 interface EventCardProps {
   event: Event;
@@ -24,6 +27,18 @@ interface EventCardProps {
 }
 
 export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
+  const eventDate = useMemo(() => {
+    try {
+      return parseISO(event.date);
+    } catch (e) {
+      return new Date(event.date);
+    }
+  }, [event.date]);
+
+  const regConfig: any = event.config?.registration || {};
+  const today = startOfDay(new Date());
+  const isUpcoming = isAfter(eventDate, today) || eventDate.getTime() === today.getTime();
+
   return (
     <motion.div
       layout
@@ -39,10 +54,10 @@ export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
           <div className="flex items-center gap-4 mb-4">
             <div className="flex flex-col items-center justify-center w-14 h-14 bg-slate-50 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-colors duration-500 shrink-0">
               <span className="text-xs font-black uppercase tracking-widest opacity-60 group-hover:opacity-80">
-                {format(new Date(event.date), "MMM")}
+                {format(eventDate, "MMM")}
               </span>
               <span className="text-xl font-black">
-                {format(new Date(event.date), "dd")}
+                {format(eventDate, "dd")}
               </span>
             </div>
             <div>
@@ -64,6 +79,12 @@ export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
               <span className="flex items-center gap-1.5 px-3 py-1 bg-green-500 text-white text-[10px] font-black uppercase tracking-wider rounded-full shadow-lg shadow-green-500/20">
                 <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                 Live Now
+              </span>
+            )}
+            {regConfig.enabled && isUpcoming && (
+              <span className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider rounded-full shadow-lg shadow-blue-500/20">
+                <Ticket className="w-3 h-3" />
+                Registration Open
               </span>
             )}
             {event.is_exclusive && (
@@ -88,12 +109,14 @@ export function EventCard({ event, index, isAdmin, onEdit }: EventCardProps) {
           )}
 
           {/* Metadata */}
-          <div className="space-y-4 mb-4">
-            <div className="flex items-center gap-3 text-sm text-slate-900 font-bold">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-                <CalendarDays className="h-4 w-4" />
-              </div>
-              {format(new Date(event.date), "MMMM do, yyyy")}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div className="flex items-center gap-3 text-xs text-slate-900 font-bold bg-slate-50 p-2 rounded-xl">
+              <CalendarDays className="h-4 w-4 text-blue-600" />
+              {format(eventDate, "MMM do, yyyy")}
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-900 font-bold bg-slate-50 p-2 rounded-xl">
+              <Clock className="h-4 w-4 text-blue-600" />
+              {format(eventDate, "h:mm a")}
             </div>
           </div>
         </div>
