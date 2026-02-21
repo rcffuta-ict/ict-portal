@@ -1,41 +1,45 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 
-export default function ErrorPage(props:{error: VoidFunction, reset: VoidFunction}) {
+export default function ErrorPage({
+    error,
+    reset,
+}: {
+    error: Error & { digest?: string };
+    reset: () => void;
+}) {
+    useEffect(() => {
+        console.error(error);
+    }, [error]);
 
-
-    useEffect(()=>{
-        console.error(props.error);
-    },[])
-    
     return (
-        <div className="bg-simple-bg relative live-registration-stats">
-            <div className="simpleone"></div>
-            <div className="simpletwo"></div>
-            <div className="simplethree"></div>
-            <div className="simplefour"></div>
-            <div className="simplefive"></div>
-            <div className="mx-auto py-24 px-6 pt-80">
-                <div className="text-center text-offwhite font-semibold">
-                    <h1 className="text-5xl lg:text-5xl mb-6">
-                        An Error Occurred
-                    </h1>
+        <div className="error-page">
+            <div className="error-page__glow error-page__glow--red" />
+            <div className="error-page__glow error-page__glow--purple" />
 
-                    <p className="text-4xl font-medium">
-                        We&apos;re on it
-                    </p>
+            <div className="error-page__content">
+                <div className="error-page__bolt">⚡</div>
+                <p className="error-page__eyebrow">Oops</p>
+                <h1 className="error-page__heading glitch" data-text="ERROR">
+                    ERROR
+                </h1>
+                <p className="error-page__sub">
+                    Something went sideways on our end.
+                </p>
+                {error?.message && (
+                    <p className="error-page__detail">{error.message}</p>
+                )}
+                <div className="error-page__actions">
+                    <button className="ep-btn ep-btn--primary" onClick={reset}>
+                        ↺ Try Again
+                    </button>
+                    <Link href="/" className="ep-btn ep-btn--secondary">
+                        ← Go Home
+                    </Link>
                 </div>
-                <br />
-                <br />
-                <br />
             </div>
-            <div className="simplesix"></div>
-            <div className="simpleseven"></div>
-            <div className="simpleeight"></div>
-            <div className="simplenine"></div>
-            <div className="simpleten"></div>
         </div>
     );
 }

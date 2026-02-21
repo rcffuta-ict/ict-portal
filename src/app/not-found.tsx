@@ -1,31 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import SimpleWrapper from "../components/common/SimpleWrapper";
 
 export default function NotFoundPage() {
     return (
-        <SimpleWrapper>
-            <div className="mx-auto py-24 px-6 pt-80">
-                <div className="text-center text-offwhite font-semibold">
-                    <h1 className="text-5xl lg:text-5xl mb-6">
-                        Page Not Found
-                    </h1>
+        <div className="nf-page">
+            <div className="nf-page__glow nf-page__glow--purple" />
+            <div className="nf-page__glow nf-page__glow--blue" />
 
-                    <p className="text-4xl font-medium">
-                        The page you seek does not exist here.
-                        <Link
-                            href={"/"}
-                            className="text-primary block mt-2 text-[32px]"
-                        >
-                            Go to home page
-                        </Link>
-                    </p>
+            <div className="nf-page__content">
+                <div className="nf-digits">
+                    <span className="nf-digit" style={{ animationDelay: "0s" }}>
+                        4
+                    </span>
+                    <span
+                        className="nf-digit nf-digit--zero"
+                        style={{ animationDelay: "0.12s" }}
+                    >
+                        0
+                    </span>
+                    <span
+                        className="nf-digit"
+                        style={{ animationDelay: "0.24s" }}
+                    >
+                        4
+                    </span>
                 </div>
-                <br />
-                <br />
-                <br />
+                <p className="nf-page__title">Page Not Found</p>
+                <p className="nf-page__sub">
+                    Looks like this page took the wrong turn at the Oracle…
+                </p>
+                <Link href="/" className="nf-btn">
+                    ← Back to Home
+                </Link>
             </div>
-        </SimpleWrapper>
+        </div>
     );
 }
