@@ -2,9 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const SPIN_DURATION_BASE = 3000; // ms per reel, from left
-const REEL_DELAY = 1000; // each subsequent reel delayed by this
-
 interface ReelProps {
     targetDigit: number | null;
     delay: number;
@@ -68,16 +65,26 @@ function getDigit(value: number | null, position: number): number | null {
 interface Props {
     value: number | null;
     isSpinning: boolean;
+    spinDuration?: number; // Total duration in ms for all reels to settle
 }
 
-export default function OracleSlotMachine({ value, isSpinning }: Props) {
+export default function OracleSlotMachine({
+    value,
+    isSpinning,
+    spinDuration = 3000,
+}: Props) {
+    // Distribute the total spin duration across the 5 reels.
+    // E.g., if spinDuration is 5000ms:
+    // reel 0 stops at 1000ms, reel 1 at 2000ms, ..., reel 4 at 5000ms
+    const reelDelayStep = spinDuration / 5;
+
     return (
         <div className="oracle-slot-machine">
             {[0, 1, 2, 3, 4].map((pos) => (
                 <Reel
                     key={pos}
                     targetDigit={getDigit(value, pos)}
-                    delay={SPIN_DURATION_BASE + pos * REEL_DELAY}
+                    delay={reelDelayStep * (pos + 1)}
                     isSpinning={isSpinning}
                 />
             ))}

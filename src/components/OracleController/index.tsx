@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createBrowserClient } from "@/src/lib/supabase/client";
 import toast from "react-hot-toast";
 
 const LEVELS = ["100", "200", "300", "400", "500", "All"];
@@ -10,6 +9,7 @@ const GENDERS = [
     { label: "Sister", value: "female" },
     { label: "Both", value: "Both" },
 ];
+const SPIN_TIMES = [1, 3, 5, 10];
 
 interface PickedPerson {
     raffleId: number;
@@ -23,18 +23,30 @@ interface PickedPerson {
 export default function OracleController() {
     const [level, setLevel] = useState("All");
     const [gender, setGender] = useState("Both");
+    const [spinTime, setSpinTime] = useState(3);
     const [picked, setPicked] = useState<PickedPerson | null>(null);
     const [isPending, startTransition] = useTransition();
 
-    function broadcastFromBrowser(
-        event: string,
-        payload: Record<string, unknown>,
-    ) {
-        const supabase = createBrowserClient();
-        const channel = supabase.channel("oracle-channel");
-        channel.subscribe((status) => {
-            if (status === "SUBSCRIBED") {
-                channel.send({ type: "broadcast", event, payload });
+    const [isSyncing, startSyncing] = useTransition();
+
+    function handleSync() {
+        startSyncing(async () => {
+            const toastId = toast.loading("Syncing registered members...");
+            try {
+                const res = await fetch("/api/oracle/sync", { method: "POST" });
+                const json = await res.json();
+                if (!res.ok || !json.success) {
+                    toast.error(json.error || "Failed to sync", {
+                        id: toastId,
+                    });
+                    return;
+                }
+                toast.success(
+                    `Synced ${json.count} registrants successfully!`,
+                    { id: toastId },
+                );
+            } catch (err) {
+                toast.error("Network error while syncing", { id: toastId });
             }
         });
     }
@@ -49,6 +61,7 @@ export default function OracleController() {
                     body: JSON.stringify({
                         level: level === "All" ? null : level,
                         gender: gender === "Both" ? null : gender,
+                        spinTime,
                     }),
                 });
                 const json = await res.json();
@@ -132,12 +145,31 @@ export default function OracleController() {
                     </div>
                 </div>
 
+                {/* Spin Duration */}
+                <div className="controller-group">
+                    <label className="controller-group__label">
+                        Spin Duration
+                    </label>
+                    <div className="filter-pills">
+                        {SPIN_TIMES.map((t) => (
+                            <button
+                                key={t}
+                                className={`filter-pill ${spinTime === t ? "filter-pill--active" : ""}`}
+                                onClick={() => setSpinTime(t)}
+                                disabled={isPending || isSyncing}
+                            >
+                                {t}s
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 {/* Actions */}
                 <div className="controller-actions">
                     <button
                         className="ctrl-btn ctrl-btn--primary"
                         onClick={handleRoll}
-                        disabled={isPending}
+                        disabled={isPending || isSyncing}
                     >
                         {isPending ? (
                             <span className="ctrl-btn__spinner" />
@@ -149,7 +181,7 @@ export default function OracleController() {
                     <button
                         className="ctrl-btn ctrl-btn--secondary"
                         onClick={handleShowPerson}
-                        disabled={!picked || isPending}
+                        disabled={!picked || isPending || isSyncing}
                     >
                         👁 Show Person
                     </button>
@@ -157,9 +189,18 @@ export default function OracleController() {
                     <button
                         className="ctrl-btn ctrl-btn--reset"
                         onClick={handleReset}
-                        disabled={isPending}
+                        disabled={isPending || isSyncing}
                     >
                         🔄 Reset
+                    </button>
+
+                    <button
+                        className="ctrl-btn ctrl-btn--secondary"
+                        style={{ marginTop: "1rem" }}
+                        onClick={handleSync}
+                        disabled={isPending || isSyncing}
+                    >
+                        {isSyncing ? "Syncing..." : "🔄 Update Registrations"}
                     </button>
                 </div>
 

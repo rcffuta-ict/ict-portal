@@ -1,64 +1,71 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { createBrowserClient } from "@/src/lib/supabase/client";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import OracleSlotMachine from "@/src/components/OracleSlotMachine";
+import { displayLevelBetter } from "@/src/lib/utils";
 
 interface SelectedPerson {
     firstName: string;
     lastName: string;
     level: string;
     unit: string | null;
+    gender: string;
 }
 
 export default function OraclePage() {
     const [raffleId, setRaffleId] = useState<number | null>(null);
     const [spinning, setSpinning] = useState(false);
+    const [spinDuration, setSpinDuration] = useState<number>(3000);
     const [person, setPerson] = useState<SelectedPerson | null>(null);
-    const channelRef = useRef<ReturnType<
-        ReturnType<typeof createBrowserClient>["channel"]
-    > | null>(null);
 
     useEffect(() => {
-        const supabase = createBrowserClient();
-        const channel = supabase.channel("oracle-channel");
-        channelRef.current = channel;
+        const eventSource = new EventSource("/api/oracle/stream");
 
-        channel
-            .on("broadcast", { event: "preparing" }, () => {
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            const { event: eventName, payload } = data;
+
+            if (eventName === "ping") {
+                toast.success("Oracle is live!", {
+                    duration: 2000,
+                    id: "oracle-live",
+                });
+            } else if (eventName === "preparing") {
                 setRaffleId(null);
                 setPerson(null);
                 setSpinning(true);
                 toast.loading("Oracle is choosing…", { id: "oracle" });
-            })
-            .on("broadcast", { event: "selection" }, ({ payload }: any) => {
+            } else if (eventName === "selection") {
                 const id = Number(payload.raffleId);
+                const duration = Number(payload.spinDuration) || 3000;
                 if (!id) return;
+
+                setSpinDuration(duration);
                 setRaffleId(id);
                 setSpinning(false);
-                toast.success("Oracle has decided!", { id: "oracle" });
-            })
-            .on(
-                "broadcast",
-                { event: "selection:details:show" },
-                ({ payload }: any) => {
-                    setPerson(payload);
-                },
-            )
-            .on("broadcast", { event: "reset" }, () => {
+
+                // Delay the success toast until the slot machine fully settles
+                setTimeout(() => {
+                    toast.success("Oracle has decided!", { id: "oracle" });
+                }, duration);
+            } else if (eventName === "selection:details:show") {
+                setPerson(payload);
+            } else if (eventName === "reset") {
                 setRaffleId(null);
                 setPerson(null);
                 setSpinning(false);
                 toast.dismiss("oracle");
-            })
-            .subscribe((status) => {
-                if (status === "SUBSCRIBED")
-                    toast.success("Oracle is live!", { duration: 2000 });
-            });
+            }
+        };
+
+        eventSource.onerror = (error) => {
+            console.error("SSE Error:", error);
+            // EventSource auto-reconnects on error
+        };
 
         return () => {
-            supabase.removeChannel(channel);
+            eventSource.close();
         };
     }, []);
 
@@ -81,7 +88,11 @@ export default function OraclePage() {
 
             {/* Slot machine */}
             <div className="oracle-machine-wrap">
-                <OracleSlotMachine value={raffleId} isSpinning={spinning} />
+                <OracleSlotMachine
+                    value={raffleId}
+                    isSpinning={spinning}
+                    spinDuration={spinDuration}
+                />
             </div>
 
             {/* Stand-by state */}
@@ -104,7 +115,12 @@ export default function OraclePage() {
                         </h2>
                         <div className="oracle-reveal__badges">
                             <span className="oracle-badge oracle-badge--level">
-                                {person.level} Level
+                                {person.gender === "male"
+                                    ? "Brother"
+                                    : "Sister"}
+                            </span>
+                            <span className="oracle-badge oracle-badge--level">
+                                {displayLevelBetter(person.level)}
                             </span>
                             {person.unit && (
                                 <span className="oracle-badge oracle-badge--unit">

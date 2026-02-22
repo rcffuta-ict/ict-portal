@@ -1,73 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminClient, broadcastOracleEvent } from "@/src/lib/supabase/server";
-
-// async function verifyAdmin(request: NextRequest): Promise<boolean> {
-//     const adminEmails = (process.env.ADMIN_EMAILS || "")
-//         .split(",")
-//         .map((e) => e.trim().toLowerCase());
-//     const token = request.cookies.get("sb-access-token")?.value;
-//     if (!token) return false;
-//     const supabase = getAdminClient();
-//     const { data: { user } } = await supabase.auth.getUser(token);
-//     return adminEmails.includes(user?.email?.toLowerCase() ?? "");
-// }
+import { getOracleStore, emitOracleEvent, addPickHistory } from "@/src/lib/oracleStore";
 
 export async function POST(request: NextRequest) {
-    const isAdmin = true //await verifyAdmin(request);
+    const isAdmin = true;
     if (!isAdmin)
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { level, gender } = await request.json();
-    const supabase = getAdminClient();
-    const eventSlug = process.env.CFM_EVENT_SLUG || "cfm";
+    const { level, gender, spinTime } = await request.json();
 
-    const { data: event } = await supabase
-        .from("events")
-        .select("id")
-        .eq("slug", eventSlug)
-        .maybeSingle();
+    const store = getOracleStore();
 
-    if (!event)
-        return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    if (store.registrations.length === 0) {
+        return NextResponse.json(
+            { error: "No registrations loaded. Please sync data first." },
+            { status: 400 }
+        );
+    }
 
-    // Build filtered query on event_registrations
-    let query = supabase
-        .from("event_registrations")
-        .select("id, raffle_id, first_name, last_name, level, gender, email")
-        .eq("event_id", event.id)
-        .not("raffle_id", "is", null);
+    let candidates = store.registrations;
 
-    if (level) query = query.eq("level", level);
-    if (gender) query = query.eq("gender", gender);
+    if (level) candidates = candidates.filter(r => r.level.includes(level));
+    if (gender) candidates = candidates.filter(r => r.gender === gender);
 
-    const { data: registrations, error } = await query;
-
-    if (error || !registrations?.length)
+    if (candidates.length === 0) {
         return NextResponse.json(
             { error: "No eligible registrants found for that filter." },
             { status: 404 }
         );
+    }
+
+    // Filter out recently picked if possible
+    let eligibleCandidates = candidates.filter(c => !store.pickedHistory.includes(c.raffle_id));
+    
+    // If filtering out recents leaves no one, ignore the cooldown
+    if (eligibleCandidates.length === 0) {
+        eligibleCandidates = candidates;
+    }
 
     // Pick a random winner
-    const winner = registrations[Math.floor(Math.random() * registrations.length)];
-
-    // Look up unit from profile via email
-    let unitName: string | null = null;
-    const { data: profile } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("email", winner.email)
-        .maybeSingle();
-
-    if (profile?.id) {
-        const { data: membership } = await supabase
-            .from("membership_units")
-            .select("units(name)")
-            .eq("profile_id", profile.id)
-            .limit(1)
-            .maybeSingle();
-        unitName = (membership?.units as any)?.name ?? null;
-    }
+    const winner = eligibleCandidates[Math.floor(Math.random() * eligibleCandidates.length)];
 
     const picked = {
         raffleId: winner.raffle_id,
@@ -75,13 +46,22 @@ export async function POST(request: NextRequest) {
         lastName: winner.last_name,
         level: winner.level,
         gender: winner.gender,
-        unit: unitName,
+        unit: winner.unit,
     };
 
-    // Broadcast "preparing" → oracle TV clears, then "selection" → spinner lands
-    await broadcastOracleEvent("preparing", {});
-    await new Promise((r) => setTimeout(r, 300));
-    await broadcastOracleEvent("selection", { raffleId: winner.raffle_id });
+    addPickHistory(winner.raffle_id);
+
+    // Send total spin duration to frontend
+    const delay = spinTime ? Number(spinTime) * 1000 : 3000;
+    
+    // Broadcast "preparing" → oracle TV clears
+    emitOracleEvent("preparing", {});
+    
+    // Immediately tell the frontend to start the selection process visually
+    emitOracleEvent("selection", { 
+        raffleId: winner.raffle_id,
+        spinDuration: delay
+    });
 
     return NextResponse.json({ success: true, data: picked });
 }
