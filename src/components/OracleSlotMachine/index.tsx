@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSpinSound } from "@/src/hooks/useSpinSound";
 
 interface ReelProps {
     targetDigit: number | null;
@@ -73,6 +74,8 @@ export default function OracleSlotMachine({
     isSpinning,
     spinDuration = 3000,
 }: Props) {
+    const { audioEnabled } = useSpinSound(isSpinning);
+
     // Distribute the total spin duration across the 5 reels.
     // E.g., if spinDuration is 5000ms:
     // reel 0 stops at 1000ms, reel 1 at 2000ms, ..., reel 4 at 5000ms
@@ -88,6 +91,13 @@ export default function OracleSlotMachine({
                     isSpinning={isSpinning}
                 />
             ))}
+
+            {/* Hidden prompt to enable audio if user hasn't interacted yet */}
+            {!audioEnabled && isSpinning && (
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 text-xs text-white/50 animate-pulse">
+                    Click anywhere to enable sound
+                </div>
+            )}
         </div>
     );
 }

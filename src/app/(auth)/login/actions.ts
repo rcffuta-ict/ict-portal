@@ -80,9 +80,11 @@ export async function loginAction(formData: FormData) {
 
         // Step 3: Full profile via ict-lib
         const fullProfile = await rcf.member.getFullProfile(user.id);
+
+        // console.log("User profile",fullProfile);
         if (!fullProfile)
             return { success: false, error: "Profile not found. Contact admin." };
-        if (!fullProfile.academics?.currentLevel)
+        if (!fullProfile.academics?.currentLevel || fullProfile.academics.currentLevel === 'N/A')
             return { success: false, error: "You have no level information, please update your profile" };
 
         // Step 4: Auto-register for the CFM event
