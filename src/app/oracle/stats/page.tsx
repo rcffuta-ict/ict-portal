@@ -145,7 +145,7 @@ export default function StatsPage() {
                                             animationDelay: `${i * 0.08}s`,
                                         }}
                                     >
-                                        <div className="stats-level-row__medal">
+                                        <div className="stats-level-row__medal mr-2">
                                             {MEDALS[i] ?? "·"}
                                         </div>
                                         <div className="stats-level-row__info">

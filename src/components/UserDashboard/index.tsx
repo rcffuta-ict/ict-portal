@@ -58,7 +58,7 @@ export default function UserDashboard() {
                         height={60}
                     />
                 </div>
-                <button className="dash-logout" onClick={handleLogout}>
+                <button className="dash-logout ml-auto" onClick={handleLogout}>
                     Sign Out
                 </button>
             </header>
@@ -103,8 +103,8 @@ export default function UserDashboard() {
                     </div>
                     <div className="player-hype">
                         🏆 <strong>You&apos;re in the running!</strong> The
-                        Oracle picks winners from all registered members — stay
-                        glued to the screen!
+                        Oracle picks from all registered members — stay glued to
+                        the screen!
                     </div>
                 </div>
 
@@ -113,7 +113,7 @@ export default function UserDashboard() {
                     <div className="raffle-ticket__header">
                         <span>🎫</span>
                         <span className="raffle-ticket__label">
-                            YOUR RAFFLE ID
+                            YOUR Oracle ID
                         </span>
                     </div>
                     <div className="raffle-ticket__number">
@@ -139,13 +139,18 @@ export default function UserDashboard() {
                         <span className="dash-link__icon">🎰</span>
                         <span className="dash-link__text">
                             <strong>Oracle Screen</strong>
+                            <br />
                             <small>Watch live picks</small>
                         </span>
                     </a>
-                    <a href="/stats" className="dash-link dash-link--stats">
+                    <a
+                        href="/oracle/stats"
+                        className="dash-link dash-link--stats"
+                    >
                         <span className="dash-link__icon">📊</span>
                         <span className="dash-link__text">
                             <strong>Live Stats</strong>
+                            <br />
                             <small>See scoreboard</small>
                         </span>
                     </a>
