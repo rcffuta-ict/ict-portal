@@ -103,6 +103,7 @@ export default function StatsPage() {
                         alt="RCF FUTA"
                         width={56}
                         height={56}
+                        className="mx-auto"
                         style={{ width: "auto", height: "56px" }}
                     />
                 </div>
