@@ -3,6 +3,7 @@
 import { User, MapPin, BookOpen, Shield, Loader2 } from "lucide-react";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { DepartmentUtils } from "@rcffuta/ict-lib";
+import clsx from "clsx";
 
 export function ProfileView() {
     const userProfile = useProfileStore((state) => state.user);
@@ -303,12 +304,16 @@ function InfoSection({ title, icon: Icon, children }: InfoSectionProps) {
 }
 
 function InfoItem({ label, value }: { label: string; value: string }) {
+    let className = '';
+    if (label.toLowerCase() === "gender") {
+        className = 'capitalize'
+    }
     return (
         <div className="space-y-1">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                 {label}
             </p>
-            <p className="text-sm font-medium text-slate-900 break-words leading-relaxed">
+            <p className={clsx("text-sm font-medium text-slate-900 break-words leading-relaxed", className)}>
                 {value}
             </p>
         </div>

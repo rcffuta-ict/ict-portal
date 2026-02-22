@@ -5,14 +5,14 @@ import { BioData, LocationData, RcfIctClient } from "@rcffuta/ict-lib/server";
 import { revalidatePath } from "next/cache";
 
 export async function updateProfileAction(formData: FormData, userId: string) {
-    
+
     // We use the Admin Client to bypass RLS if needed, or stick to user client if RLS allows update
     // Using Admin Client is safer for profile updates to ensure fields are written
     const adminRcf = RcfIctClient.asAdmin();
 
     try {
         // 2. Prepare Data Objects
-        
+
         // BIO DATA
         const bioData: Partial<BioData> = {
             firstName: formData.get("firstName") as string,
@@ -29,6 +29,8 @@ export async function updateProfileAction(formData: FormData, userId: string) {
             homeAddress: formData.get("homeAddress") as string,
             residentialZoneId: (formData.get("residentialZoneId") as string) || undefined,
         };
+
+        const currentLevel = formData.get("currentLevel") as string;
 
         // 3. Perform Updates (Parallel)
         const updates = [];
@@ -52,6 +54,15 @@ export async function updateProfileAction(formData: FormData, userId: string) {
         updates.push(
             adminRcf.auth.updateLocationInfo(userId, locationData)
         );
+
+        if (currentLevel) {
+            updates.push(
+                adminRcf.supabase
+                    .from('academics')
+                    .update({ current_level: currentLevel })
+                    .eq('id', userId)
+            );
+        }
 
         // Execute all
         const results = await Promise.all(updates);

@@ -19,6 +19,9 @@ export function ProfileEdit() {
     const updateStoreLocation = useProfileStore(
         (state) => state.updateLocation,
     );
+    const updateStoreAcademics = useProfileStore(
+        (state) => state.updateAcademics,
+    );
 
     const [zones, setZones] = useState<any[]>([]);
     const [isLoadingZones, setIsLoadingZones] = useState(true);
@@ -40,6 +43,7 @@ export function ProfileEdit() {
             phoneNumber: userProfile?.profile.phoneNumber || "",
             gender: userProfile?.profile.gender || "",
             dob: userProfile?.profile.dob || "",
+            currentLevel: userProfile?.academics?.currentLevel || "",
             matricNumber: userProfile?.academics?.matricNumber || "",
             department: userProfile?.academics?.department || "",
             residentialZoneId: userProfile?.location?.residentialZone || "",
@@ -87,6 +91,10 @@ export function ProfileEdit() {
                     )?.name,
                 });
 
+                updateStoreAcademics({
+                    currentLevel: data.currentLevel,
+                });
+
                 // Reset form dirty state with new values
                 reset(data);
 
@@ -96,16 +104,16 @@ export function ProfileEdit() {
                 });
             } else {
                 console.error("Profile update error:", res.error);
-                showAlert({ 
-                    type: "error", 
-                    message: res.error || "Could not update profile" 
+                showAlert({
+                    type: "error",
+                    message: res.error || "Could not update profile"
                 });
             }
         } catch (error) {
             console.error("Unexpected error during profile update:", error);
-            showAlert({ 
-                type: "error", 
-                message: "An unexpected error occurred. Please try again." 
+            showAlert({
+                type: "error",
+                message: "An unexpected error occurred. Please try again."
             });
         }
     };
@@ -147,16 +155,37 @@ export function ProfileEdit() {
                     <FormSelect
                         label="Gender"
                         {...register("gender")}
-                        disabled
+                        // disabled
                         className="bg-slate-50"
                     >
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
+                        <option value="">Select Gender...</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
                     </FormSelect>
                 </div>
             </div>
 
-            {/* 2. ACADEMICS */}
+            {/* 2. FELLOWSHIP */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-bold text-slate-800 mb-6 pb-2 border-b border-slate-100">
+                    Fellowship
+                </h3>
+                <div className="grid gap-6 md:grid-cols-2">
+                    <FormSelect
+                        label="Level"
+                        {...register("currentLevel")}
+                    >
+                        <option value="">Select Level...</option>
+                        <option value="100L">100L</option>
+                        <option value="200L">200L</option>
+                        <option value="300L">300L</option>
+                        <option value="400L">400L</option>
+                        <option value="500L">500L</option>
+                    </FormSelect>
+                </div>
+            </div>
+
+            {/* 3. ACADEMICS */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h3 className="text-lg font-bold text-slate-800 mb-6 pb-2 border-b border-slate-100">
                     Academic Details
@@ -182,12 +211,12 @@ export function ProfileEdit() {
                     </FormSelect>
                 </div>
                 <div className="mt-4 p-3 bg-blue-50 text-blue-700 text-xs rounded-lg border border-blue-100">
-                    Academic details are locked to preserve your cohort history.
+                    Academic details are locked to preserve your level history.
                     Contact admin for corrections.
                 </div>
             </div>
 
-            {/* 3. LOCATION */}
+            {/* 4. LOCATION */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h3 className="text-lg font-bold text-slate-800 mb-6 pb-2 border-b border-slate-100">
                     Location & Contact
