@@ -6,52 +6,28 @@ import { getZoneModuleData } from "./actions";
 import { Loader2, MapPin } from "lucide-react";
 import { CoordinatorView } from "./components/coordinator-view";
 import { PastorView } from "./components/pastor-view";
-import { useProfileStore } from "@/lib/stores/profile.store";
-import { useTenureStore } from "@/lib/stores/tenure.store";
 
 export default function ZonesPage() {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const profile = useProfileStore((state) => state.user?.profile);
-    const tenureId = useTenureStore((state) => state.activeTenure?.id);
 
     const load = async () => {
-        if (!profile) {
-            throw new Error("Profile not loaded yet");
-        }
-        if (!tenureId) {
-            throw new Error("Tenure not loaded yet");
-        }
         setLoading(true);
-        const res = await getZoneModuleData({
-            email: profile.email || "",
-            tenureId: tenureId,
-            userId: profile.id,
-        });
+        const res = await getZoneModuleData();
         setData(res);
         setLoading(false);
     };
 
     useEffect(() => {
-        const fetchData = async () => {
-            if (!profile) {
-                setLoading(false);
-                throw new Error("Profile not loaded yet");
-            }
-            if (!tenureId) {
-                setLoading(false);
-                throw new Error("Tenure not loaded yet");
-            }
-            const res = await getZoneModuleData({
-                email: profile.email || "",
-                tenureId: tenureId,
-                userId: profile.id,
-            });
-            setData(res);
-            setLoading(false);
+        let active = true;
+        (async () => {
+            const res = await getZoneModuleData();
+            if (active) setData(res);
+            if (active) setLoading(false);
+        })();
+        return () => {
+            active = false;
         };
-        
-        fetchData();
     }, []);
 
     if (loading)

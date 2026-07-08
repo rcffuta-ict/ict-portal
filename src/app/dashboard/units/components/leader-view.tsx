@@ -6,7 +6,7 @@ import { Layers, Users, ArrowRight, X } from "lucide-react";
 import { UnitManager } from "./unit-manager";
 import { getUnitDetailsAction } from "../actions";
 
-export function LeaderUnitView({ data, onSuccess }: any) {
+export function LeaderUnitView({ units, tenureId, onSuccess }: any) {
     const [selectedUnit, setSelectedUnit] = useState<any>(null);
     const [modalMembers, setModalMembers] = useState<any[]>([]);
 
@@ -23,7 +23,7 @@ export function LeaderUnitView({ data, onSuccess }: any) {
     return (
         <>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {data.units.map((u: any) => (
+                {units.map((u: any) => (
                     <div
                         key={u.id}
                         onClick={() => handleOpen(u)}
@@ -92,7 +92,7 @@ export function LeaderUnitView({ data, onSuccess }: any) {
                             <UnitManager
                                 unit={selectedUnit}
                                 initialMembers={modalMembers}
-                                tenureId={data.tenureId}
+                                tenureId={tenureId}
                                 onSuccess={() => {
                                     onSuccess();
                                     handleOpen(selectedUnit); // Refresh list
