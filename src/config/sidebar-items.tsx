@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { FullUserProfile, LeadershipRole } from "@rcffuta/ict-lib";
+import { isProfileAdmin } from "@/lib/auth-roles";
 
 export interface SidebarItem {
     name: string;
@@ -129,8 +130,8 @@ export function getSidebarItems(user: FullUserProfile | null | boolean, isAdminO
         isAdmin = user;
     } else {
         currentUser = user;
-        // If override is provided, use it, otherwise check email if user exists
-        isAdmin = isAdminOverride ?? (currentUser ? isUserAdmin(currentUser.profile.email) : false);
+        // Admin is derived from leadership positions (see auth-roles), not email.
+        isAdmin = isAdminOverride ?? isProfileAdmin(currentUser);
     }
 
     // 1. Tenure Manager - Admins Only
@@ -166,8 +167,9 @@ export function getSidebarItems(user: FullUserProfile | null | boolean, isAdminO
         items.push(zoneManagerItem);
     }
 
-    // 3. Workforce Manager - Admins OR Leadership Scope = UNIT or TEAM
-    const hasWorkforceAccess = isAdmin || hasLeadershipScope(currentUser, ['UNIT', 'TEAM']);
+    // 3. Workforce Manager - Admins OR Leadership Scope = UNIT / TEAM / LEVEL
+    // (level coordinators manage their generation's members + invite links here).
+    const hasWorkforceAccess = isAdmin || hasLeadershipScope(currentUser, ['UNIT', 'TEAM', 'LEVEL']);
     if (hasWorkforceAccess && !items.includes(workforceManagerItem)) {
         items.push(workforceManagerItem);
     }
@@ -186,16 +188,7 @@ export function getEventSidebarItems(): SidebarItem[] {
     return [...eventSidebarItems];
 }
 
-/**
- * Check if user email is in admin list
- * @param userEmail - User's email address
- * @returns Whether user is an admin
- */
-export function isUserAdmin(userEmail: string | null | undefined): boolean {
-    if (!userEmail) return false;
-
-    const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS || "";
-    const allowedEmails = adminEmails.split(",").map(e => e.trim().toLowerCase());
-
-    return allowedEmails.includes(userEmail.toLowerCase());
-}
+// Admin detection now lives in `@/lib/auth-roles` (`isProfileAdmin`), derived from
+// leadership positions. Re-exported here for the components that imported it from
+// this module.
+export { isProfileAdmin } from "@/lib/auth-roles";

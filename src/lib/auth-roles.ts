@@ -1,79 +1,117 @@
 /**
- * Role-based utilities for user permissions
- * Implements role detection as per AUTHENTICATION.md
+ * Role-based utilities for user permissions.
+ *
+ * Roles are derived from a member's LEADERSHIP POSITIONS (from `FullUserProfile.roles`),
+ * NOT from department or an email whitelist:
+ *   - ADMIN     → holds a default position (VP Admin / ICT Coordinator) or a PRESIDENT-scope role.
+ *   - MODERATOR → holds any other active leadership position (unit/team/level head, etc.).
+ *   - USER      → has login but no position (edge case; normally can't reach the portal).
+ *
+ * `FullUserProfile.roles` only exposes { title, scope, contextName }, so admin detection
+ * here is title/scope based. Precise scope checks (which unit/level a leader manages) live
+ * in `src/lib/access-control.ts`, which queries the DB.
  */
 
 import type { FullUserProfile } from '@rcffuta/ict-lib';
 
 export type UserRole = 'USER' | 'ADMIN' | 'MODERATOR';
 
+/**
+ * The two protected, seeded leadership positions that grant full admin rights.
+ * Kept in sync with db/migrations/0001_auth_rework.sql and the seeded titles.
+ */
+export const DEFAULT_ADMIN_TITLES = [
+    'Vice President Administration',
+    'ICT Coordinator',
+] as const;
+
 export interface AuthUser {
-  id: string;
-  email: string;
-  role: UserRole;
-  user: FullUserProfile; // ICT lib profile with academics, personal info, etc.
+    id: string;
+    email: string;
+    role: UserRole;
+    user: FullUserProfile; // ICT lib profile with academics, personal info, roles, etc.
+}
+
+function roleTitles(profile: FullUserProfile | null | undefined): string[] {
+    return (profile?.roles ?? []).map((r) => r.title);
 }
 
 /**
- * Determine user role based on profile data
- * Customize this logic based on your institution's requirements
+ * Whether the profile holds one of the default admin positions (VP Admin / ICT Coord)
+ * or a PRESIDENT-scope role.
+ */
+export function isDefaultAdminProfile(profile: FullUserProfile | null | undefined): boolean {
+    if (!profile?.roles) return false;
+    const titles = roleTitles(profile);
+    if (titles.some((t) => DEFAULT_ADMIN_TITLES.includes(t as (typeof DEFAULT_ADMIN_TITLES)[number]))) {
+        return true;
+    }
+    return profile.roles.some((r) => r.scope === 'PRESIDENT');
+}
+
+/** VP Admin specifically (the appointer of leaders). */
+export function isVpAdmin(profile: FullUserProfile | null | undefined): boolean {
+    return roleTitles(profile).includes('Vice President Administration');
+}
+
+/**
+ * Determine user role based on leadership positions.
  */
 export function determineUserRole(profile: FullUserProfile): UserRole {
-  // Check if user is ICT department (admin access)
-  if (profile.academics?.department === 'ICT') {
-    return 'ADMIN';
-  }
-
-  // Check if user has any leadership roles
-  if (profile.roles && profile.roles.length > 0) {
-    return 'MODERATOR';
-  }
-
-  // Default role for regular members
-  return 'USER';
+    if (isDefaultAdminProfile(profile)) return 'ADMIN';
+    if (profile.roles && profile.roles.length > 0) return 'MODERATOR';
+    return 'USER';
 }
 
 /**
- * Check if user has admin privileges
+ * Client-friendly admin check from a full profile (used by client components that
+ * can't query the DB — they rely on the profile in the store).
+ */
+export function isProfileAdmin(profile: FullUserProfile | null | undefined): boolean {
+    return isDefaultAdminProfile(profile);
+}
+
+/**
+ * Check if user has admin privileges.
  */
 export function isAdmin(user: AuthUser | FullUserProfile): boolean {
-  if ('role' in user) {
-    return user.role === 'ADMIN';
-  }
-  return determineUserRole(user) === 'ADMIN';
+    if ('role' in user) {
+        return user.role === 'ADMIN';
+    }
+    return determineUserRole(user) === 'ADMIN';
 }
 
 /**
- * Check if user has moderator or higher privileges
+ * Check if user has moderator or higher privileges.
  */
 export function isModerator(user: AuthUser | FullUserProfile): boolean {
-  if ('role' in user) {
-    return ['ADMIN', 'MODERATOR'].includes(user.role);
-  }
-  const role = determineUserRole(user);
-  return ['ADMIN', 'MODERATOR'].includes(role);
+    if ('role' in user) {
+        return ['ADMIN', 'MODERATOR'].includes(user.role);
+    }
+    const role = determineUserRole(user);
+    return ['ADMIN', 'MODERATOR'].includes(role);
 }
 
 /**
- * Convert FullUserProfile to AuthUser
+ * Convert FullUserProfile to AuthUser.
  */
 export function createAuthUser(profile: FullUserProfile, email: string): AuthUser {
-  return {
-    id: profile.profile.id,
-    email: email || profile.profile.email || '',
-    role: determineUserRole(profile),
-    user: profile
-  };
+    return {
+        id: profile.profile.id,
+        email: email || profile.profile.email || '',
+        role: determineUserRole(profile),
+        user: profile,
+    };
 }
 
 /**
- * Permission checks for specific actions
+ * Permission checks for specific actions.
  */
 export const permissions = {
-  canManageUsers: (user: AuthUser) => isAdmin(user),
-  canEditProfile: (user: AuthUser, profileId: string) => 
-    isAdmin(user) || user.id === profileId,
-  canViewAdminDashboard: (user: AuthUser) => isAdmin(user),
-  canManageEvents: (user: AuthUser) => isModerator(user),
-  canViewReports: (user: AuthUser) => isModerator(user),
+    canManageUsers: (user: AuthUser) => isAdmin(user),
+    canEditProfile: (user: AuthUser, profileId: string) =>
+        isAdmin(user) || user.id === profileId,
+    canViewAdminDashboard: (user: AuthUser) => isAdmin(user),
+    canManageEvents: (user: AuthUser) => isModerator(user),
+    canViewReports: (user: AuthUser) => isModerator(user),
 } as const;

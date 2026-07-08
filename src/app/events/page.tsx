@@ -22,7 +22,7 @@ import { CompactPreloader } from "@/components/ui/preloader";
 import Link from "next/link";
 import { format, isAfter, isBefore, startOfDay } from "date-fns";
 import { useProfileStore } from "@/lib/stores/profile.store";
-import { isUserAdmin } from "@/config/sidebar-items";
+import { isProfileAdmin } from "@/config/sidebar-items";
 import { EventModal } from "@/components/events/EventModal";
 import { Badge } from "@/components/ui/badge";
 import { Logo } from "@/components/ui/logo";
@@ -53,7 +53,7 @@ export default function EventsPage() {
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
   const { user } = useProfileStore();
-  const isAdmin = useMemo(() => isUserAdmin(user?.profile?.email), [user?.profile?.email]);
+  const isAdmin = useMemo(() => isProfileAdmin(user), [user]);
 
   const loadEvents = async () => {
     setLoading(true);

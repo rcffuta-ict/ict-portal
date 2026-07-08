@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { getEventAdminStats, getEventQuestions } from "./actions";
 import { useProfileStore } from "@/lib/stores/profile.store";
-import { isUserAdmin } from "@/config/sidebar-items";
+import { isProfileAdmin } from "@/config/sidebar-items";
 import Link from "next/link";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -41,8 +41,8 @@ export default function EventAdminPage() {
   const [search, setSearch] = useState("");
 
   const isAdmin = useMemo(() => {
-    return isUserAdmin(user?.profile?.email);
-  }, [user?.profile?.email]);
+    return isProfileAdmin(user);
+  }, [user]);
 
   useEffect(() => {
     if (!loading && !isAdmin) {
