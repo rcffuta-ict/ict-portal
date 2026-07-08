@@ -11,6 +11,7 @@ import { updateProfileAction } from "@/app/dashboard/profile/actions";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
+import { AvatarUpload } from "@/components/ui/avatar-upload";
 
 export function ProfileEdit() {
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
@@ -25,6 +26,11 @@ export function ProfileEdit() {
 
     const [zones, setZones] = useState<any[]>([]);
     const [isLoadingZones, setIsLoadingZones] = useState(true);
+    const [avatar, setAvatar] = useState<{ url: string | null; publicId: string | null }>({
+        url: userProfile?.profile.avatarUrl ?? null,
+        publicId: (userProfile?.profile as any)?.avatarPublicId ?? null,
+    });
+    const [avatarChanged, setAvatarChanged] = useState(false);
 
     const departments = DepartmentUtils.getAllNames();
 
@@ -69,6 +75,9 @@ export function ProfileEdit() {
             Object.entries(data).forEach(([key, value]) => {
                 formData.append(key, value as string);
             });
+            // Always include avatar fields so the action knows whether to touch them.
+            formData.append("avatarUrl", avatar.url ?? "");
+            formData.append("avatarPublicId", avatar.publicId ?? "");
 
             const res = await updateProfileAction(formData, userProfile?.profile.id || "");
 
@@ -81,6 +90,7 @@ export function ProfileEdit() {
                     phoneNumber: data.phoneNumber,
                     gender: data.gender,
                     dob: data.dob,
+                    avatarUrl: avatar.url ?? undefined,
                 });
 
                 updateStoreLocation({
@@ -97,6 +107,7 @@ export function ProfileEdit() {
 
                 // Reset form dirty state with new values
                 reset(data);
+                setAvatarChanged(false);
 
                 showAlert({
                     type: "success",
@@ -133,6 +144,16 @@ export function ProfileEdit() {
                 <h3 className="text-lg font-bold text-slate-800 mb-6 pb-2 border-b border-slate-100">
                     Personal Information
                 </h3>
+                <div className="mb-6">
+                    <AvatarUpload
+                        currentUrl={avatar.url}
+                        initials={`${userProfile.profile.firstName?.[0] ?? ""}${userProfile.profile.lastName?.[0] ?? ""}`}
+                        onUploaded={(img) => {
+                            setAvatar({ url: img?.url ?? null, publicId: img?.publicId ?? null });
+                            setAvatarChanged(true);
+                        }}
+                    />
+                </div>
                 <div className="grid gap-6 md:grid-cols-2">
                     <FormInput label="First Name" {...register("firstName")} />
                     <FormInput label="Last Name" {...register("lastName")} />
@@ -285,8 +306,15 @@ export function ProfileEdit() {
             <div className="sticky bottom-6 flex justify-end gap-4 rounded-xl border border-slate-200 bg-white/80 p-4 shadow-xl backdrop-blur-md transition-all duration-300 transform translate-y-0">
                 <button
                     type="button"
-                    onClick={() => reset()}
-                    disabled={!isDirty || isSubmitting}
+                    onClick={() => {
+                        reset();
+                        setAvatar({
+                            url: userProfile?.profile.avatarUrl ?? null,
+                            publicId: (userProfile?.profile as any)?.avatarPublicId ?? null,
+                        });
+                        setAvatarChanged(false);
+                    }}
+                    disabled={(!isDirty && !avatarChanged) || isSubmitting}
                     className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-slate-600 rounded-xl hover:bg-slate-100 disabled:opacity-50 transition-colors"
                 >
                     <RefreshCcw className="h-4 w-4" /> Reset
@@ -294,7 +322,7 @@ export function ProfileEdit() {
 
                 <button
                     type="submit"
-                    disabled={!isDirty || isSubmitting}
+                    disabled={(!isDirty && !avatarChanged) || isSubmitting}
                     className="flex items-center gap-2 px-8 py-2.5 text-sm font-bold text-white bg-rcf-navy rounded-xl shadow-lg shadow-rcf-navy/20 hover:bg-opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                     {isSubmitting ? (
