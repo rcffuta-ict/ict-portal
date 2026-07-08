@@ -8,7 +8,7 @@ import {
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useTenureStore } from "@/lib/stores/tenure.store";
 import { CompactPreloader } from "@/components/ui/preloader";
-import { getSidebarItems, isUserAdmin, eventSidebarItems } from "@/config/sidebar-items";
+import { getSidebarItems, isProfileAdmin, eventSidebarItems } from "@/config/sidebar-items";
 import type { SidebarItem } from "@/config/sidebar-items";
 import { useMemo, useState, useEffect } from "react";
 import { getEvents } from "@/app/events/actions";
@@ -62,8 +62,8 @@ export default function DashboardHome() {
 
     // Check if user is admin
     const isAdmin = useMemo(() => {
-        return isUserAdmin(user?.profile?.email);
-    }, [user?.profile?.email]);
+        return isProfileAdmin(user);
+    }, [user]);
 
     // Get service cards (exclude "Overview" for cards display, also exclude events since they have their own section)
     const serviceCards = useMemo(() => {

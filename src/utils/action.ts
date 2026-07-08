@@ -1,12 +1,13 @@
 "use server"
-import { RcfIctClient, Tenure } from "@rcffuta/ict-lib/server";
-import { cookies } from "next/headers";
+
+import { Tenure } from "@rcffuta/ict-lib/server";
+import { ictAdmin } from "@/lib/ict";
+import { requireAccess } from "@/lib/access-control";
 
 export async function getActiveTenure(): Promise<Tenure | null> {
-    const rcf = RcfIctClient.fromEnv();
-
     try {
-        const { data } = await rcf.supabase
+        // Service-role client: RLS is default-deny, so anon reads no longer work.
+        const { data } = await ictAdmin.supabase
             .from("tenures")
             .select("*")
             .eq("is_active", true)
@@ -20,62 +21,57 @@ export async function getActiveTenure(): Promise<Tenure | null> {
 }
 
 export async function getActiveTenureName() {
-
-
     try {
         const dt = await getActiveTenure();
-
         return dt?.name || "No Active Tenure";
     } catch (error) {
         console.error("Error fetching active tenure:", error);
-        return null; // Fallback if no tenure exists
+        return null;
     }
 }
-
-
 
 // ============================================================================
 // SECURITY & AUTHORIZATION
 // ============================================================================
 
 /**
- * Checks if the current user has admin access to the Executive Console
- * Validates session token and checks email against ADMIN_EMAILS whitelist
- * @returns RcfIctClient instance with admin (service role) permissions
- * @throws Error if unauthorized
+ * Ensures the current session belongs to an ADMIN (VP Admin / ICT Coordinator /
+ * PRESIDENT scope) and returns the service-role client for privileged DB writes.
+ * @throws Error if unauthorized.
  */
 export const checkAdminAccess = async () => {
-    // 1. Get the session token from cookies
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value;
-
-    if (!token) {
-        throw new Error("Unauthorized: No session token found");
-    }
-
-    const rcf = RcfIctClient.fromEnv();
-
-    // 2. Validate token and get user
-    const { data: { user }, error } = await rcf.supabase.auth.getUser(token);
-
-    if (error || !user || !user.email) {
-        console.error("Auth Error:", error);
-        throw new Error("Unauthorized: Invalid session");
-    }
-
-    // 3. Check email whitelist (from environment variable)
-    const allowedEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase());
-    
-    if (!allowedEmails.includes(user.email.toLowerCase())) {
-        throw new Error("Access Denied: Your email is not whitelisted for the Executive Console.");
-    }
-    
-    // 4. Return admin client for database operations
-    return RcfIctClient.asAdmin();
+    await requireAccess("ADMIN"); // throws if not an admin
+    return ictAdmin;
 };
 
-export const checkIsAdminByEmail = async (email:string) => {
+/**
+ * Position-based admin check by email (used where only an email is available).
+ * Returns true if the profile with this email currently holds a default admin
+ * position (VP Admin / ICT Coordinator) or a PRESIDENT-scope role.
+ */
+export const checkIsAdminByEmail = async (email: string) => {
+    if (!email) return false;
 
-    const adminEmails = (process.env.ADMIN_EMAILS || "").split(",");
-    return adminEmails.includes(email || "");
-}
+    try {
+        const { data: profile } = await ictAdmin.supabase
+            .from("profiles")
+            .select("id")
+            .eq("email", email)
+            .maybeSingle();
+
+        if (!profile) return false;
+
+        const { data: rows } = await ictAdmin.supabase
+            .from("leadership")
+            .select("id, position:leadership_positions(is_default, category)")
+            .eq("profile_id", profile.id);
+
+        return (rows || []).some((r) => {
+            const pos = Array.isArray(r.position) ? r.position[0] : r.position;
+            return pos?.is_default === true || pos?.category === "PRESIDENT";
+        });
+    } catch (error) {
+        console.error("checkIsAdminByEmail failed:", error);
+        return false;
+    }
+};

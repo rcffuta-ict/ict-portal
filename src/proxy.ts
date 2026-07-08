@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
-  const token = request.cookies.get('sb-access-token')?.value
+  // UX-only: presence of a session cookie decides redirect vs. allow.
+  // Real authorization happens in server actions/components (see AGENTS.md).
+  const token = request.cookies.get('rcf-session')?.value
   const { pathname } = request.nextUrl
 
   // Define route types

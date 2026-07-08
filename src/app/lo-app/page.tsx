@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { LoAppClient } from "@/components/lo-app/LoAppClient";
 import { useProfileStore } from "@/lib/stores/profile.store";
-import { isUserAdmin } from "@/config/sidebar-items";
+import { isProfileAdmin } from "@/config/sidebar-items";
 import {
     getActiveEvents,
     getQuestions,
@@ -23,8 +23,8 @@ export default function LoAppPage() {
     const [userStarredIds, setUserStarredIds] = useState<string[]>([]);
 
     const isAdmin = useMemo(() => {
-        return isUserAdmin(user?.profile?.email);
-    }, [user?.profile?.email]);
+        return isProfileAdmin(user);
+    }, [user]);
 
     // Construct authenticatedUser object for LoAppClient
     const authenticatedUser = useMemo(() => {
@@ -48,7 +48,7 @@ export default function LoAppPage() {
 
                 // Fetch initial questions
                 const questionsResult = await getQuestions({
-                    status: (isAdmin || isUserAdmin(user?.profile?.email))
+                    status: (isAdmin || isProfileAdmin(user))
                         ? ["visible", "answered", "flagged", "hidden"]
                         : ["visible", "answered"],
                 });
@@ -77,7 +77,7 @@ export default function LoAppPage() {
 
         // We can fetch data immediately
         init();
-    }, [isAdmin, user?.profile?.email]);
+    }, [isAdmin, user]);
 
     if (loading) {
          return <CompactPreloader title="Loading Lo! App..." />;

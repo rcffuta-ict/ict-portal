@@ -7,7 +7,7 @@ import clsx from "clsx";
 import { Logo } from "../ui/logo";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useMemo } from "react";
-import { isUserAdmin, eventSidebarItems, getSidebarItems } from "@/config/sidebar-items";
+import { isProfileAdmin, eventSidebarItems, getSidebarItems } from "@/config/sidebar-items";
 
 interface SidebarProps {
     isOpen?: boolean;
@@ -23,7 +23,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
     // Check if user is an admin
     const isAdmin = useMemo(() => {
-        return isUserAdmin(user?.profile?.email);
+        return isProfileAdmin(user);
     }, [user?.profile?.email]);
 
     // Get sidebar items based on user role and admin status

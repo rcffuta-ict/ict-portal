@@ -2,13 +2,11 @@
 
 import { ict, ictAdmin } from "@/lib/ict";
 import { revalidatePath } from "next/cache";
+import { checkIsAdminByEmail } from "@/utils/action";
 
-function isUserAdmin(email: string | null | undefined): boolean {
-    if (!email) return false;
-    const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS || process.env.ADMIN_EMAILS || "";
-    // Handle comma-separated list
-    const allowedEmails = adminEmails.split(",").map(e => e.trim().toLowerCase());
-    return allowedEmails.includes(email.toLowerCase());
+// Position-based admin check (VP Admin / ICT Coordinator / PRESIDENT scope).
+async function isUserAdmin(email: string | null | undefined): Promise<boolean> {
+    return checkIsAdminByEmail(email || "");
 }
 
 export async function getEvents() {
@@ -120,7 +118,7 @@ export async function createEvent(data: {
     // Check authentication and authorization
     // const user = await getCurrentUser();
     // console.log("User:", user);
-    if (!email || !isUserAdmin(email)) {
+    if (!email || !(await isUserAdmin(email))) {
         return { success: false, error: "Unauthorized: Admin access required" };
     }
 
@@ -180,7 +178,7 @@ export async function updateEvent(id: string, data: {
   try {
     // Check authentication and authorization
     // const user = await getCurrentUser();
-    if (!email || !isUserAdmin(email)) {
+    if (!email || !(await isUserAdmin(email))) {
         return { success: false, error: "Unauthorized: Admin access required" };
     }
 
