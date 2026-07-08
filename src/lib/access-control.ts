@@ -10,7 +10,39 @@
 
 import { type AuthUser, createAuthUser } from "@/lib/auth-roles";
 import { getSessionProfileId } from "@/lib/auth/session";
-import { getProfileContext } from "@/lib/auth/profile-context";
+import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-context";
+
+/**
+ * Resolve the current session's enriched profile context (single RPC), or null.
+ * Prefer this in server actions that need scope data (managed units/levels).
+ */
+export async function getCurrentContext(): Promise<ProfileContext | null> {
+    const profileId = await getSessionProfileId();
+    if (!profileId) return null;
+    return getProfileContext(profileId);
+}
+
+/** Like getCurrentContext but throws when unauthenticated. */
+export async function requireContext(): Promise<ProfileContext> {
+    const ctx = await getCurrentContext();
+    if (!ctx) throw new Error("Authentication required");
+    return ctx;
+}
+
+// NOTE: this module is `'use server'`, so these scope checks are async (all exports
+// of a server-action module must be async). They are pure over the passed context.
+
+/** True if the context holds a LEVEL position for the given generation. */
+export async function canManageLevel(ctx: ProfileContext, classSetId: string): Promise<boolean> {
+    if (ctx.isAdmin) return true;
+    return ctx.leadership.some((l) => l.category === "LEVEL" && l.classSetId === classSetId);
+}
+
+/** True if the context holds a leadership role over the given unit/team. */
+export async function canManageUnit(ctx: ProfileContext, unitId: string): Promise<boolean> {
+    if (ctx.isAdmin) return true;
+    return ctx.leadership.some((l) => (l.category === "UNIT" || l.category === "TEAM") && l.unitId === unitId);
+}
 
 /**
  * Resolve the current session into a full AuthUser (with derived role), or null.

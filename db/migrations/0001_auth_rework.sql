@@ -142,25 +142,9 @@ CREATE TRIGGER trg_audit_session_revoke
     FOR EACH ROW EXECUTE FUNCTION public.audit_session_revoke();
 
 -- ----------------------------------------------------------------------------
--- 7. registration_invites — level-coordinator invite links (create + update)
+-- 7. registration_invites -> moved to Phase 2 migration 0002_invites.sql
+--    (kept out of this baseline so each phase owns its own SQL).
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.registration_invites (
-    id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    token             text NOT NULL UNIQUE,
-    class_set_id      uuid NOT NULL REFERENCES public.class_sets(id) ON DELETE CASCADE,
-    purpose           text NOT NULL DEFAULT 'create'
-                          CHECK (purpose = ANY (ARRAY['create','update'])),
-    target_profile_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE, -- for 'update' links
-    created_by        uuid NOT NULL REFERENCES public.profiles(id),          -- the level coordinator
-    is_active         boolean NOT NULL DEFAULT true,
-    expires_at        timestamptz,
-    use_count         integer NOT NULL DEFAULT 0,
-    max_uses          integer,                    -- null = unlimited
-    created_at        timestamptz NOT NULL DEFAULT now(),
-    revoked_at        timestamptz
-);
-CREATE INDEX IF NOT EXISTS registration_invites_token_idx ON public.registration_invites(token);
-CREATE INDEX IF NOT EXISTS registration_invites_class_set_idx ON public.registration_invites(class_set_id);
 
 -- ----------------------------------------------------------------------------
 -- 8. zone_pastors — hall/zone pastors are NOT leadership positions
