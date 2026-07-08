@@ -35,6 +35,11 @@ export async function updateProfileAction(formData: FormData, userId: string) {
         // 3. Perform Updates (Parallel)
         const updates = [];
 
+        // Optional Cloudinary avatar (only written when present in the form).
+        const avatarUrl = formData.get("avatarUrl") as string | null;
+        const avatarPublicId = formData.get("avatarPublicId") as string | null;
+        const hasAvatarField = formData.has("avatarUrl");
+
         // Update Bio (Direct DB update since lib might not have a dedicated updateBio method exposed yet)
         updates.push(
             adminRcf.supabase
@@ -46,6 +51,10 @@ export async function updateProfileAction(formData: FormData, userId: string) {
                     phone_number: bioData.phoneNumber,
                     gender: bioData.gender,
                     dob: bioData.dob || null,
+                    // Only touch avatar columns when the editor submitted them.
+                    ...(hasAvatarField
+                        ? { avatar_url: avatarUrl || null, avatar_public_id: avatarPublicId || null }
+                        : {}),
                 })
                 .eq('id', userId)
         );

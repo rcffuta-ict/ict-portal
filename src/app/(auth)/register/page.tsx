@@ -11,6 +11,7 @@ import { DepartmentUtils } from "@rcffuta/ict-lib";
 import { Logo } from "@/components/ui/logo";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
+import { AvatarUpload } from "@/components/ui/avatar-upload";
 import { computeLevel } from "@/lib/levels";
 import {
     validateInviteAction,
@@ -139,6 +140,10 @@ function RegistrationForm({
     const [zones, setZones] = useState<Array<{ id: string; name: string }>>([]);
     const [serverError, setServerError] = useState("");
     const [done, setDone] = useState(false);
+    const [avatar, setAvatar] = useState<{ url: string | null; publicId: string | null }>({
+        url: invite.prefill?.avatar_url ?? null,
+        publicId: null,
+    });
 
     const departments = useMemo(() => DepartmentUtils.getAllNames(), []);
     const levelLabel = invite.classSet
@@ -185,7 +190,11 @@ function RegistrationForm({
 
     const onSubmit = async (data: RegistrationPayload) => {
         setServerError("");
-        const res = await submitRegistrationAction(token, data);
+        const res = await submitRegistrationAction(token, {
+            ...data,
+            avatarUrl: avatar.url ?? undefined,
+            avatarPublicId: avatar.publicId ?? undefined,
+        });
         if (res.success) {
             setDone(true);
         } else {
@@ -278,6 +287,15 @@ function RegistrationForm({
                     >
                         {step === 0 && (
                             <>
+                                <div className="flex justify-center pb-2">
+                                    <AvatarUpload
+                                        currentUrl={avatar.url}
+                                        initials=""
+                                        onUploaded={(img) =>
+                                            setAvatar({ url: img?.url ?? null, publicId: img?.publicId ?? null })
+                                        }
+                                    />
+                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <Field label="First Name" error={errors.firstName?.message}>
                                         <FormInput {...register("firstName", { required: "First name is required" })} placeholder="John" />
