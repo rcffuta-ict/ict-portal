@@ -10,7 +10,7 @@ import {
     canManageUnit,
     canManageLevel,
 } from "@/lib/access-control";
-import { ensureLoginProvisioned } from "@/lib/auth/provision";
+import { ensureLoginProvisioned, resetLoginPassword } from "@/lib/auth/provision";
 import { computeLevel } from "@/lib/levels";
 
 // ============================================================================
@@ -273,6 +273,27 @@ export async function appointLeaderAction(input: {
         revalidatePath("/dashboard/units");
         revalidatePath("/dashboard/tenure");
         return { success: true, loginCreated: created };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Reset a leader's login (the "forgot password" path). Clears their password so
+ * they set a new one on their next login. VP Admin / ICT Coordinator only.
+ */
+export async function resetLeaderLoginAction(leaderProfileId: string) {
+    try {
+        await requireAccess("ADMIN");
+        const { data: login } = await ictAdmin.supabase
+            .from("profile_login")
+            .select("id")
+            .eq("profile_id", leaderProfileId)
+            .maybeSingle();
+        if (!login) return { success: false, error: "This member doesn't have a portal login." };
+
+        await resetLoginPassword(leaderProfileId);
+        return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };
     }

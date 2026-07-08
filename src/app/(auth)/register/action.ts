@@ -2,8 +2,7 @@
 'use server'
 
 import { ictAdmin } from "@/lib/ict";
-import { getInviteByToken, consumeInvite, revokeInvite } from "@/lib/invites";
-import { setLoginPassword } from "@/lib/auth/provision";
+import { getInviteByToken, consumeInvite } from "@/lib/invites";
 
 /**
  * Invite-only registration.
@@ -43,7 +42,7 @@ export async function validateInviteAction(token: string) {
 
     // For 'update' pre-fill the current profile so the member can edit it.
     let prefill: Record<string, string | null> | null = null;
-    if ((inv.purpose === "update" || inv.purpose === "reset") && inv.targetProfileId) {
+    if (inv.purpose === "update" && inv.targetProfileId) {
         const { data } = await ictAdmin.supabase
             .from("profiles")
             .select("first_name, last_name, middle_name, email, phone_number, gender, dob, matric_number, department, faculty, school_address, home_address, residential_zone_id, avatar_url")
@@ -105,9 +104,6 @@ export async function submitRegistrationAction(token: string, payload: Registrat
             return { success: false, error: result.reason || "Invalid link." };
         }
         const inv = result.invite;
-        if (inv.purpose === "reset") {
-            return { success: false, error: "This link is for resetting a password, not registration." };
-        }
         if (!payload.firstName || !payload.lastName || !payload.email) {
             return { success: false, error: "First name, last name and email are required." };
         }
@@ -148,33 +144,5 @@ export async function submitRegistrationAction(token: string, payload: Registrat
     } catch (e: any) {
         console.error("submitRegistration error:", e);
         return { success: false, error: e.message || "Registration failed." };
-    }
-}
-
-/**
- * Public: set a leader's password via a 'reset' invite (single-use).
- * Only valid for a 'reset' invite tied to a specific leader profile.
- */
-export async function setPasswordFromInviteAction(token: string, password: string) {
-    try {
-        if (!password || password.length < 8) {
-            return { success: false, error: "Password must be at least 8 characters." };
-        }
-        const result = await getInviteByToken(token);
-        if (!result.valid || !result.invite) {
-            return { success: false, error: result.reason || "Invalid link." };
-        }
-        const inv = result.invite;
-        if (inv.purpose !== "reset" || !inv.targetProfileId) {
-            return { success: false, error: "This link cannot be used to set a password." };
-        }
-
-        await setLoginPassword(inv.targetProfileId, password);
-        await consumeInvite(inv.id);
-        await revokeInvite(inv.id); // reset links are single-use
-        return { success: true };
-    } catch (e: any) {
-        console.error("setPasswordFromInvite error:", e);
-        return { success: false, error: e.message || "Could not set password." };
     }
 }

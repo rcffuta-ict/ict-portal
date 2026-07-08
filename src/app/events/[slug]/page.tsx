@@ -37,6 +37,7 @@ import Link from "next/link";
 import { format, isAfter, isBefore, startOfDay, differenceInDays, differenceInHours, differenceInMinutes, differenceInSeconds, parseISO } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProfileStore } from "@/lib/stores/profile.store";
+import { isProfileAdmin } from "@/lib/auth-roles";
 import { GenericFooter } from "@/components/events/footer";
 import { LoLogo } from "@/components/lo-app/LoLogo";
 
@@ -128,9 +129,7 @@ export default function EventDetailsPage() {
     return () => clearInterval(interval);
   }, [eventDate, event]);
 
-  const isAdmin = useMemo(() => {
-    return !!user?.profile?.email && (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).includes(user.profile.email.toLowerCase());
-  }, [user]);
+  const isAdmin = useMemo(() => isProfileAdmin(user), [user]);
 
   useEffect(() => {
     if (slug) {

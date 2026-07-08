@@ -391,32 +391,11 @@ BEGIN
     END LOOP;
 END $$;
 
--- Narrow public policies ONLY for genuinely public surfaces the anon key needs.
--- Everything else (profiles, profile_login, auth_sessions, login_events,
--- registration_invites, leadership*, membership_*, zone_pastors, class_sets,
--- tenures, units, ...) stays deny-by-default → service-role only.
-
--- Public event pages: read active events.
-DROP POLICY IF EXISTS "public read active events" ON public.events;
-CREATE POLICY "public read active events" ON public.events
-    FOR SELECT TO anon USING (is_active = true);
-
--- Public event registration form: allow inserts only.
-DROP POLICY IF EXISTS "public insert event registrations" ON public.event_registrations;
-CREATE POLICY "public insert event registrations" ON public.event_registrations
-    FOR INSERT TO anon WITH CHECK (true);
-
--- lo-app (public Q&A): read visible questions + star them.
-DROP POLICY IF EXISTS "public read visible questions" ON public.event_questions;
-CREATE POLICY "public read visible questions" ON public.event_questions
-    FOR SELECT TO anon USING (status = 'visible');
-
-DROP POLICY IF EXISTS "public read question stars" ON public.question_stars;
-CREATE POLICY "public read question stars" ON public.question_stars
-    FOR SELECT TO anon USING (true);
-DROP POLICY IF EXISTS "public insert question stars" ON public.question_stars;
-CREATE POLICY "public insert question stars" ON public.question_stars
-    FOR INSERT TO anon WITH CHECK (true);
+-- No policies are added: every table is deny-by-default for the anon/authenticated
+-- roles. All application access goes through trusted server actions using the
+-- service-role client (src/lib/ict.ts), which bypasses RLS; authorization is
+-- enforced in the server layer (src/lib/access-control.ts). Public-facing pages
+-- (events, lo-app) also read via server actions, so they need no anon policy.
 
 COMMIT;
 

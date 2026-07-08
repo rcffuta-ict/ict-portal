@@ -10,13 +10,11 @@
 import { ictAdmin } from "@/lib/ict";
 import { hashPassword } from "@/lib/auth/password";
 
-// A hash that can never be produced by hashPassword() (wrong prefix), so
-// verifyPassword() always returns false until a real password is set.
-const UNUSABLE_HASH = "disabled$no-password-set";
-
 /**
  * Ensure a `profile_login` row exists for a profile (idempotent).
- * Called when appointing a leader. Does NOT overwrite an existing password.
+ * Called when appointing a leader — the row is created with NO password
+ * (`password_hash = null`), which the leader sets on their first login.
+ * Does NOT overwrite an existing password.
  * @returns whether a new row was created.
  */
 export async function ensureLoginProvisioned(
@@ -33,12 +31,31 @@ export async function ensureLoginProvisioned(
 
     const { error } = await ictAdmin.supabase.from("profile_login").insert({
         profile_id: profileId,
-        password_hash: UNUSABLE_HASH,
+        password_hash: null, // set by the leader on first login
         is_active: true,
         granted_by: grantedBy,
     });
     if (error) throw new Error(`Failed to provision login: ${error.message}`);
     return { created: true };
+}
+
+/**
+ * Reset a leader's login: clear the password so they set a new one on next login,
+ * re-activate, and clear any lockout. This is the "forgot password" path, done by
+ * a VP Admin / ICT Coordinator.
+ */
+export async function resetLoginPassword(profileId: string): Promise<void> {
+    const { error } = await ictAdmin.supabase
+        .from("profile_login")
+        .update({
+            password_hash: null,
+            is_active: true,
+            failed_attempts: 0,
+            locked_until: null,
+            updated_at: new Date().toISOString(),
+        })
+        .eq("profile_id", profileId);
+    if (error) throw new Error(`Failed to reset login: ${error.message}`);
 }
 
 /**

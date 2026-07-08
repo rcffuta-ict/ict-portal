@@ -3,6 +3,7 @@
 
 import { ictAdmin } from "@/lib/ict";
 import { verifyPassword } from "@/lib/auth/password";
+import { setLoginPassword } from "@/lib/auth/provision";
 import { createSession } from "@/lib/auth/session";
 import { recordLoginEvent } from "@/lib/auth/audit";
 import { getRequestMeta } from "@/lib/auth/request";
@@ -11,76 +12,111 @@ import { getLoginContext } from "@/lib/auth/profile-context";
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
 
+const INVALID = "Invalid credentials, or you don't have portal access.";
+
 /**
- * Leader-only login against `profile_login` (Supabase Auth is retired).
- *
- * A single `rcf_login_context` RPC returns the auth gate (password hash + login
- * state) AND the enriched profile in one round-trip. Node verifies the scrypt
- * password, then creates a DB-backed session (the DB trigger records the
- * 'login_success' audit event). Only members a VP Admin has provisioned a login
- * for — and marked active — can pass.
+ * Step 1: check whether an email belongs to an active leader, and whether they
+ * have set a password yet. Drives the two-step login UI:
+ *   - not a leader        -> generic "no access"
+ *   - leader, no password  -> first-login "set password" step
+ *   - leader, has password -> normal "enter password" step
+ */
+export async function checkLeaderAction(email: string) {
+    const normalized = String(email || "").trim().toLowerCase();
+    if (!normalized) return { ok: false as const, error: "Email is required." };
+
+    const login = await getLoginContext(normalized);
+    if (!login || !login.isActive) {
+        return { ok: false as const, error: INVALID };
+    }
+    return {
+        ok: true as const,
+        passwordSet: login.passwordHash != null,
+        firstName: login.context?.profile.firstName ?? null,
+    };
+}
+
+async function finishLogin(profileId: string, email: string, meta: { ip?: string | null; userAgent?: string | null }) {
+    // Session insert fires the DB trigger that records 'login_success'.
+    await createSession(profileId, meta);
+    await ictAdmin.supabase
+        .from("profile_login")
+        .update({
+            failed_attempts: 0,
+            locked_until: null,
+            last_login_at: new Date().toISOString(),
+            last_login_ip: meta.ip ?? null,
+            updated_at: new Date().toISOString(),
+        })
+        .eq("profile_id", profileId);
+    void email;
+}
+
+/**
+ * Step 2a: returning leader — verify the password and start a session.
  */
 export async function loginAction(formData: FormData) {
     const email = String(formData.get("email") || "").trim().toLowerCase();
     const password = String(formData.get("password") || "");
     const meta = await getRequestMeta();
 
-    // Generic message so we don't reveal whether an email exists / is a leader.
-    const INVALID = "Invalid credentials, or you don't have portal access.";
-
     try {
-        if (!email || !password) {
-            return { success: false, error: "Email and password are required." };
-        }
+        if (!email || !password) return { success: false, error: "Email and password are required." };
 
-        // 1. One call: login gate + full profile context.
         const login = await getLoginContext(email);
-
-        if (!login || !login.isActive) {
+        if (!login || !login.isActive || login.passwordHash == null) {
             await recordLoginEvent("login_fail", { email, ip: meta.ip, userAgent: meta.userAgent });
             return { success: false, error: INVALID };
         }
 
-        // 2. Lockout check.
         if (login.lockedUntil && new Date(login.lockedUntil).getTime() > Date.now()) {
             return { success: false, error: "Account temporarily locked. Try again later." };
         }
 
-        // 3. Verify password (scrypt, constant-time).
         const ok = await verifyPassword(password, login.passwordHash);
         if (!ok) {
             const attempts = (login.failedAttempts || 0) + 1;
-            const lockedUntil =
-                attempts >= MAX_FAILED_ATTEMPTS
-                    ? new Date(Date.now() + LOCK_MINUTES * 60 * 1000).toISOString()
-                    : null;
+            const lockedUntil = attempts >= MAX_FAILED_ATTEMPTS
+                ? new Date(Date.now() + LOCK_MINUTES * 60 * 1000).toISOString()
+                : null;
             await ictAdmin.supabase
                 .from("profile_login")
                 .update({ failed_attempts: attempts, locked_until: lockedUntil, updated_at: new Date().toISOString() })
                 .eq("id", login.loginId);
-            await recordLoginEvent("login_fail", {
-                profileId: login.profileId, email, ip: meta.ip, userAgent: meta.userAgent,
-            });
+            await recordLoginEvent("login_fail", { profileId: login.profileId, email, ip: meta.ip, userAgent: meta.userAgent });
             return { success: false, error: INVALID };
         }
 
-        // 4. Success — create the session (trigger logs 'login_success') + reset counters.
-        await createSession(login.profileId, meta);
-        await ictAdmin.supabase
-            .from("profile_login")
-            .update({
-                failed_attempts: 0,
-                locked_until: null,
-                last_login_at: new Date().toISOString(),
-                last_login_ip: meta.ip ?? null,
-                updated_at: new Date().toISOString(),
-            })
-            .eq("id", login.loginId);
-
-        // 5. The profile context is already resolved — no extra DB call.
+        await finishLogin(login.profileId, email, meta);
         return { success: true, data: login.context };
     } catch (error: any) {
         console.error("Login Error:", error);
         return { success: false, error: "Login failed. Please try again." };
+    }
+}
+
+/**
+ * Step 2b: first login — the leader sets their password, then we start a session.
+ * Only valid when no password has been set yet (guards against overwriting one).
+ */
+export async function setInitialPasswordAction(email: string, password: string) {
+    const normalized = String(email || "").trim().toLowerCase();
+    const meta = await getRequestMeta();
+
+    try {
+        if (password.length < 8) return { success: false, error: "Password must be at least 8 characters." };
+
+        const login = await getLoginContext(normalized);
+        if (!login || !login.isActive) return { success: false, error: INVALID };
+        if (login.passwordHash != null) {
+            return { success: false, error: "A password is already set. Please log in with it." };
+        }
+
+        await setLoginPassword(login.profileId, password);
+        await finishLogin(login.profileId, normalized, meta);
+        return { success: true, data: login.context };
+    } catch (error: any) {
+        console.error("Set-password Error:", error);
+        return { success: false, error: "Could not set password. Please try again." };
     }
 }

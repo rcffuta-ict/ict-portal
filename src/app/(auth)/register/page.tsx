@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, ArrowRight, ArrowLeft, ShieldAlert, PartyPopper, Lock } from "lucide-react";
+import { Check, Loader2, ArrowRight, ArrowLeft, ShieldAlert, PartyPopper } from "lucide-react";
 import { DepartmentUtils } from "@rcffuta/ict-lib";
 
 import { Logo } from "@/components/ui/logo";
@@ -16,7 +16,6 @@ import { computeLevel } from "@/lib/levels";
 import {
     validateInviteAction,
     submitRegistrationAction,
-    setPasswordFromInviteAction,
     getZonesAction,
     type RegistrationPayload,
 } from "./action";
@@ -90,12 +89,7 @@ function RegisterInner() {
 
             {invite.status === "loading" && <CenteredLoader />}
             {invite.status === "invalid" && <InviteBlocked reason={invite.reason} />}
-            {invite.status === "ready" && invite.purpose === "reset" && (
-                <ResetPasswordView token={token} name={invite.targetName} />
-            )}
-            {invite.status === "ready" && invite.purpose !== "reset" && (
-                <RegistrationForm token={token} invite={invite} />
-            )}
+            {invite.status === "ready" && <RegistrationForm token={token} invite={invite} />}
         </div>
     );
 }
@@ -387,81 +381,6 @@ function RegistrationForm({
                 </div>
             </form>
         </>
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Reset password (leader, admin-issued invite)
-// ---------------------------------------------------------------------------
-
-function ResetPasswordView({ token, name }: { token: string; name?: string }) {
-    const [error, setError] = useState("");
-    const [done, setDone] = useState(false);
-    const {
-        register,
-        handleSubmit,
-        formState: { errors, isSubmitting },
-    } = useForm<{ password: string; confirm: string }>();
-
-    const onSubmit = handleSubmit(async (data) => {
-        setError("");
-        if (data.password !== data.confirm) {
-            setError("Passwords do not match.");
-            return;
-        }
-        const res = await setPasswordFromInviteAction(token, data.password);
-        if (res.success) setDone(true);
-        else setError(res.error || "Could not set password.");
-    });
-
-    if (done) {
-        return (
-            <div className="text-center space-y-6 py-10 max-w-md mx-auto">
-                <div className="flex justify-center">
-                    <div className="h-16 w-16 bg-green-50 rounded-full flex items-center justify-center text-green-600">
-                        <Check className="h-8 w-8" />
-                    </div>
-                </div>
-                <h1 className="text-2xl font-bold text-rcf-navy">Password set</h1>
-                <p className="text-sm text-slate-500">You can now log in to the portal.</p>
-                <Link href="/login" className="inline-block font-semibold text-rcf-navy hover:underline">
-                    Go to login
-                </Link>
-            </div>
-        );
-    }
-
-    return (
-        <div className="max-w-md mx-auto py-6">
-            <div className="mb-6 text-center">
-                <div className="flex justify-center mb-3">
-                    <div className="h-14 w-14 bg-blue-50 rounded-full flex items-center justify-center text-rcf-navy">
-                        <Lock className="h-7 w-7" />
-                    </div>
-                </div>
-                <h1 className="text-2xl font-bold text-rcf-navy">Set your password</h1>
-                <p className="text-sm text-slate-500 mt-1">
-                    {name ? `Hi ${name}, ` : ""}create a password for your leadership login.
-                </p>
-            </div>
-
-            <form onSubmit={onSubmit} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
-                {error && <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md border border-red-100">{error}</div>}
-                <Field label="New Password" error={errors.password?.message}>
-                    <FormInput
-                        {...register("password", { required: "Password is required", minLength: { value: 8, message: "At least 8 characters" } })}
-                        type="password"
-                        placeholder="••••••••"
-                    />
-                </Field>
-                <Field label="Confirm Password" error={errors.confirm?.message}>
-                    <FormInput {...register("confirm", { required: "Please confirm your password" })} type="password" placeholder="••••••••" />
-                </Field>
-                <button type="submit" disabled={isSubmitting} className="btn-primary w-full flex items-center justify-center gap-2">
-                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Set password"}
-                </button>
-            </form>
-        </div>
     );
 }
 
