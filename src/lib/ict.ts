@@ -1,27 +1,17 @@
 import { RcfIctClient } from '@rcffuta/ict-lib/server'
 
-// 1. The ICT Client (For Auth, User Profiles, Departments)
-// This runs only on the server
-export const ict = RcfIctClient.fromEnv()
+/**
+ * Server-only ICT clients.
+ *
+ * SECURITY / RLS: every table now has RLS enabled + FORCED with a default-deny
+ * policy (migration 0001). The anon key therefore can't read/write the app's
+ * tables at all. Because ALL of our DB access happens inside trusted server
+ * actions (which enforce their own authorization via src/lib/access-control.ts),
+ * both clients below use the service-role key, which bypasses RLS.
+ *
+ * `ict` and `ictAdmin` are kept as separate names only for call-site clarity and
+ * backwards compatibility — they are equivalent. NEVER import either into a
+ * client component; the service-role key must never reach the browser.
+ */
 export const ictAdmin = RcfIctClient.asAdmin();
-
-// 2. The Supabase Admin Client (For E-Lib specific DB operations)
-// Using service role key to bypass RLS when acting as Admin
-// export const supabaseAdmin = RcfIctClient.asAdmin()//createClient(supabaseUrl, supabaseServiceKey)
-// export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
-
-// 3. Helper to get User Context
-export async function getCurrentUser() {
-  try {
-    // Get auth session
-    const { data: { session } } = await ict.supabase.auth.getSession()
-    if (!session) return null
-
-    // Get full profile from ICT Lib
-    const profile = await ict.member.getFullProfile(session.user.id)
-    return profile
-  } catch (error) {
-    console.error('Error fetching user context:', error)
-    return null
-  }
-}
+export const ict = ictAdmin;

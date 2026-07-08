@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import {
-    UserPlus, Search, Loader2, Crown, Copy, Check, Shield, Plus, ToggleLeft, ToggleRight,
+    UserPlus, Search, Loader2, Crown, KeyRound, Shield, Plus, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import {
     searchMembersAction,
@@ -12,8 +12,8 @@ import {
     setRoleActiveAction,
     appointLeaderAction,
     getAppointmentOptionsAction,
+    resetLeaderLoginAction,
 } from "../actions";
-import { createResetInviteAction } from "../../invites/actions";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 
 const CATEGORIES = ["PRESIDENT", "CENTRAL", "UNIT", "TEAM", "LEVEL", "ZONE"] as const;
@@ -39,11 +39,8 @@ function AppointLeader({ onSuccess }: { onSuccess?: () => void }) {
     const [unitId, setUnitId] = useState("");
     const [classSetId, setClassSetId] = useState("");
     const [submitting, setSubmitting] = useState(false);
-    const [resetLink, setResetLink] = useState<string | null>(null);
-    const [copied, setCopied] = useState(false);
+    const [resetting, setResetting] = useState(false);
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
-
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
 
     useEffect(() => {
         listRolesAction().then((r) => setRoles((r.data || []).filter((p: any) => p.is_active)));
@@ -75,7 +72,6 @@ function AppointLeader({ onSuccess }: { onSuccess?: () => void }) {
     const appoint = async () => {
         if (!member || !roleId) return;
         setSubmitting(true);
-        setResetLink(null);
         const res = await appointLeaderAction({
             profileId: member.id,
             positionId: roleId,
@@ -87,13 +83,25 @@ function AppointLeader({ onSuccess }: { onSuccess?: () => void }) {
             showAlert({ type: "error", message: res.error });
             return;
         }
-        // Offer a login link so they can set their password.
-        const linkRes = await createResetInviteAction(member.id);
-        if (linkRes.success && linkRes.token) {
-            setResetLink(`${origin}/register?invite=${linkRes.token}`);
-        }
-        showAlert({ type: "success", message: `${member.first_name} appointed. Share the login link below so they can set a password.` });
+        showAlert({
+            type: "success",
+            message: `${member.first_name} appointed. They can now log in at the portal with ${member.email} and set a password on first login.`,
+        });
         onSuccess?.();
+        setMember(null);
+        setRoleId("");
+    };
+
+    const resetLogin = async () => {
+        if (!member) return;
+        setResetting(true);
+        const res = await resetLeaderLoginAction(member.id);
+        setResetting(false);
+        showAlert(
+            res.success
+                ? { type: "success", message: `${member.first_name}'s login was reset. They'll set a new password on their next login.` }
+                : { type: "error", message: res.error },
+        );
     };
 
     return (
@@ -145,7 +153,7 @@ function AppointLeader({ onSuccess }: { onSuccess?: () => void }) {
                                 <p className="text-[11px] text-slate-500">{member.email}</p>
                             </div>
                         </div>
-                        <button onClick={() => { setMember(null); setResetLink(null); }} className="text-xs text-slate-400 hover:text-rcf-navy underline">
+                        <button onClick={() => setMember(null)} className="text-xs text-slate-400 hover:text-rcf-navy underline">
                             Change
                         </button>
                     </div>
@@ -193,21 +201,15 @@ function AppointLeader({ onSuccess }: { onSuccess?: () => void }) {
                         Appoint & provision login
                     </button>
 
-                    {resetLink && (
-                        <div className="p-3 rounded-xl bg-green-50 border border-green-100">
-                            <p className="text-[11px] font-bold text-green-700 mb-1">Login link (share privately)</p>
-                            <div className="flex items-center gap-2">
-                                <code className="flex-1 text-[11px] text-slate-600 truncate">{resetLink}</code>
-                                <button
-                                    onClick={async () => { await navigator.clipboard.writeText(resetLink); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-                                    className="p-2 text-slate-500 hover:text-rcf-navy"
-                                    aria-label="Copy login link"
-                                >
-                                    {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                    {/* Forgot-password path: reset this member's login if they're already a leader. */}
+                    <button
+                        onClick={resetLogin}
+                        disabled={resetting}
+                        className="w-full h-9 text-xs font-semibold text-slate-500 hover:text-rcf-navy flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                        {resetting ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                        Reset this member&apos;s login (forgot password)
+                    </button>
                 </div>
             )}
         </div>

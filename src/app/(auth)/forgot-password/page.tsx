@@ -44,13 +44,14 @@ export default function ForgotPasswordPage() {
                 <div className="flex items-start gap-3">
                     <ShieldCheck className="h-5 w-5 text-rcf-navy shrink-0 mt-0.5" />
                     <p className="text-sm text-slate-600">
-                        Contact the <span className="font-semibold text-rcf-navy">VP Admin</span> or the{" "}
-                        <span className="font-semibold text-rcf-navy">ICT Coordinator</span>. They can send you
-                        a secure, single-use reset link from their dashboard.
+                        Ask the <span className="font-semibold text-rcf-navy">VP Admin</span> or the{" "}
+                        <span className="font-semibold text-rcf-navy">ICT Coordinator</span> to reset your login
+                        from their dashboard.
                     </p>
                 </div>
                 <p className="text-xs text-slate-400">
-                    Once you receive the link, open it to set a new password, then return here to log in.
+                    After they reset it, come back and log in with your email — you&apos;ll be prompted to
+                    choose a new password on your next sign-in.
                 </p>
             </div>
 

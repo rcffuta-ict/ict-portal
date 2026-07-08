@@ -3,9 +3,8 @@
 
 import { revalidatePath } from "next/cache";
 import { ictAdmin } from "@/lib/ict";
-import { requireContext, canManageLevel, requireAccess } from "@/lib/access-control";
+import { requireContext, canManageLevel } from "@/lib/access-control";
 import { createInvite, revokeInvite, listInvitesByCreator } from "@/lib/invites";
-import { ensureLoginProvisioned } from "@/lib/auth/provision";
 
 /**
  * Level coordinator: create a shareable link that lets someone create (or update)
@@ -33,39 +32,6 @@ export async function createMemberInviteAction(
             targetProfileId: targetProfileId ?? null,
         });
         revalidatePath("/dashboard/units");
-        return { success: true, token };
-    } catch (e: any) {
-        return { success: false, error: e.message };
-    }
-}
-
-/**
- * VP Admin / ICT Coordinator: issue a single-use credential (reset) link for a
- * leader, so they can set their own password (the "forgot password" path).
- */
-export async function createResetInviteAction(leaderProfileId: string) {
-    try {
-        const admin = await requireAccess("ADMIN"); // VP Admin / ICT Coord / PRESIDENT
-
-        // The target must actually be a leader (holds a leadership position).
-        const { data: rows } = await ictAdmin.supabase
-            .from("leadership")
-            .select("id")
-            .eq("profile_id", leaderProfileId)
-            .limit(1);
-        if (!rows || rows.length === 0) {
-            return { success: false, error: "Only leaders can receive a reset link." };
-        }
-
-        // Ensure a login row exists (idempotent) before they set a password.
-        await ensureLoginProvisioned(leaderProfileId, admin.id);
-
-        const { token } = await createInvite({
-            createdBy: admin.id,
-            purpose: "reset",
-            targetProfileId: leaderProfileId,
-            maxUses: 1,
-        });
         return { success: true, token };
     } catch (e: any) {
         return { success: false, error: e.message };
