@@ -13,6 +13,7 @@ export interface LeadershipContext {
     positionId: string;
     title: string;
     alias: string | null;
+    slug: string | null;
     category: "PRESIDENT" | "CENTRAL" | "UNIT" | "TEAM" | "LEVEL" | "ZONE";
     isDefault: boolean;
     unitId: string | null;
@@ -37,6 +38,13 @@ export type ProfileContext = FullUserProfile & {
     leadership: LeadershipContext[];
     isAdmin: boolean;
     isVpAdmin: boolean;
+    /**
+     * Tool modules this profile may READ, resolved from `module_access` config at
+     * login (see src/lib/module-access.ts). NOT part of the RPC payload — app code
+     * attaches it before handing the context to the client so the sidebar can gate
+     * Tools without shipping the config/slug list to the browser.
+     */
+    accessibleModules?: string[];
 };
 
 /**

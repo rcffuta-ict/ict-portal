@@ -8,6 +8,7 @@ import { createSession } from "@/lib/auth/session";
 import { recordLoginEvent } from "@/lib/auth/audit";
 import { getRequestMeta } from "@/lib/auth/request";
 import { getLoginContext } from "@/lib/auth/profile-context";
+import { attachAccessibleModules } from "@/lib/module-access";
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
@@ -88,7 +89,7 @@ export async function loginAction(formData: FormData) {
         }
 
         await finishLogin(login.profileId, email, meta);
-        return { success: true, data: login.context };
+        return { success: true, data: await attachAccessibleModules(login.context) };
     } catch (error: any) {
         console.error("Login Error:", error);
         return { success: false, error: "Login failed. Please try again." };
@@ -114,7 +115,7 @@ export async function setInitialPasswordAction(email: string, password: string) 
 
         await setLoginPassword(login.profileId, password);
         await finishLogin(login.profileId, normalized, meta);
-        return { success: true, data: login.context };
+        return { success: true, data: await attachAccessibleModules(login.context) };
     } catch (error: any) {
         console.error("Set-password Error:", error);
         return { success: false, error: "Could not set password. Please try again." };

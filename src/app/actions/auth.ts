@@ -3,6 +3,7 @@
 
 import { getSessionProfileId, revokeCurrentSession } from "@/lib/auth/session";
 import { getProfileContext } from "@/lib/auth/profile-context";
+import { attachAccessibleModules } from "@/lib/module-access";
 
 /**
  * Verify the current session and return fresh profile data (single RPC call).
@@ -20,7 +21,7 @@ export async function verifySession() {
             return { success: false, error: "Failed to fetch user profile" };
         }
 
-        return { success: true, data: context };
+        return { success: true, data: await attachAccessibleModules(context) };
     } catch (error: any) {
         console.error("Session verification failed:", error);
         return { success: false, error: error.message || "Session verification failed" };

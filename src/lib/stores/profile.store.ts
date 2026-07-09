@@ -2,14 +2,22 @@ import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import type { FullUserProfile, UserBio, UserLocation, UserAcademics } from '@rcffuta/ict-lib';
 
+/**
+ * The user object handed to the store is actually the enriched ProfileContext
+ * (superset of FullUserProfile) returned by the login / session actions, carrying
+ * `accessibleModules` resolved server-side from module_access config.
+ */
+type StoredUser = FullUserProfile & { accessibleModules?: string[] };
+
 interface ProfileState {
     user: FullUserProfile | null;
     userId: string | null; // Simplified type for easier usage
     isLoading: boolean;
     lastRefresh: number | null; // Timestamp of last session refresh
+    accessibleModules: string[]; // Tool modules this user may read (sidebar gating)
 
     // Core Actions
-    setUser: (user: FullUserProfile) => void;
+    setUser: (user: StoredUser) => void;
     setUserId: (userId: string) => void;
     clearUser: () => void;
     logout: () => void; // Logout with server cleanup
@@ -27,32 +35,36 @@ export const useProfileStore = create<ProfileState>()(
       (set) => ({
         // 1. Initialize all state values
         user: null,
-        userId: null, 
+        userId: null,
         isLoading: true,
         lastRefresh: null,
+        accessibleModules: [],
 
         // 2. Actions
         setUserId: (userId) => set({ userId, isLoading: false }, false, "SET_USER_ID"),
-        
-        setUser: (user) => set({ 
-            user, 
+
+        setUser: (user) => set({
+            user,
             userId: user.profile.id, // <--- CRITICAL: Sync ID with Profile
+            accessibleModules: user.accessibleModules ?? [], // resolved server-side
             isLoading: false,
             lastRefresh: Date.now(), // Track when user was set
         }, false, "SET_USER"),
-        
-        clearUser: () => set({ 
-            user: null, 
+
+        clearUser: () => set({
+            user: null,
             userId: null, // <--- CRITICAL: Clear ID on logout
+            accessibleModules: [],
             isLoading: false,
             lastRefresh: null,
         }, false, "CLEAR_USER"),
 
         logout: async () => {
             // Clear local state immediately
-            set({ 
-                user: null, 
+            set({
+                user: null,
                 userId: null,
+                accessibleModules: [],
                 isLoading: false,
                 lastRefresh: null,
             }, false, "LOGOUT");
@@ -97,6 +109,7 @@ export const useProfileStore = create<ProfileState>()(
         partialize: (state) => ({
           user: state.user,
           userId: state.userId,
+          accessibleModules: state.accessibleModules,
           lastRefresh: state.lastRefresh,
           // Don't persist isLoading
         }),
