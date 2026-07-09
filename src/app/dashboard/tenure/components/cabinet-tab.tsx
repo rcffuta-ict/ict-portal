@@ -567,11 +567,33 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
 }
 
 // --- SUB-COMPONENT 3: CONFIGURATION VIEW (Existing) ---
+function slugify(value: string): string {
+    return value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
 function ConfigurationView({ data, onSuccess, showAlert }: any) {
+    // Slug is auto-derived from the alias until the user edits it directly, then it
+    // sticks. Access config (Settings) references positions by this stable slug.
+    const [alias, setAlias] = useState("");
+    const [slug, setSlug] = useState("");
+    const [slugTouched, setSlugTouched] = useState(false);
+
+    function onAliasChange(value: string) {
+        setAlias(value);
+        if (!slugTouched) setSlug(slugify(value));
+    }
+
     async function handleCreate(formData: FormData) {
         const res = await createPositionAction(formData);
-        if (res.success) onSuccess();
-        else showAlert({ type: "error", message: res.error });
+        if (res.success) {
+            setAlias("");
+            setSlug("");
+            setSlugTouched(false);
+            onSuccess();
+        } else showAlert({ type: "error", message: res.error });
     }
 
     async function toggleStatus(
@@ -611,6 +633,31 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
                         placeholder="e.g. Media Head"
                     />
 
+                    <FormInput
+                        name="alias"
+                        label="Alias (short name)"
+                        value={alias}
+                        onChange={(e) => onAliasChange(e.target.value)}
+                        placeholder="e.g. Media Head"
+                    />
+
+                    <div className="space-y-1">
+                        <FormInput
+                            name="slug"
+                            label="Slug (permanent)"
+                            value={slug}
+                            onChange={(e) => {
+                                setSlugTouched(true);
+                                setSlug(slugify(e.target.value));
+                            }}
+                            placeholder="e.g. media-head"
+                        />
+                        <p className="text-[10px] text-slate-400">
+                            Stable handle used by app access settings. Auto-filled from the
+                            alias; cannot be changed once created.
+                        </p>
+                    </div>
+
                     <div className="space-y-1">
                         <FormSelect name="category" label="Category">
                             <option value="CENTRAL">Central Executive</option>
@@ -649,6 +696,11 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
                             <tr key={pos.id} className="hover:bg-slate-50">
                                 <td className="px-4 py-3 font-medium text-slate-900">
                                     {pos.title}
+                                    {pos.slug && (
+                                        <span className="block font-mono text-[10px] font-normal text-slate-400">
+                                            {pos.slug}
+                                        </span>
+                                    )}
                                 </td>
                                 <td className="px-4 py-3">
                                     <span

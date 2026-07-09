@@ -2,6 +2,8 @@
 'use server'
 
 import { checkAdminAccess } from "@/utils/action";
+import { requireModuleRead } from "@/lib/access-control";
+import { ictAdmin } from "@/lib/ict";
 import { RcfIctClient } from "@rcffuta/ict-lib/server";
 import { revalidatePath } from "next/cache";
 
@@ -15,7 +17,10 @@ import { revalidatePath } from "next/cache";
  */
 export async function getAdminData() {
     try {
-        const rcf = await checkAdminAccess();
+        // READ is gated by the tenure module's access config (default: CENTRAL);
+        // the individual mutations below stay ADMIN-only via checkAdminAccess().
+        await requireModuleRead("tenure");
+        const rcf = ictAdmin;
 
         // 1. Get Active Tenure
         const { data: activeTenure } = await rcf.supabase
@@ -214,18 +219,53 @@ export async function getUnitDetails(unitId: string) {
 // ============================================================================
 
 /**
- * Creates a new leadership position (role)
+ * Slugify a label into a stable position handle (lowercase, kebab-case).
+ * Mirrors the backfill logic in db/migrations/0004.
+ */
+function slugify(value: string): string {
+    return value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Creates a new leadership position (role) with a stable, unique slug.
+ *
+ * The ict-lib PositionSchema has no alias/slug, so we insert directly. The slug is
+ * derived from the provided slug/alias/title, is set ONCE here, and is never changed
+ * on update (immutable) — access config references positions by slug.
  */
 export async function createPositionAction(formData: FormData) {
     const rcf = await checkAdminAccess();
     try {
-        await rcf.admin.createPosition({
-            title: formData.get("title") as string,
-            category: formData.get("category") as any,
-            description: formData.get("description") as string,
-            isActive: true
+        const title = ((formData.get("title") as string) || "").trim();
+        const alias = ((formData.get("alias") as string) || "").trim();
+        const rawSlug = ((formData.get("slug") as string) || "").trim();
+        const description = ((formData.get("description") as string) || "").trim();
+        const category = formData.get("category") as any;
+
+        if (!title) return { success: false, error: "Role title is required." };
+
+        const slug = slugify(rawSlug || alias || title);
+        if (!slug) return { success: false, error: "A valid slug (letters/numbers) is required." };
+
+        const { error } = await rcf.supabase.from("leadership_positions").insert({
+            title,
+            alias: alias || null,
+            slug,
+            category,
+            description: description || null,
+            is_active: true,
         });
-        
+
+        if (error) {
+            if (error.code === "23505") {
+                return { success: false, error: "That role title or slug is already in use." };
+            }
+            return { success: false, error: error.message };
+        }
+
         revalidatePath('/dashboard/tenure');
         return { success: true };
     } catch (e: any) {
@@ -239,8 +279,17 @@ export async function createPositionAction(formData: FormData) {
 export async function togglePositionAction(id: string, currentStatus: boolean, data: any) {
     const rcf = await checkAdminAccess();
     try {
-        await rcf.admin.updatePosition(id, { ...data, isActive: !currentStatus });
-        
+        // The two seeded defaults (VP Admin / ICT Coordinator) may never be disabled.
+        if (currentStatus && data?.is_default) {
+            return { success: false, error: "This is a protected default role and cannot be disabled." };
+        }
+
+        // Never send slug/id — slug is immutable; PositionSchema strips unknown keys,
+        // but we drop them explicitly for clarity.
+        const { slug: _slug, id: _id, is_default: _def, ...rest } = data ?? {};
+        void _slug; void _id; void _def;
+        await rcf.admin.updatePosition(id, { ...rest, isActive: !currentStatus });
+
         revalidatePath('/dashboard/tenure');
         return { success: true };
     } catch (e: any) {

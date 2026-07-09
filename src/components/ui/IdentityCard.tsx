@@ -1,4 +1,5 @@
 import { ExtractedUserProfile } from "@/lib/utils";
+import { AvatarDisplay } from "./AvatarDisplay";
 
 export function IdentityCard({profile}:{profile: ExtractedUserProfile}) {
     return (<div className="relative overflow-hidden rounded-2xl bg-rcf-navy text-white shadow-xl">
@@ -7,7 +8,7 @@ export function IdentityCard({profile}:{profile: ExtractedUserProfile}) {
 
         <div className="p-6 flex flex-col items-center text-center">
             {/* Avatar Logic */}
-            <div className="h-28 w-28 rounded-full border-4 border-white/20 bg-white/10 flex items-center justify-center text-3xl font-bold mb-4 overflow-hidden shadow-inner">
+            {/* <div className="h-28 w-28 rounded-full border-4 border-white/20 bg-white/10 flex items-center justify-center text-3xl font-bold mb-4 overflow-hidden shadow-inner">
                 {profile.avatarUrl ? (
                     <img
                         src={profile.avatarUrl}
@@ -20,10 +21,12 @@ export function IdentityCard({profile}:{profile: ExtractedUserProfile}) {
                         {profile.lastName[0]}
                     </span>
                 )}
-            </div>
+            </div> */}
+
+            <AvatarDisplay url={profile.avatarUrl} initials={`${profile.firstName[0]}${profile.lastName[0]}`} className="mb-4"/>
 
             <h2 className="text-xl font-bold leading-tight">
-                {profile.firstName} <br /> {profile.lastName}
+                {profile.firstName} {profile.lastName}
             </h2>
             <p className="text-sm text-gray-300 mt-1 mb-4 font-mono tracking-wide">
                 {profile.email}

@@ -8,7 +8,7 @@ import {
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useTenureStore } from "@/lib/stores/tenure.store";
 import { CompactPreloader } from "@/components/ui/preloader";
-import { getSidebarItems, isProfileAdmin, eventSidebarItems } from "@/config/sidebar-items";
+import { getSidebarItems, eventSidebarItems } from "@/config/sidebar-items";
 import type { SidebarItem } from "@/config/sidebar-items";
 import { useMemo, useState, useEffect } from "react";
 import { getEvents } from "@/app/events/actions";
@@ -52,7 +52,7 @@ export default function DashboardHome() {
                         icon: Calendar,
                         color: "bg-purple-500", // Default color
                         description: e.description || `Event on ${new Date(e.date).toLocaleDateString()}`,
-                        section: "Events"
+                        section: "events" as const,
                     }));
                 setDynamicEvents(mappedEvents);
             }
@@ -60,17 +60,15 @@ export default function DashboardHome() {
         fetchEvents();
     }, []);
 
-    // Check if user is admin
-    const isAdmin = useMemo(() => {
-        return isProfileAdmin(user);
-    }, [user]);
+    const accessibleModules = useProfileStore(s => s.accessibleModules);
 
-    // Get service cards (exclude "Overview" for cards display, also exclude events since they have their own section)
+    // Service cards = everything except the Overview tile and the Events section
+    // (events get their own "Upcoming Events" grid below). Tools are already
+    // read-gated inside getSidebarItems.
     const serviceCards = useMemo(() => {
-        // Pass user object to support role-based items (Zone Manager, etc.)
-        const items = getSidebarItems(user || null, isAdmin);
-        return items.filter(item => item.name !== "Overview" && !item.section);
-    }, [user, isAdmin]);
+        const items = getSidebarItems(user || null, accessibleModules);
+        return items.filter(item => item.name !== "Overview" && item.section !== "events");
+    }, [user, accessibleModules]);
 
     // Show loading state if user data is not yet available
     if (!user?.profile) {

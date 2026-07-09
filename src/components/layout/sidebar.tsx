@@ -7,7 +7,8 @@ import clsx from "clsx";
 import { Logo } from "../ui/logo";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { useMemo } from "react";
-import { isProfileAdmin, eventSidebarItems, getSidebarItems } from "@/config/sidebar-items";
+import { getSidebarSections } from "@/config/sidebar-items";
+import { AvatarDisplay } from "../ui/AvatarDisplay";
 
 interface SidebarProps {
     isOpen?: boolean;
@@ -19,17 +20,13 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     const router = useRouter();
 
     const user = useProfileStore((state) => state.user);
+    const accessibleModules = useProfileStore((state) => state.accessibleModules);
     const clearUser = useProfileStore((state) => state.clearUser);
 
-    // Check if user is an admin
-    const isAdmin = useMemo(() => {
-        return isProfileAdmin(user);
-    }, [user?.profile?.email]);
-
-    // Get sidebar items based on user role and admin status
-    const sidebarItems = useMemo(() => {
-        return getSidebarItems(user || null, isAdmin);
-    }, [user, isAdmin]);
+    // Sidebar grouped into sections; Tools are gated by module read-access.
+    const sections = useMemo(() => {
+        return getSidebarSections(user || null, accessibleModules);
+    }, [user, accessibleModules]);
 
     const initials = user
         ? `${user.profile.firstName[0]}${user.profile.lastName[0]}`
@@ -85,75 +82,59 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 <Logo variant="white" width={50} />
             </div>
 
-            {/* 2. Navigation Items */}
+            {/* 2. Navigation Items — grouped into sections (Personal / Events / Apps / Tools) */}
             <div className="flex-1 overflow-y-auto py-6 px-3 overscroll-contain safe-left safe-right">
-                <nav className="space-y-1">
-                    {sidebarItems.map((item) => {
-                        const isActive = pathname === item.href;
-
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                onClick={handleNavClick}
-                                className={clsx(
-                                    "group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                                    isActive
-                                        ? "bg-white text-rcf-navy shadow-sm" // Active State
-                                        : "text-gray-300 hover:bg-white/10 hover:text-white" // Inactive State
-                                )}
-                            >
-                                <item.icon
-                                    className={clsx(
-                                        "h-5 w-5 shrink-0 transition-colors",
-                                        isActive
-                                            ? "text-rcf-navy"
-                                            : "text-gray-400 group-hover:text-white"
-                                    )}
-                                />
-                                {item.name}
-                            </Link>
-                        );
-                    })}
-                </nav>
-
-                {/* Events Section */}
-                {eventSidebarItems.length > 0 && (
-                    <div className="mt-6 pt-4 border-t border-white/10">
+                {sections.map((group, index) => (
+                    <div key={group.section} className={index > 0 ? "mt-6 pt-4 border-t border-white/10" : undefined}>
                         <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                            Events
+                            {group.label}
                         </p>
                         <nav className="space-y-1">
-                            {eventSidebarItems.map((item) => {
+                            {group.items.map((item) => {
                                 const isActive = pathname === item.href;
+                                const isDisabled = item.comingSoon;
 
                                 return (
                                     <Link
                                         key={item.href}
-                                        href={item.href}
-                                        onClick={handleNavClick}
+                                        href={isDisabled ? "#" : item.href}
+                                        onClick={(e) => {
+                                            if (isDisabled) {
+                                                e.preventDefault();
+                                                return;
+                                            }
+                                            handleNavClick();
+                                        }}
+                                        aria-disabled={isDisabled || undefined}
                                         className={clsx(
                                             "group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                                            isActive
-                                                ? "bg-white text-rcf-navy shadow-sm"
-                                                : "text-gray-300 hover:bg-white/10 hover:text-white"
+                                            isDisabled
+                                                ? "text-gray-500 cursor-not-allowed"
+                                                : isActive
+                                                    ? "bg-white text-rcf-navy shadow-sm" // Active State
+                                                    : "text-gray-300 hover:bg-white/10 hover:text-white" // Inactive State
                                         )}
                                     >
                                         <item.icon
                                             className={clsx(
                                                 "h-5 w-5 shrink-0 transition-colors",
-                                                isActive
+                                                isActive && !isDisabled
                                                     ? "text-rcf-navy"
                                                     : "text-gray-400 group-hover:text-white"
                                             )}
                                         />
-                                        {item.name}
+                                        <span className="flex-1">{item.name}</span>
+                                        {isDisabled && (
+                                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-300">
+                                                Soon
+                                            </span>
+                                        )}
                                     </Link>
                                 );
                             })}
                         </nav>
                     </div>
-                )}
+                ))}
             </div>
 
             {/* 3. Footer / User Actions */}
@@ -172,9 +153,12 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 {/* Mini Profile Summary */}
                 <div className="rounded-lg bg-white/5 p-3">
                     <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 shrink-0 rounded-full bg-blue-100 flex items-center justify-center font-bold text-rcf-navy text-sm">
+                        {/* <div className="h-10 w-10 shrink-0 rounded-full bg-blue-100 flex items-center justify-center font-bold text-rcf-navy text-sm">
                             {initials}
-                        </div>
+                        </div> */}
+
+                        <AvatarDisplay url={user?.profile.avatarUrl} initials={initials} size="sm" />
+
                         <div className="min-w-0 flex-1">
                             <p className="font-bold text-sm truncate">
                                 {user?.profile.firstName}

@@ -11,6 +11,7 @@
 import { type AuthUser, createAuthUser } from "@/lib/auth-roles";
 import { getSessionProfileId } from "@/lib/auth/session";
 import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-context";
+import { canReadModule, getModuleAccessConfig, type ModuleId } from "@/lib/module-access";
 
 /**
  * Resolve the current session's enriched profile context (single RPC), or null.
@@ -26,6 +27,36 @@ export async function getCurrentContext(): Promise<ProfileContext | null> {
 export async function requireContext(): Promise<ProfileContext> {
     const ctx = await getCurrentContext();
     if (!ctx) throw new Error("Authentication required");
+    return ctx;
+}
+
+/**
+ * Require the current session to have READ access to a Tool module per the
+ * `module_access` config (admins always pass). Returns the enriched context.
+ * @throws when unauthenticated or not permitted.
+ */
+export async function requireModuleRead(module: ModuleId): Promise<ProfileContext> {
+    const ctx = await requireContext();
+    const config = await getModuleAccessConfig();
+    if (!canReadModule(ctx, module, config)) {
+        throw new Error("Access denied: insufficient module access");
+    }
+    return ctx;
+}
+
+/**
+ * Require the current session to hold the ICT Coordinator position (by stable slug
+ * `ict-coord`). Gates the app-config Settings module — the ICT Coordinator manages
+ * who can read/write each module, so this is intentionally narrower than ADMIN
+ * (VP Admin is an admin but is NOT the ICT Coordinator).
+ * @throws when unauthenticated or not the ICT Coordinator.
+ */
+export async function requireIctCoord(): Promise<ProfileContext> {
+    const ctx = await requireContext();
+    const isIct = (ctx.leadership ?? []).some((l) => l.slug === "ict-coord");
+    if (!isIct) {
+        throw new Error("Access denied: ICT Coordinator only");
+    }
     return ctx;
 }
 
