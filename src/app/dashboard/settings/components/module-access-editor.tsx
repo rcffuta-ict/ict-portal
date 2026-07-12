@@ -1,7 +1,25 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { X, Plus, Check, Loader2, AlertCircle, ShieldCheck, PencilLine } from "lucide-react";
+import clsx from "clsx";
+import {
+    X,
+    Plus,
+    Check,
+    Loader2,
+    AlertCircle,
+    ShieldCheck,
+    PencilLine,
+    Search,
+    ChevronLeft,
+    ChevronRight,
+    Info,
+    Crown,
+    MapPin,
+    Users,
+    GraduationCap,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
     MODULES,
@@ -25,9 +43,19 @@ interface RowState {
     saving: boolean;
     error: string | null;
     saved: boolean;
+    baseRead: string[];
+    baseWrite: string[];
+    baseScope: WriteScope;
 }
 
 const CATEGORY_SET = new Set<string>(CATEGORY_TOKENS);
+
+const MODULE_ICON: Record<ModuleId, LucideIcon> = {
+    tenure: Crown,
+    zones: MapPin,
+    workforce: Users,
+    level: GraduationCap,
+};
 
 export function ModuleAccessEditor({ config, positions }: Props) {
     const slugMap = useMemo(() => {
@@ -36,7 +64,6 @@ export function ModuleAccessEditor({ config, positions }: Props) {
         return map;
     }, [positions]);
 
-    // Distinct slug suggestions (active positions first for relevance).
     const slugSuggestions = useMemo(
         () => positions.filter((p) => p.isActive).map((p) => p.slug),
         [positions],
@@ -52,26 +79,31 @@ export function ModuleAccessEditor({ config, positions }: Props) {
                 saving: false,
                 error: null,
                 saved: false,
+                baseRead: [...config[m].readSlugs],
+                baseWrite: [...config[m].writeSlugs],
+                baseScope: config[m].writeScope,
             };
         }
         return initial;
     });
 
+    const [selected, setSelected] = useState<ModuleId>(MODULES[0]);
+    const [search, setSearch] = useState("");
+    const [mobileDetail, setMobileDetail] = useState(false);
+
     function patch(module: ModuleId, next: Partial<RowState>) {
         setRows((prev) => ({
             ...prev,
-            // any content edit clears a prior "saved" flag
             [module]: { ...prev[module], saved: false, error: null, ...next },
         }));
     }
 
     function isDirty(module: ModuleId): boolean {
         const r = rows[module];
-        const c = config[module];
         return (
-            r.writeScope !== c.writeScope ||
-            r.readTokens.join("|") !== c.readSlugs.join("|") ||
-            r.writeTokens.join("|") !== c.writeSlugs.join("|")
+            r.writeScope !== r.baseScope ||
+            r.readTokens.join("|") !== r.baseRead.join("|") ||
+            r.writeTokens.join("|") !== r.baseWrite.join("|")
         );
     }
 
@@ -85,13 +117,17 @@ export function ModuleAccessEditor({ config, positions }: Props) {
             writeScope: r.writeScope,
         });
         if (res.success) {
-            // Reflect the new baseline so the row is no longer "dirty".
-            config[module].readSlugs = [...r.readTokens];
-            config[module].writeSlugs = [...r.writeTokens];
-            config[module].writeScope = r.writeScope;
             setRows((prev) => ({
                 ...prev,
-                [module]: { ...prev[module], saving: false, saved: true, error: null },
+                [module]: {
+                    ...prev[module],
+                    saving: false,
+                    saved: true,
+                    error: null,
+                    baseRead: [...r.readTokens],
+                    baseWrite: [...r.writeTokens],
+                    baseScope: r.writeScope,
+                },
             }));
         } else {
             setRows((prev) => ({
@@ -101,91 +137,227 @@ export function ModuleAccessEditor({ config, positions }: Props) {
         }
     }
 
+    const filteredModules = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return MODULES;
+        return MODULES.filter(
+            (m) =>
+                m.includes(q) ||
+                MODULE_META[m].label.toLowerCase().includes(q) ||
+                MODULE_META[m].description.toLowerCase().includes(q),
+        );
+    }, [search]);
+
+    function openModule(m: ModuleId) {
+        setSelected(m);
+        setMobileDetail(true);
+    }
+
     return (
-        <div className="space-y-5">
-            {MODULES.map((module) => {
-                const meta = MODULE_META[module];
-                const row = rows[module];
-                const dirty = isDirty(module);
-                return (
-                    <section
-                        key={module}
-                        className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
-                    >
-                        <div className="mb-4 flex items-center justify-between gap-3">
-                            <div>
-                                <h2 className="text-base font-bold text-rcf-navy">{meta.label}</h2>
-                                <p className="text-sm text-gray-500">{meta.description}</p>
-                            </div>
-                            {row.saved && !dirty && (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
-                                    <Check className="h-4 w-4" /> Saved
-                                </span>
-                            )}
-                        </div>
-
-                        <div className="grid gap-5 sm:grid-cols-2">
-                            <TokenField
-                                label="Read access"
-                                icon={<ShieldCheck className="h-4 w-4 text-blue-500" />}
-                                tokens={row.readTokens}
-                                onChange={(readTokens) => patch(module, { readTokens })}
-                                suggestions={slugSuggestions}
-                                slugMap={slugMap}
-                                inputId={`${module}-read`}
-                            />
-                            <TokenField
-                                label="Write access"
-                                icon={<PencilLine className="h-4 w-4 text-amber-500" />}
-                                tokens={row.writeTokens}
-                                onChange={(writeTokens) => patch(module, { writeTokens })}
-                                suggestions={slugSuggestions}
-                                slugMap={slugMap}
-                                inputId={`${module}-write`}
-                            />
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
-                            <label className="flex flex-col gap-1 text-sm">
-                                <span className="font-medium text-gray-700">Write scope</span>
-                                <select
-                                    value={row.writeScope}
-                                    onChange={(e) =>
-                                        patch(module, { writeScope: e.target.value as WriteScope })
-                                    }
-                                    className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-rcf-navy focus:outline-none focus:ring-1 focus:ring-rcf-navy"
-                                >
-                                    <option value="ALL">All — see everything in the module</option>
-                                    <option value="OWN">Own — only the portion they oversee</option>
-                                </select>
-                            </label>
-
-                            <div className="flex items-center gap-3">
-                                {row.error && (
-                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-                                        <AlertCircle className="h-4 w-4" /> {row.error}
-                                    </span>
+        <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
+            {/* Master list */}
+            <aside className={clsx("lg:block", mobileDetail ? "hidden" : "block")}>
+                <div className="relative mb-3">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                    <input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search modules…"
+                        className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 bg-white text-sm outline-none focus:border-rcf-navy focus:ring-1 focus:ring-rcf-navy"
+                    />
+                </div>
+                <nav className="space-y-1.5">
+                    {filteredModules.map((m) => {
+                        const Icon = MODULE_ICON[m];
+                        const r = rows[m];
+                        const active = m === selected;
+                        const dirty = isDirty(m);
+                        return (
+                            <button
+                                key={m}
+                                onClick={() => openModule(m)}
+                                className={clsx(
+                                    "group flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors",
+                                    active
+                                        ? "border-rcf-navy bg-rcf-navy text-white shadow-sm"
+                                        : "border-gray-200 bg-white hover:border-rcf-navy/30 hover:bg-slate-50",
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={() => save(module)}
-                                    disabled={row.saving || !dirty}
-                                    className="inline-flex items-center gap-2 rounded-md bg-rcf-navy px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                <span
+                                    className={clsx(
+                                        "inline-flex rounded-lg p-2",
+                                        active ? "bg-white/15 text-white" : "bg-slate-100 text-rcf-navy",
+                                    )}
                                 >
-                                    {row.saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                                    {row.saving ? "Saving…" : "Save"}
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-                );
-            })}
+                                    <Icon className="h-4 w-4" />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                    <span className="flex items-center gap-1.5 font-semibold text-sm">
+                                        {MODULE_META[m].label}
+                                        {dirty && (
+                                            <span
+                                                className={clsx(
+                                                    "h-1.5 w-1.5 rounded-full",
+                                                    active ? "bg-yellow-300" : "bg-amber-500",
+                                                )}
+                                                title="Unsaved changes"
+                                            />
+                                        )}
+                                    </span>
+                                    <span className={clsx("block text-[11px] truncate", active ? "text-blue-100" : "text-gray-500")}>
+                                        {r.readTokens.length} read · {r.writeTokens.length} write · {r.writeScope}
+                                    </span>
+                                </span>
+                                <ChevronRight className={clsx("h-4 w-4 shrink-0", active ? "text-white/70" : "text-gray-300 group-hover:text-gray-400")} />
+                            </button>
+                        );
+                    })}
+                    {filteredModules.length === 0 && (
+                        <p className="px-2 py-6 text-center text-sm text-gray-400">No modules match.</p>
+                    )}
+                </nav>
+
+                <div className="mt-4 hidden lg:flex items-start gap-2 rounded-lg bg-slate-50 border border-slate-100 p-3 text-[11px] text-gray-500">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                        Grant by <b>position slug</b> (only whoever holds it) or by a{" "}
+                        <b>category</b> (all such positions). Admins always have full access.
+                    </span>
+                </div>
+            </aside>
+
+            {/* Detail editor */}
+            <section className={clsx("lg:block", mobileDetail ? "block" : "hidden")}>
+                <ModuleDetail
+                    key={selected}
+                    module={selected}
+                    icon={MODULE_ICON[selected]}
+                    row={rows[selected]}
+                    dirty={isDirty(selected)}
+                    slugMap={slugMap}
+                    suggestions={slugSuggestions}
+                    onPatch={(next) => patch(selected, next)}
+                    onSave={() => save(selected)}
+                    onBack={() => setMobileDetail(false)}
+                />
+            </section>
+        </div>
+    );
+}
+
+interface DetailProps {
+    module: ModuleId;
+    icon: LucideIcon;
+    row: RowState;
+    dirty: boolean;
+    slugMap: Map<string, PositionOption>;
+    suggestions: string[];
+    onPatch: (next: Partial<RowState>) => void;
+    onSave: () => void;
+    onBack: () => void;
+}
+
+function ModuleDetail({ module, icon: Icon, row, dirty, slugMap, suggestions, onPatch, onSave, onBack }: DetailProps) {
+    const meta = MODULE_META[module];
+    return (
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+            {/* Header */}
+            <div className="flex items-center gap-3 border-b border-gray-100 p-5">
+                <button onClick={onBack} className="lg:hidden -ml-1 mr-1 text-gray-500" aria-label="Back to modules">
+                    <ChevronLeft className="h-5 w-5" />
+                </button>
+                <span className="inline-flex rounded-xl bg-rcf-navy p-3 text-white">
+                    <Icon className="h-5 w-5" />
+                </span>
+                <div className="flex-1">
+                    <h2 className="text-lg font-bold text-rcf-navy">{meta.label}</h2>
+                    <p className="text-sm text-gray-500">{meta.description}</p>
+                </div>
+                {row.saved && !dirty && (
+                    <span className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                        <Check className="h-4 w-4" /> Saved
+                    </span>
+                )}
+            </div>
+
+            <div className="p-5 space-y-6">
+                <TokenField
+                    label="Read access"
+                    hint="Who can open and view this module"
+                    icon={<ShieldCheck className="h-4 w-4 text-blue-500" />}
+                    tokens={row.readTokens}
+                    onChange={(readTokens) => onPatch({ readTokens })}
+                    suggestions={suggestions}
+                    slugMap={slugMap}
+                    inputId={`${module}-read`}
+                />
+                <TokenField
+                    label="Write access"
+                    hint="Who can make changes in this module"
+                    icon={<PencilLine className="h-4 w-4 text-amber-500" />}
+                    tokens={row.writeTokens}
+                    onChange={(writeTokens) => onPatch({ writeTokens })}
+                    suggestions={suggestions}
+                    slugMap={slugMap}
+                    inputId={`${module}-write`}
+                />
+
+                <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">Write scope</label>
+                    <div className="grid grid-cols-2 gap-2">
+                        {(["ALL", "OWN"] as WriteScope[]).map((scope) => (
+                            <button
+                                key={scope}
+                                type="button"
+                                onClick={() => onPatch({ writeScope: scope })}
+                                className={clsx(
+                                    "rounded-lg border p-3 text-left text-sm transition-colors",
+                                    row.writeScope === scope
+                                        ? "border-rcf-navy bg-rcf-navy/5 ring-1 ring-rcf-navy"
+                                        : "border-gray-200 hover:border-gray-300",
+                                )}
+                            >
+                                <span className="block font-semibold text-gray-800">
+                                    {scope === "ALL" ? "All" : "Own"}
+                                </span>
+                                <span className="block text-[11px] text-gray-500">
+                                    {scope === "ALL" ? "Everything in the module" : "Only the portion they oversee"}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between gap-3 border-t border-gray-100 bg-slate-50 p-4 rounded-b-2xl">
+                <span className="text-xs text-gray-500">
+                    {dirty ? "Unsaved changes" : row.saved ? "All changes saved" : "No changes"}
+                </span>
+                <div className="flex items-center gap-3">
+                    {row.error && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
+                            <AlertCircle className="h-4 w-4" /> {row.error}
+                        </span>
+                    )}
+                    <button
+                        type="button"
+                        onClick={onSave}
+                        disabled={row.saving || !dirty}
+                        className="inline-flex items-center gap-2 rounded-lg bg-rcf-navy px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {row.saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {row.saving ? "Saving…" : "Save changes"}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }
 
 interface TokenFieldProps {
     label: string;
+    hint: string;
     icon: React.ReactNode;
     tokens: string[];
     onChange: (tokens: string[]) => void;
@@ -194,13 +366,12 @@ interface TokenFieldProps {
     inputId: string;
 }
 
-function TokenField({ label, icon, tokens, onChange, suggestions, slugMap, inputId }: TokenFieldProps) {
+function TokenField({ label, hint, icon, tokens, onChange, suggestions, slugMap, inputId }: TokenFieldProps) {
     const [draft, setDraft] = useState("");
 
     function add(raw: string) {
         const value = raw.trim();
         if (!value) return;
-        // Normalise category tokens to uppercase; slugs stay as typed.
         const normalized = CATEGORY_SET.has(value.toUpperCase())
             ? value.toUpperCase()
             : value.toLowerCase();
@@ -218,12 +389,15 @@ function TokenField({ label, icon, tokens, onChange, suggestions, slugMap, input
 
     return (
         <div className="space-y-2">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-                {icon}
-                {label}
-            </span>
+            <div>
+                <span className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                    {icon}
+                    {label}
+                </span>
+                <span className="text-[11px] text-gray-400">{hint}</span>
+            </div>
 
-            <div className="flex flex-wrap gap-1.5 rounded-md border border-gray-200 bg-gray-50 p-2 min-h-[2.75rem]">
+            <div className="flex flex-wrap gap-1.5 rounded-lg border border-gray-200 bg-gray-50 p-2 min-h-11">
                 {tokens.length === 0 && (
                     <span className="px-1 text-xs text-gray-400">No one yet — admins still have access.</span>
                 )}
@@ -266,7 +440,7 @@ function TokenField({ label, icon, tokens, onChange, suggestions, slugMap, input
                         }
                     }}
                     placeholder="Add a slug or category…"
-                    className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-rcf-navy focus:outline-none focus:ring-1 focus:ring-rcf-navy"
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-rcf-navy focus:outline-none focus:ring-1 focus:ring-rcf-navy"
                 />
                 <datalist id={`${inputId}-options`}>
                     {CATEGORY_TOKENS.map((c) => (
@@ -286,7 +460,7 @@ function TokenField({ label, icon, tokens, onChange, suggestions, slugMap, input
                 <button
                     type="button"
                     onClick={() => add(draft)}
-                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                     <Plus className="h-4 w-4" /> Add
                 </button>

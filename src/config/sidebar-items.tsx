@@ -78,7 +78,7 @@ const personalItems: SidebarItem[] = [
 
 const eventItems: SidebarItem[] = [
     {
-        name: "Events",
+        name: "All Events",
         href: "/events",
         icon: Calendar,
         section: "events",

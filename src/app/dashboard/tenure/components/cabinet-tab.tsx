@@ -7,6 +7,7 @@ import {
     assignLeaderAction,
     createPositionAction,
     togglePositionAction,
+    toggleCentralAction,
     removeUnitLeaderAction,
 } from "../actions";
 import {
@@ -201,9 +202,27 @@ function RosterView({ data, onSuccess, showAlert }: any) {
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className="font-medium text-slate-700">
-                                        {l.position.title}
-                                    </span>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="font-medium text-slate-700">
+                                            {l.position.title}
+                                        </span>
+                                        {l.is_lead === false && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-500 border border-slate-200">
+                                                Assistant
+                                            </span>
+                                        )}
+                                        {l.position?.slug === "ict-coord" ? (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                                System Admin
+                                            </span>
+                                        ) : (
+                                            l.position?.is_central && (
+                                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-purple-50 text-purple-600 border border-purple-100">
+                                                    Central
+                                                </span>
+                                            )
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="px-6 py-4">
                                     {l.position.category === "CENTRAL" && (
@@ -555,6 +574,14 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
                             )}
                         </div>
 
+                        <label className="flex items-start gap-2 text-sm text-slate-600 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                            <input type="checkbox" name="isLead" value="false" className="mt-0.5" />
+                            <span>
+                                Appoint as <b>assistant / sub-leader</b> — shares the coordinator&apos;s
+                                privileges, but only the lead is recognised on the roster.
+                            </span>
+                        </label>
+
                         <button className="w-full h-14 bg-rcf-navy text-white text-base rounded-xl font-bold shadow-xl shadow-rcf-navy/20 hover:bg-opacity-90 hover:-translate-y-0.5 transition-all flex justify-center items-center gap-3 mt-4">
                             <CheckCircle className="h-5 w-5" /> Confirm
                             Appointment
@@ -615,6 +642,12 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
         });
     }
 
+    async function toggleCentral(pos: any) {
+        const res = await toggleCentralAction(pos.id, !!pos.is_central);
+        if (res.success) onSuccess();
+        else showAlert({ type: "error", message: res.error });
+    }
+
     return (
         <div className="grid gap-8 lg:grid-cols-3 animate-in slide-in-from-right-4">
             <div className="lg:col-span-1">
@@ -660,15 +693,24 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
 
                     <div className="space-y-1">
                         <FormSelect name="category" label="Category">
+                            <option value="PRESIDENT">President</option>
                             <option value="CENTRAL">Central Executive</option>
                             <option value="UNIT">Unit Head</option>
+                            <option value="TEAM">Team Head</option>
                             <option value="LEVEL">Level Coordinator</option>
                         </FormSelect>
                         <p className="text-[10px] text-slate-400">
-                            Determines if they manage a Unit, a Level, or the
-                            whole Fellowship.
+                            Hierarchy: President → Central → Unit/Team heads → Level heads.
                         </p>
                     </div>
+
+                    <label className="flex items-start gap-2 text-sm text-slate-600">
+                        <input type="checkbox" name="isCentral" value="true" className="mt-0.5" />
+                        <span>
+                            Grant <b>Central</b> privilege (fellowship-wide). Central roles are
+                            central automatically.
+                        </span>
+                    </label>
 
                     <FormInput
                         name="description"
@@ -703,36 +745,67 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
                                     )}
                                 </td>
                                 <td className="px-4 py-3">
-                                    <span
-                                        className={`px-2 py-1 rounded text-[10px] font-bold ${
-                                            pos.category === "CENTRAL"
-                                                ? "bg-purple-100 text-purple-700"
-                                                : pos.category === "UNIT"
-                                                ? "bg-blue-100 text-blue-700"
-                                                : "bg-orange-100 text-orange-700"
-                                        }`}
-                                    >
-                                        {pos.category}
-                                    </span>
+                                    <div className="flex flex-wrap items-center gap-1">
+                                        {pos.slug === "ict-coord" ? (
+                                            <span className="px-2 py-1 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                                                System Admin
+                                            </span>
+                                        ) : (
+                                            <>
+                                                <span
+                                                    className={`px-2 py-1 rounded text-[10px] font-bold ${
+                                                        pos.category === "CENTRAL"
+                                                            ? "bg-purple-100 text-purple-700"
+                                                            : pos.category === "PRESIDENT"
+                                                            ? "bg-rose-100 text-rose-700"
+                                                            : pos.category === "UNIT"
+                                                            ? "bg-blue-100 text-blue-700"
+                                                            : pos.category === "TEAM"
+                                                            ? "bg-teal-100 text-teal-700"
+                                                            : "bg-orange-100 text-orange-700"
+                                                    }`}
+                                                >
+                                                    {pos.category}
+                                                </span>
+                                                {pos.is_central && pos.category !== "CENTRAL" && (
+                                                    <span className="px-2 py-1 rounded text-[10px] font-bold bg-purple-50 text-purple-600 border border-purple-100">
+                                                        Central
+                                                    </span>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
                                 </td>
-                                <td className="px-4 py-3 text-right">
-                                    <button
-                                        onClick={() =>
-                                            toggleStatus(
-                                                pos.id,
-                                                pos.is_active,
-                                                pos
-                                            )
-                                        }
-                                        className={`text-xs font-bold flex items-center justify-end gap-1 w-full ${
-                                            pos.is_active
-                                                ? "text-green-600 hover:text-green-800"
-                                                : "text-slate-400 hover:text-slate-600"
-                                        }`}
-                                    >
-                                        <Power className="h-3 w-3" />
-                                        {pos.is_active ? "Active" : "Inactive"}
-                                    </button>
+                                <td className="px-4 py-3">
+                                    <div className="flex items-center justify-end gap-3">
+                                        {/* System Admin (ICT Coordinator) is not a central — no toggle. */}
+                                        {pos.slug !== "ict-coord" && (
+                                            <button
+                                                onClick={() => toggleCentral(pos)}
+                                                title="Toggle central privilege"
+                                                className={`text-xs font-bold ${
+                                                    pos.is_central
+                                                        ? "text-purple-600 hover:text-purple-800"
+                                                        : "text-slate-400 hover:text-slate-600"
+                                                }`}
+                                            >
+                                                {pos.is_central ? "Central ✓" : "Make Central"}
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() =>
+                                                toggleStatus(pos.id, pos.is_active, pos)
+                                            }
+                                            className={`text-xs font-bold flex items-center gap-1 ${
+                                                pos.is_active
+                                                    ? "text-green-600 hover:text-green-800"
+                                                    : "text-slate-400 hover:text-slate-600"
+                                            }`}
+                                        >
+                                            <Power className="h-3 w-3" />
+                                            {pos.is_active ? "Active" : "Inactive"}
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
