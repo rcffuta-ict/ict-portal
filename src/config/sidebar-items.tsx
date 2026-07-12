@@ -49,7 +49,7 @@ export interface SidebarItem {
     comingSoon?: boolean;
     /** Tools item: read-gated by this module's `module_access` config. */
     module?: ModuleId;
-    /** Tools item: visible only to the ICT Coordinator (app-config Settings). */
+    /** Tools item: visible only to those who can see Settings (System Admin / President). */
     ictOnly?: boolean;
 }
 
@@ -163,19 +163,28 @@ export const eventSidebarItems: SidebarItem[] = eventItems.filter(
 );
 
 /**
- * Whether the profile holds the ICT Coordinator position. Prefers the runtime
- * leadership slug (`ict-coord`, stable) that the enriched session context carries,
- * and falls back to the default title. This gates Settings *visibility* only — the
- * real guard is server-side `requireIctCoord()` (by slug).
+ * Whether the user may SEE the Settings item: the System Admin (manages it) or the
+ * President (sees everything, read-only). Prefers the enriched context flags
+ * (`isSysAdmin` / `isPresident`) the runtime session carries, and falls back to the
+ * `ict-coord` slug / PRESIDENT role for the plain stored profile. Visibility only —
+ * the real guards are server-side (`requireSysAdmin` / `requirePresidentOrSysAdmin`).
  */
-export function isIctCoordinator(user: FullUserProfile | null | undefined): boolean {
+export function canSeeSettings(user: FullUserProfile | null | undefined): boolean {
     if (!user) return false;
-    const leadership = (user as unknown as {
+    const ctx = user as unknown as {
+        isSysAdmin?: boolean;
+        isPresident?: boolean;
         leadership?: { slug?: string | null }[];
-    }).leadership;
-    if (leadership?.some((l) => l.slug === "ict-coord")) return true;
-    return (user.roles ?? []).some((r) => r.title === "ICT Coordinator");
+    };
+    if (ctx.isSysAdmin || ctx.isPresident) return true;
+    if (ctx.leadership?.some((l) => l.slug === "ict-coord")) return true;
+    return (user.roles ?? []).some(
+        (r) => r.title === "ICT Coordinator" || r.scope === "PRESIDENT",
+    );
 }
+
+/** @deprecated Use {@link canSeeSettings}. Kept for any external importers. */
+export const isIctCoordinator = canSeeSettings;
 
 /**
  * Flat, tagged list of sidebar items visible to this user.
@@ -194,7 +203,7 @@ export function getSidebarItems(
 
     for (const tool of toolItems) {
         if (tool.ictOnly) {
-            if (isIctCoordinator(user)) items.push(tool);
+            if (canSeeSettings(user)) items.push(tool);
             continue;
         }
         if (tool.module && accessibleModules.includes(tool.module)) {

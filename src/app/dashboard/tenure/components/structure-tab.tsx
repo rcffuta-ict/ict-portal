@@ -3,9 +3,16 @@
 
 import { useState } from "react";
 import { createUnitAction } from "../actions";
-import { Plus, Layers, Users, Search, X, AlertCircle, Mars, Venus } from "lucide-react";
+import { Plus, Layers, Users, Search, X, AlertCircle, Mars, Venus, Info } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
+
+function slugify(value: string): string {
+    return value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
 
 // --- VISIBILITY CARD (non-interactive) ---
 function StructureCard({ item }: { item: any }) {
@@ -30,16 +37,29 @@ function StructureCard({ item }: { item: any }) {
                             {item.type}
                         </span>
                         {isLoose && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider bg-slate-100 text-slate-500 border-slate-200">
-                                Loose · non-workforce
+                            <span
+                                tabIndex={0}
+                                title="Loose unit: members belong here but do NOT count toward the workforce (e.g. Sisters Unit). Teams never count either."
+                                className="group relative inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider bg-slate-100 text-slate-500 border-slate-200 cursor-help outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+                            >
+                                Loose <Info className="h-3 w-3" />
+                                <span
+                                    role="tooltip"
+                                    className="pointer-events-none absolute right-0 top-full z-10 mt-1 w-56 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-medium normal-case tracking-normal text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                                >
+                                    Members belong here but don&apos;t count toward the workforce (e.g. Sisters Unit).
+                                </span>
                             </span>
                         )}
                     </div>
                 </div>
 
-                <h3 className="font-bold text-slate-900 text-lg leading-tight mb-1 truncate">
+                <h3 className="font-bold text-slate-900 text-lg leading-tight mb-0.5 truncate">
                     {item.name}
                 </h3>
+                {item.slug && (
+                    <p className="font-mono text-[10px] text-slate-400 truncate">{item.slug}</p>
+                )}
             </div>
 
             {/* Leadership */}
@@ -91,8 +111,23 @@ export function StructureTab({ data, onSuccess }: any) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [search, setSearch] = useState("");
     const [filter, setFilter] = useState("ALL");
+    const [name, setName] = useState("");
+    const [slug, setSlug] = useState("");
+    const [slugTouched, setSlugTouched] = useState(false);
 
     const items = data?.units || [];
+
+    function openModal() {
+        setName("");
+        setSlug("");
+        setSlugTouched(false);
+        setIsModalOpen(true);
+    }
+
+    function onNameChange(value: string) {
+        setName(value);
+        if (!slugTouched) setSlug(slugify(value));
+    }
 
     const filtered = items.filter(
         (i: any) =>
@@ -138,7 +173,7 @@ export function StructureTab({ data, onSuccess }: any) {
                     </div>
                 </div>
                 <button
-                    onClick={() => setIsModalOpen(true)}
+                    onClick={openModal}
                     className="flex items-center gap-2 bg-rcf-navy text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg hover:bg-opacity-90 active:scale-95 transition-all w-full md:w-auto justify-center"
                 >
                     <Plus className="h-4 w-4" /> Add New
@@ -170,7 +205,29 @@ export function StructureTab({ data, onSuccess }: any) {
                             </button>
                         </div>
                         <form action={handleCreate} className="p-6 space-y-5">
-                            <FormInput label="Unit / Team Name" name="name" required placeholder="e.g. Protocol" />
+                            <FormInput
+                                label="Unit / Team Name"
+                                name="name"
+                                required
+                                placeholder="e.g. Protocol"
+                                value={name}
+                                onChange={(e) => onNameChange(e.target.value)}
+                            />
+                            <div className="space-y-1">
+                                <FormInput
+                                    label="Slug (permanent)"
+                                    name="slug"
+                                    value={slug}
+                                    onChange={(e) => {
+                                        setSlugTouched(true);
+                                        setSlug(slugify(e.target.value));
+                                    }}
+                                    placeholder="e.g. protocol"
+                                />
+                                <p className="text-[10px] text-slate-400">
+                                    Auto-filled from the name. Used to scope Exco access (<span className="font-mono">Exco:{slug || "slug"}</span>); can&apos;t change once created.
+                                </p>
+                            </div>
                             <div className="space-y-1">
                                 <FormSelect label="Type" name="type">
                                     <option value="UNIT">Workforce Unit</option>

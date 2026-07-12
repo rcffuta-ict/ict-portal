@@ -2,14 +2,15 @@
  * Data-driven module access — the single source of truth for who may READ / WRITE
  * each Tool module (tenure | zones | workforce | level).
  *
- * Access is configured at runtime in the `module_access` table (see migration 0004),
- * managed by the ICT Coordinator (src/app/dashboard/settings). Each module lists
- * `read_slugs` / `write_slugs`; every entry is EITHER a position slug (e.g. `vp-admin`)
- * OR a category token (`CENTRAL` | `UNIT` | `TEAM` | `LEVEL` | `ZONE` | `PRESIDENT`).
+ * Access is configured at runtime in the `module_access` table (see migration 0006),
+ * managed by the System Admin (src/app/dashboard/settings). Each module lists
+ * `read_slugs` / `write_slugs`; every entry is a configurable PRIVILEGE TAG
+ * (`CENTRAL` | `EXCO` | `ZONE` | `LEVEL`).
  *
- * A user "holds" a token when, in the active tenure, they hold a position whose slug
- * matches (slug token) or whose category matches (category token). Admins (VP Admin /
- * ICT Coordinator / PRESIDENT scope) ALWAYS pass, so config can never lock them out.
+ * A user "holds" a tag when, in the active tenure, they hold a position tagged with it
+ * (see position_privileges). The READ-bypass tier (SysAdmin / President / VP Admin,
+ * `ctx.isAdmin`) always reads; the write-bypass tier is SysAdmin + VP Admin. The
+ * President is globally write-blocked. So config can never lock admins out.
  *
  * Server-only: reads the service-role-locked `module_access` table via ictAdmin.
  * Resolvers themselves are pure over a ProfileContext + config, so they're cheap to
@@ -68,14 +69,22 @@ export async function getModuleAccessConfig(): Promise<ModuleAccessConfig> {
 }
 
 /**
- * The set of access tokens a context "holds" from its active-tenure leadership:
- * every position slug plus every position category. Compared against a module's lists.
+ * The set of ACCESS TOKENS a context "holds" from its active-tenure leadership. A config
+ * entry may be any of three token kinds, and a user holds:
+ *   - the **position slug** of every position they hold (e.g. `zone-coord`);
+ *   - every **bare privilege tag** (e.g. `CENTRAL`, `EXCO`) — matches regardless of scope;
+ *   - every **scoped tag** `TAG:scope` (e.g. `EXCO:bible-study`, `LEVEL:100`) — exact scope.
+ * So a bare `EXCO` in config matches any exco; `EXCO:bible-study` only that unit's exco.
+ * (Record-level scope narrowing still lives in canManageUnit / canManageLevel.)
  */
 function heldTokens(ctx: ProfileContext): Set<string> {
     const tokens = new Set<string>();
     for (const l of ctx.leadership ?? []) {
         if (l.slug) tokens.add(l.slug);
-        if (l.category) tokens.add(l.category);
+        for (const p of l.privileges ?? []) {
+            tokens.add(p.tag);
+            if (p.scope) tokens.add(`${p.tag}:${p.scope}`);
+        }
     }
     return tokens;
 }
@@ -84,7 +93,10 @@ function matches(held: Set<string>, allowList: string[]): boolean {
     return allowList.some((token) => held.has(token));
 }
 
-/** True if the context may READ the module (admins always pass). */
+/**
+ * True if the context may READ the module. The READ-bypass tier (SysAdmin, President,
+ * VP Admin — `ctx.isAdmin`) always passes; everyone else must hold a configured tag.
+ */
 export function canReadModule(
     ctx: ProfileContext,
     module: ModuleId,
@@ -94,13 +106,18 @@ export function canReadModule(
     return matches(heldTokens(ctx), config[module].readSlugs);
 }
 
-/** True if the context may WRITE the module (admins always pass). */
+/**
+ * True if the context may WRITE the module. The President is GLOBALLY write-blocked
+ * (sees all, changes nothing). The write-bypass tier is SysAdmin + VP Admin; everyone
+ * else must hold a configured write tag.
+ */
 export function canWriteModule(
     ctx: ProfileContext,
     module: ModuleId,
     config: ModuleAccessConfig,
 ): boolean {
-    if (ctx.isAdmin) return true;
+    if (ctx.isPresident) return false;
+    if (ctx.isSysAdmin || ctx.isVpAdmin) return true;
     return matches(heldTokens(ctx), config[module].writeSlugs);
 }
 
