@@ -3,9 +3,9 @@ import { getSettingsData } from "./actions";
 import { ModuleAccessEditor } from "./components/module-access-editor";
 
 /**
- * ICT Settings — the ICT Coordinator configures who can read/write each Tool module,
- * app-wide, by leadership-position slug or category token. Guarded server-side by
- * `requireIctCoord()` (inside getSettingsData); non-ICT users get an access notice.
+ * App Settings — the System Admin configures who can read/write each Tool module, app-wide,
+ * by privilege tag, scoped tag, or leadership-position slug. Readable by the President
+ * (read-only). Guarded server-side inside getSettingsData; others get an access notice.
  */
 export default async function SettingsPage() {
     const data = await getSettingsData();
@@ -16,7 +16,7 @@ export default async function SettingsPage() {
                 <ShieldAlert className="h-10 w-10 text-amber-500" />
                 <h1 className="text-lg font-bold text-rcf-navy">Restricted area</h1>
                 <p className="text-sm text-gray-600">
-                    Only the ICT Coordinator can manage app access settings.
+                    Only the System Admin can manage app access settings.
                 </p>
             </div>
         );
@@ -33,11 +33,12 @@ export default async function SettingsPage() {
                         App Settings
                     </h1>
                     <p className="max-w-2xl text-sm text-gray-500">
-                        Control who can read and write each Tool module. Grant access by a
-                        position&apos;s <span className="font-medium">slug</span> (only whoever holds
-                        that position in the active tenure) or by a{" "}
-                        <span className="font-medium">category</span> (e.g. all CENTRAL positions).
-                        Admins always have full access.
+                        Control who can read and write each Tool module. Grant access by a{" "}
+                        <span className="font-medium">privilege tag</span> (e.g. all CENTRAL
+                        positions), a <span className="font-medium">scoped tag</span> (e.g.{" "}
+                        <span className="font-mono">Exco:bible-study</span>), or a{" "}
+                        <span className="font-medium">position slug</span> (only whoever holds
+                        that position). Admins always have full access.
                     </p>
                 </div>
             </header>
@@ -45,6 +46,8 @@ export default async function SettingsPage() {
             <ModuleAccessEditor
                 config={data.config}
                 positions={data.positions ?? []}
+                units={data.units ?? []}
+                canWrite={data.canWrite ?? false}
             />
         </div>
     );

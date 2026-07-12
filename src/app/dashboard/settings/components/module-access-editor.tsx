@@ -14,26 +14,38 @@ import {
     ChevronLeft,
     ChevronRight,
     Info,
+    Eye,
     Crown,
     MapPin,
     Users,
     GraduationCap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import {
     MODULES,
-    CATEGORY_TOKENS,
     MODULE_META,
+    CONFIGURABLE_PRIVILEGE_TOKENS,
+    LEVEL_SCOPE_TOKENS,
     type ModuleId,
     type ModuleAccessConfig,
     type WriteScope,
 } from "@/lib/modules";
-import { updateModuleAccessAction, type PositionOption } from "../actions";
+import {
+    classifyAccessToken,
+    normalizeAccessToken,
+    PRIVILEGE_META,
+    LEVEL_SCOPE_LABELS,
+    type AccessTokenKind,
+    type ClassifiedToken,
+} from "@/lib/privileges";
+import { updateModuleAccessAction, type PositionOption, type UnitOption } from "../actions";
 
 interface Props {
     config: ModuleAccessConfig;
     positions: PositionOption[];
+    units: UnitOption[];
+    /** System Admin can edit; the President can view only. */
+    canWrite: boolean;
 }
 
 interface RowState {
@@ -48,7 +60,11 @@ interface RowState {
     baseScope: WriteScope;
 }
 
-const CATEGORY_SET = new Set<string>(CATEGORY_TOKENS);
+/** A suggestion for the token datalist. */
+interface Suggestion {
+    value: string;
+    label: string;
+}
 
 const MODULE_ICON: Record<ModuleId, LucideIcon> = {
     tenure: Crown,
@@ -57,17 +73,41 @@ const MODULE_ICON: Record<ModuleId, LucideIcon> = {
     level: GraduationCap,
 };
 
-export function ModuleAccessEditor({ config, positions }: Props) {
-    const slugMap = useMemo(() => {
-        const map = new Map<string, PositionOption>();
-        for (const p of positions) map.set(p.slug, p);
-        return map;
+const KIND_PILL: Record<AccessTokenKind, string> = {
+    tag: "border-purple-200 bg-purple-50 text-purple-700",
+    "scoped-tag": "border-blue-200 bg-blue-50 text-blue-700",
+    slug: "border-slate-200 bg-slate-100 text-slate-700",
+    invalid: "border-amber-200 bg-amber-50 text-amber-700",
+};
+
+export function ModuleAccessEditor({ config, positions, units, canWrite }: Props) {
+    // Known slugs (validation) + suggestion lists (input helpers).
+    const positionSlugs = useMemo(() => new Set(positions.map((p) => p.slug)), [positions]);
+    const unitSlugs = useMemo(() => new Set(units.map((u) => u.slug)), [units]);
+    const titleBySlug = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const p of positions) m.set(p.slug, p.alias || p.title);
+        return m;
     }, [positions]);
 
-    const slugSuggestions = useMemo(
-        () => positions.filter((p) => p.isActive).map((p) => p.slug),
-        [positions],
-    );
+    const suggestions = useMemo<Suggestion[]>(() => {
+        const out: Suggestion[] = [];
+        for (const tag of CONFIGURABLE_PRIVILEGE_TOKENS) {
+            out.push({ value: tag, label: `${PRIVILEGE_META[tag].label} — all holders of this tag` });
+        }
+        for (const u of units) {
+            out.push({ value: `EXCO:${u.slug}`, label: `Exco · ${u.name}` });
+        }
+        for (const t of LEVEL_SCOPE_TOKENS) {
+            out.push({ value: `LEVEL:${t}`, label: `Level · ${LEVEL_SCOPE_LABELS[t] ?? t}` });
+        }
+        for (const p of positions) {
+            if (p.isActive) out.push({ value: p.slug, label: `${p.title} (position)` });
+        }
+        return out;
+    }, [positions, units]);
+
+    const classifyOpts = useMemo(() => ({ positionSlugs, unitSlugs }), [positionSlugs, unitSlugs]);
 
     const [rows, setRows] = useState<Record<ModuleId, RowState>>(() => {
         const initial = {} as Record<ModuleId, RowState>;
@@ -154,93 +194,108 @@ export function ModuleAccessEditor({ config, positions }: Props) {
     }
 
     return (
-        <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
-            {/* Master list */}
-            <aside className={clsx("lg:block", mobileDetail ? "hidden" : "block")}>
-                <div className="relative mb-3">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                    <input
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search modules…"
-                        className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 bg-white text-sm outline-none focus:border-rcf-navy focus:ring-1 focus:ring-rcf-navy"
-                    />
-                </div>
-                <nav className="space-y-1.5">
-                    {filteredModules.map((m) => {
-                        const Icon = MODULE_ICON[m];
-                        const r = rows[m];
-                        const active = m === selected;
-                        const dirty = isDirty(m);
-                        return (
-                            <button
-                                key={m}
-                                onClick={() => openModule(m)}
-                                className={clsx(
-                                    "group flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors",
-                                    active
-                                        ? "border-rcf-navy bg-rcf-navy text-white shadow-sm"
-                                        : "border-gray-200 bg-white hover:border-rcf-navy/30 hover:bg-slate-50",
-                                )}
-                            >
-                                <span
-                                    className={clsx(
-                                        "inline-flex rounded-lg p-2",
-                                        active ? "bg-white/15 text-white" : "bg-slate-100 text-rcf-navy",
-                                    )}
-                                >
-                                    <Icon className="h-4 w-4" />
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                    <span className="flex items-center gap-1.5 font-semibold text-sm">
-                                        {MODULE_META[m].label}
-                                        {dirty && (
-                                            <span
-                                                className={clsx(
-                                                    "h-1.5 w-1.5 rounded-full",
-                                                    active ? "bg-yellow-300" : "bg-amber-500",
-                                                )}
-                                                title="Unsaved changes"
-                                            />
-                                        )}
-                                    </span>
-                                    <span className={clsx("block text-[11px] truncate", active ? "text-blue-100" : "text-gray-500")}>
-                                        {r.readTokens.length} read · {r.writeTokens.length} write · {r.writeScope}
-                                    </span>
-                                </span>
-                                <ChevronRight className={clsx("h-4 w-4 shrink-0", active ? "text-white/70" : "text-gray-300 group-hover:text-gray-400")} />
-                            </button>
-                        );
-                    })}
-                    {filteredModules.length === 0 && (
-                        <p className="px-2 py-6 text-center text-sm text-gray-400">No modules match.</p>
-                    )}
-                </nav>
-
-                <div className="mt-4 hidden lg:flex items-start gap-2 rounded-lg bg-slate-50 border border-slate-100 p-3 text-[11px] text-gray-500">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <div className="space-y-4">
+            {!canWrite && (
+                <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                    <Eye className="mt-0.5 h-4 w-4 shrink-0" />
                     <span>
-                        Grant by <b>position slug</b> (only whoever holds it) or by a{" "}
-                        <b>category</b> (all such positions). Admins always have full access.
+                        <b>View only.</b> As President you can see every setting, but changes are
+                        reserved for the System Admin.
                     </span>
                 </div>
-            </aside>
+            )}
 
-            {/* Detail editor */}
-            <section className={clsx("lg:block", mobileDetail ? "block" : "hidden")}>
-                <ModuleDetail
-                    key={selected}
-                    module={selected}
-                    icon={MODULE_ICON[selected]}
-                    row={rows[selected]}
-                    dirty={isDirty(selected)}
-                    slugMap={slugMap}
-                    suggestions={slugSuggestions}
-                    onPatch={(next) => patch(selected, next)}
-                    onSave={() => save(selected)}
-                    onBack={() => setMobileDetail(false)}
-                />
-            </section>
+            <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
+                {/* Master list */}
+                <aside className={clsx("lg:block", mobileDetail ? "hidden" : "block")}>
+                    <div className="relative mb-3">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                        <input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search modules…"
+                            className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-200 bg-white text-sm outline-none focus:border-rcf-navy focus:ring-1 focus:ring-rcf-navy"
+                        />
+                    </div>
+                    <nav className="space-y-1.5">
+                        {filteredModules.map((m) => {
+                            const Icon = MODULE_ICON[m];
+                            const r = rows[m];
+                            const active = m === selected;
+                            const dirty = isDirty(m);
+                            return (
+                                <button
+                                    key={m}
+                                    onClick={() => openModule(m)}
+                                    className={clsx(
+                                        "group flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors",
+                                        active
+                                            ? "border-rcf-navy bg-rcf-navy text-white shadow-sm"
+                                            : "border-gray-200 bg-white hover:border-rcf-navy/30 hover:bg-slate-50",
+                                    )}
+                                >
+                                    <span
+                                        className={clsx(
+                                            "inline-flex rounded-lg p-2",
+                                            active ? "bg-white/15 text-white" : "bg-slate-100 text-rcf-navy",
+                                        )}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex items-center gap-1.5 font-semibold text-sm">
+                                            {MODULE_META[m].label}
+                                            {dirty && (
+                                                <span
+                                                    className={clsx(
+                                                        "h-1.5 w-1.5 rounded-full",
+                                                        active ? "bg-yellow-300" : "bg-amber-500",
+                                                    )}
+                                                    title="Unsaved changes"
+                                                />
+                                            )}
+                                        </span>
+                                        <span className={clsx("block text-[11px] truncate", active ? "text-blue-100" : "text-gray-500")}>
+                                            {r.readTokens.length} read · {r.writeTokens.length} write · {r.writeScope}
+                                        </span>
+                                    </span>
+                                    <ChevronRight className={clsx("h-4 w-4 shrink-0", active ? "text-white/70" : "text-gray-300 group-hover:text-gray-400")} />
+                                </button>
+                            );
+                        })}
+                        {filteredModules.length === 0 && (
+                            <p className="px-2 py-6 text-center text-sm text-gray-400">No modules match.</p>
+                        )}
+                    </nav>
+
+                    <div className="mt-4 hidden lg:flex items-start gap-2 rounded-lg bg-slate-50 border border-slate-100 p-3 text-[11px] text-gray-500">
+                        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>
+                            Grant by a <b>tag</b> (all holders), a <b>scoped tag</b> (
+                            <span className="font-mono">Exco:bible-study</span>), or a{" "}
+                            <b>position slug</b>. Admins always have full access.
+                        </span>
+                    </div>
+                </aside>
+
+                {/* Detail editor */}
+                <section className={clsx("lg:block", mobileDetail ? "block" : "hidden")}>
+                    <ModuleDetail
+                        key={selected}
+                        module={selected}
+                        icon={MODULE_ICON[selected]}
+                        row={rows[selected]}
+                        dirty={isDirty(selected)}
+                        canWrite={canWrite}
+                        suggestions={suggestions}
+                        classifyOpts={classifyOpts}
+                        titleBySlug={titleBySlug}
+                        onPatch={(next) => patch(selected, next)}
+                        onSave={() => save(selected)}
+                        onBack={() => setMobileDetail(false)}
+                    />
+                </section>
+            </div>
         </div>
     );
 }
@@ -250,14 +305,28 @@ interface DetailProps {
     icon: LucideIcon;
     row: RowState;
     dirty: boolean;
-    slugMap: Map<string, PositionOption>;
-    suggestions: string[];
+    canWrite: boolean;
+    suggestions: Suggestion[];
+    classifyOpts: { positionSlugs: Set<string>; unitSlugs: Set<string> };
+    titleBySlug: Map<string, string>;
     onPatch: (next: Partial<RowState>) => void;
     onSave: () => void;
     onBack: () => void;
 }
 
-function ModuleDetail({ module, icon: Icon, row, dirty, slugMap, suggestions, onPatch, onSave, onBack }: DetailProps) {
+function ModuleDetail({
+    module,
+    icon: Icon,
+    row,
+    dirty,
+    canWrite,
+    suggestions,
+    classifyOpts,
+    titleBySlug,
+    onPatch,
+    onSave,
+    onBack,
+}: DetailProps) {
     const meta = MODULE_META[module];
     return (
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -287,8 +356,10 @@ function ModuleDetail({ module, icon: Icon, row, dirty, slugMap, suggestions, on
                     icon={<ShieldCheck className="h-4 w-4 text-blue-500" />}
                     tokens={row.readTokens}
                     onChange={(readTokens) => onPatch({ readTokens })}
+                    canWrite={canWrite}
                     suggestions={suggestions}
-                    slugMap={slugMap}
+                    classifyOpts={classifyOpts}
+                    titleBySlug={titleBySlug}
                     inputId={`${module}-read`}
                 />
                 <TokenField
@@ -297,8 +368,10 @@ function ModuleDetail({ module, icon: Icon, row, dirty, slugMap, suggestions, on
                     icon={<PencilLine className="h-4 w-4 text-amber-500" />}
                     tokens={row.writeTokens}
                     onChange={(writeTokens) => onPatch({ writeTokens })}
+                    canWrite={canWrite}
                     suggestions={suggestions}
-                    slugMap={slugMap}
+                    classifyOpts={classifyOpts}
+                    titleBySlug={titleBySlug}
                     inputId={`${module}-write`}
                 />
 
@@ -309,9 +382,10 @@ function ModuleDetail({ module, icon: Icon, row, dirty, slugMap, suggestions, on
                             <button
                                 key={scope}
                                 type="button"
+                                disabled={!canWrite}
                                 onClick={() => onPatch({ writeScope: scope })}
                                 className={clsx(
-                                    "rounded-lg border p-3 text-left text-sm transition-colors",
+                                    "rounded-lg border p-3 text-left text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed",
                                     row.writeScope === scope
                                         ? "border-rcf-navy bg-rcf-navy/5 ring-1 ring-rcf-navy"
                                         : "border-gray-200 hover:border-gray-300",
@@ -330,27 +404,29 @@ function ModuleDetail({ module, icon: Icon, row, dirty, slugMap, suggestions, on
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between gap-3 border-t border-gray-100 bg-slate-50 p-4 rounded-b-2xl">
-                <span className="text-xs text-gray-500">
-                    {dirty ? "Unsaved changes" : row.saved ? "All changes saved" : "No changes"}
-                </span>
-                <div className="flex items-center gap-3">
-                    {row.error && (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-                            <AlertCircle className="h-4 w-4" /> {row.error}
-                        </span>
-                    )}
-                    <button
-                        type="button"
-                        onClick={onSave}
-                        disabled={row.saving || !dirty}
-                        className="inline-flex items-center gap-2 rounded-lg bg-rcf-navy px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        {row.saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                        {row.saving ? "Saving…" : "Save changes"}
-                    </button>
+            {canWrite && (
+                <div className="flex items-center justify-between gap-3 border-t border-gray-100 bg-slate-50 p-4 rounded-b-2xl">
+                    <span className="text-xs text-gray-500">
+                        {dirty ? "Unsaved changes" : row.saved ? "All changes saved" : "No changes"}
+                    </span>
+                    <div className="flex items-center gap-3">
+                        {row.error && (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
+                                <AlertCircle className="h-4 w-4" /> {row.error}
+                            </span>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onSave}
+                            disabled={row.saving || !dirty}
+                            className="inline-flex items-center gap-2 rounded-lg bg-rcf-navy px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {row.saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                            {row.saving ? "Saving…" : "Save changes"}
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
@@ -361,26 +437,44 @@ interface TokenFieldProps {
     icon: React.ReactNode;
     tokens: string[];
     onChange: (tokens: string[]) => void;
-    suggestions: string[];
-    slugMap: Map<string, PositionOption>;
+    canWrite: boolean;
+    suggestions: Suggestion[];
+    classifyOpts: { positionSlugs: Set<string>; unitSlugs: Set<string> };
+    titleBySlug: Map<string, string>;
     inputId: string;
 }
 
-function TokenField({ label, hint, icon, tokens, onChange, suggestions, slugMap, inputId }: TokenFieldProps) {
+function TokenField({
+    label,
+    hint,
+    icon,
+    tokens,
+    onChange,
+    canWrite,
+    suggestions,
+    classifyOpts,
+    titleBySlug,
+    inputId,
+}: TokenFieldProps) {
     const [draft, setDraft] = useState("");
+    const [error, setError] = useState<string | null>(null);
 
     function add(raw: string) {
         const value = raw.trim();
         if (!value) return;
-        const normalized = CATEGORY_SET.has(value.toUpperCase())
-            ? value.toUpperCase()
-            : value.toLowerCase();
-        if (tokens.includes(normalized)) {
-            setDraft("");
+        const c = classifyAccessToken(value, classifyOpts);
+        if (c.kind === "invalid") {
+            setError(c.error ?? "That token isn't valid.");
             return;
         }
-        onChange([...tokens, normalized]);
+        if (tokens.includes(c.token)) {
+            setDraft("");
+            setError(null);
+            return;
+        }
+        onChange([...tokens, c.token]);
         setDraft("");
+        setError(null);
     }
 
     function remove(token: string) {
@@ -401,70 +495,106 @@ function TokenField({ label, hint, icon, tokens, onChange, suggestions, slugMap,
                 {tokens.length === 0 && (
                     <span className="px-1 text-xs text-gray-400">No one yet — admins still have access.</span>
                 )}
-                {tokens.map((token) => {
-                    const isCategory = CATEGORY_SET.has(token);
-                    const pos = slugMap.get(token);
-                    const known = isCategory || !!pos;
-                    const display = isCategory ? token : pos?.alias || pos?.title || token;
-                    return (
-                        <Badge
-                            key={token}
-                            variant={isCategory ? "purple" : known ? "info" : "warning"}
-                            size="sm"
-                            title={isCategory ? `All ${token} positions` : `${pos?.title ?? "Unknown position"} (${token})`}
-                        >
-                            <span>{display}</span>
-                            <button
-                                type="button"
-                                onClick={() => remove(token)}
-                                aria-label={`Remove ${display}`}
-                                className="ml-0.5 rounded-full p-0.5 hover:bg-black/10"
-                            >
-                                <X className="h-3 w-3" />
-                            </button>
-                        </Badge>
-                    );
-                })}
+                {tokens.map((token) => (
+                    <TokenPill
+                        key={token}
+                        token={token}
+                        classifyOpts={classifyOpts}
+                        titleBySlug={titleBySlug}
+                        onRemove={canWrite ? () => remove(token) : undefined}
+                    />
+                ))}
             </div>
 
-            <div className="flex gap-2">
-                <input
-                    id={inputId}
-                    list={`${inputId}-options`}
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                            e.preventDefault();
-                            add(draft);
-                        }
-                    }}
-                    placeholder="Add a slug or category…"
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-rcf-navy focus:outline-none focus:ring-1 focus:ring-rcf-navy"
-                />
-                <datalist id={`${inputId}-options`}>
-                    {CATEGORY_TOKENS.map((c) => (
-                        <option key={c} value={c}>
-                            All {c} positions
-                        </option>
-                    ))}
-                    {suggestions.map((slug) => {
-                        const p = slugMap.get(slug);
-                        return (
-                            <option key={slug} value={slug}>
-                                {p?.title ?? slug}
-                            </option>
-                        );
-                    })}
-                </datalist>
+            {canWrite && (
+                <>
+                    <div className="flex gap-2">
+                        <input
+                            id={inputId}
+                            list={`${inputId}-options`}
+                            value={draft}
+                            onChange={(e) => {
+                                setDraft(e.target.value);
+                                if (error) setError(null);
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    add(draft);
+                                }
+                            }}
+                            placeholder="Tag, Exco:slug, or a position slug…"
+                            className={clsx(
+                                "flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-1",
+                                error
+                                    ? "border-red-300 focus:border-red-400 focus:ring-red-400"
+                                    : "border-gray-300 focus:border-rcf-navy focus:ring-rcf-navy",
+                            )}
+                        />
+                        <datalist id={`${inputId}-options`}>
+                            {suggestions.map((s) => (
+                                <option key={s.value} value={s.value}>
+                                    {s.label}
+                                </option>
+                            ))}
+                        </datalist>
+                        <button
+                            type="button"
+                            onClick={() => add(draft)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                            <Plus className="h-4 w-4" /> Add
+                        </button>
+                    </div>
+                    {error && (
+                        <p className="flex items-center gap-1 text-[11px] font-medium text-red-600">
+                            <AlertCircle className="h-3.5 w-3.5" /> {error}
+                        </p>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+function TokenPill({
+    token,
+    classifyOpts,
+    titleBySlug,
+    onRemove,
+}: {
+    token: string;
+    classifyOpts: { positionSlugs: Set<string>; unitSlugs: Set<string> };
+    titleBySlug: Map<string, string>;
+    onRemove?: () => void;
+}) {
+    const c: ClassifiedToken = classifyAccessToken(token, classifyOpts);
+    const suspect = c.kind === "invalid" || !!c.warning;
+    const className = suspect ? KIND_PILL.invalid : KIND_PILL[c.kind];
+    const display =
+        c.kind === "slug" ? titleBySlug.get(token) ?? token : c.label || normalizeAccessToken(token);
+    const title = c.error ?? c.warning ?? (c.kind === "slug" ? `Position slug: ${token}` : c.label);
+
+    return (
+        <span
+            className={clsx(
+                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold",
+                className,
+            )}
+            title={title}
+        >
+            {suspect && <AlertCircle className="h-3 w-3" />}
+            <span>{display}</span>
+            {onRemove && (
                 <button
                     type="button"
-                    onClick={() => add(draft)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    onClick={onRemove}
+                    aria-label={`Remove ${display}`}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-black/10"
                 >
-                    <Plus className="h-4 w-4" /> Add
+                    <X className="h-3 w-3" />
                 </button>
-            </div>
-        </div>
+            )}
+        </span>
     );
 }

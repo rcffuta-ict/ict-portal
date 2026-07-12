@@ -39,6 +39,10 @@ function roleTitles(profile: FullUserProfile | null | undefined): string[] {
 /**
  * Whether the profile holds one of the default admin positions (VP Admin / ICT Coord)
  * or a PRESIDENT-scope role.
+ *
+ * NOTE: this is a CLIENT-side heuristic over the plain profile (title/scope based). The
+ * server-side source of truth for authorization is the PRIVILEGE TAGS on the enriched
+ * ProfileContext (isSysAdmin / isPresident / isAdmin) — see src/lib/access-control.ts.
  */
 export function isDefaultAdminProfile(profile: FullUserProfile | null | undefined): boolean {
     if (!profile?.roles) return false;

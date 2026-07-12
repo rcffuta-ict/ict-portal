@@ -6,6 +6,7 @@
  */
 import type { FullUserProfile } from "@rcffuta/ict-lib";
 import { ictAdmin } from "@/lib/ict";
+import type { Privilege } from "@/lib/modules";
 
 /** Enriched leadership row from the context RPC (superset of ict-lib's roles). */
 export interface LeadershipContext {
@@ -21,6 +22,13 @@ export interface LeadershipContext {
     classSetId: string | null;
     residentialZoneId: string | null;
     tenureId: string;
+    /**
+     * Privilege tags (+ scopes) held by this leadership's POSITION — the source of
+     * truth for authorization (see src/lib/module-access.ts + access-control.ts).
+     * `category`/`isDefault` above are legacy and kept only for the not-yet-rebuilt
+     * cabinet/tenure UI.
+     */
+    privileges: Privilege[];
 }
 
 /**
@@ -36,8 +44,13 @@ export type ProfileContext = FullUserProfile & {
         currentLevel: string | null;
     } | null;
     leadership: LeadershipContext[];
+    /** READ-bypass tier: SysAdmin, President, or VP Admin (see the RPC). */
     isAdmin: boolean;
     isVpAdmin: boolean;
+    /** Holds the SYSADMIN privilege (the ICT Coordinator) — full read+write incl. Settings. */
+    isSysAdmin: boolean;
+    /** Holds the PRESIDENT privilege — sees all incl. Settings, but is globally write-blocked. */
+    isPresident: boolean;
     /**
      * Tool modules this profile may READ, resolved from `module_access` config at
      * login (see src/lib/module-access.ts). NOT part of the RPC payload — app code

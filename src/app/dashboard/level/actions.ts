@@ -16,14 +16,45 @@ import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-conte
  * ../invites/actions.ts, which enforce `canManageLevel`.
  */
 
-/** True when the context should see ALL generations (not just its own). */
+/** True when the context should READ ALL generations: the read-bypass tier or CENTRAL. */
 function seesAllLevels(ctx: ProfileContext): boolean {
-    return (
-        ctx.isAdmin ||
-        (ctx.leadership ?? []).some(
-            (l) => l.category === "CENTRAL" || l.category === "PRESIDENT",
-        )
+    if (ctx.isAdmin) return true;
+    return (ctx.leadership ?? []).some((l) =>
+        (l.privileges ?? []).some((p) => p.tag === "CENTRAL"),
     );
+}
+
+/** A LEVEL scope token → its canonical level label (mirrors access-control.ts). */
+function levelTokenToLabel(token: string): string | null {
+    const t = token.trim().toLowerCase();
+    if (t === "pds-uabs" || t === "pds/uabs") return "PDS/UABS";
+    if (/^[1-5]00$/.test(t)) return `${t} Level`;
+    return null;
+}
+
+type ClassSetRow = { id: string; entry_year: number | null; is_foundation: boolean | null; level_override: string | null };
+
+/**
+ * The class_set ids the context can WRITE via its LEVEL privileges, resolved against
+ * the active session (a level token → the generation currently at that level; an
+ * un-scoped/'all' LEVEL → every generation). Empty when the context holds no LEVEL tag.
+ */
+function managedLevelIds(ctx: ProfileContext, sets: ClassSetRow[], session: string | null): Set<string> {
+    const scopes = (ctx.leadership ?? [])
+        .flatMap((l) => l.privileges ?? [])
+        .filter((p) => p.tag === "LEVEL")
+        .map((p) => p.scope);
+    if (scopes.length === 0) return new Set();
+    if (scopes.some((s) => s == null || s.toLowerCase() === "all")) {
+        return new Set(sets.map((s) => s.id));
+    }
+    const labels = new Set(scopes.map((s) => levelTokenToLabel(s as string)).filter(Boolean) as string[]);
+    const ids = new Set<string>();
+    for (const s of sets) {
+        const effective = s.level_override || computeLevel(s.entry_year, s.is_foundation, session);
+        if (effective && labels.has(effective)) ids.add(s.id);
+    }
+    return ids;
 }
 
 type GenderTally = { total: number; male: number; female: number };
@@ -35,26 +66,22 @@ export async function getLevelModuleData() {
         const tenure = await getActiveTenure();
         const session = tenure?.session ?? null;
         const seesAll = seesAllLevels(ctx);
+        const canWriteAny = ctx.isSysAdmin || ctx.isVpAdmin; // write-bypass tier
 
-        // Generations this user WRITES (coordinates).
-        const managedIds = new Set(
-            (ctx.leadership ?? [])
-                .filter((l) => l.category === "LEVEL" && l.classSetId)
-                .map((l) => l.classSetId as string),
-        );
-
-        // Which class_sets to show.
-        let setsQuery = ictAdmin.supabase
+        // Fetch all generations first (needed to resolve level-token scopes to ids).
+        const { data: allSets } = await ictAdmin.supabase
             .from("class_sets")
             .select("id, family_name, entry_year, is_foundation, level_override")
             .order("entry_year", { ascending: false });
-        if (!seesAll) {
-            if (managedIds.size === 0) {
-                return { authorized: true, seesAll: false, generations: [] as any[] };
-            }
-            setsQuery = setsQuery.in("id", [...managedIds]);
+
+        // Generations this user WRITES (coordinates), resolved from LEVEL scopes.
+        const managedIds = managedLevelIds(ctx, allSets ?? [], session);
+
+        // Which class_sets to show: everything for read-all, else only managed ones.
+        const sets = seesAll ? (allSets ?? []) : (allSets ?? []).filter((s) => managedIds.has(s.id));
+        if (!seesAll && sets.length === 0) {
+            return { authorized: true, seesAll: false, generations: [] as any[] };
         }
-        const { data: sets } = await setsQuery;
 
         // Member gender tallies per class_set.
         const { data: profs } = await ictAdmin.supabase
@@ -77,7 +104,7 @@ export async function getLevelModuleData() {
             isFoundation: s.is_foundation,
             level: s.level_override || computeLevel(s.entry_year, s.is_foundation, session),
             stats: stats.get(s.id) || emptyTally(),
-            canWrite: ctx.isAdmin || managedIds.has(s.id),
+            canWrite: canWriteAny || managedIds.has(s.id),
         }));
 
         return { authorized: true, seesAll, generations };
@@ -109,11 +136,9 @@ export async function getGenerationAction(classSetId: string) {
             .maybeSingle();
         if (!s) return { authorized: false as const };
 
-        const managedIds = new Set(
-            (ctx.leadership ?? [])
-                .filter((l) => l.category === "LEVEL" && l.classSetId)
-                .map((l) => l.classSetId as string),
-        );
+        // WRITE capability is resolved through the LEVEL-scope logic (write-bypass tier
+        // or a matching LEVEL privilege); CENTRAL/President can read but not write here.
+        const canWrite = await canManageLevel(ctx, s.id);
 
         return {
             authorized: true as const,
@@ -123,7 +148,7 @@ export async function getGenerationAction(classSetId: string) {
                 entryYear: s.entry_year,
                 isFoundation: s.is_foundation,
                 level: s.level_override || computeLevel(s.entry_year, s.is_foundation, session),
-                canWrite: ctx.isAdmin || managedIds.has(s.id),
+                canWrite,
             },
         };
     } catch (e: any) {

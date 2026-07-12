@@ -4,6 +4,8 @@
 import { requireModuleRead, requireModuleWrite } from "@/lib/access-control";
 import { ictAdmin } from "@/lib/ict";
 import { computeLevel, LEVELS } from "@/lib/levels";
+import { validatePrivilegeSet, deriveCategory } from "@/lib/privileges";
+import type { Privilege } from "@/lib/modules";
 import { RcfIctClient } from "@rcffuta/ict-lib/server";
 import { revalidatePath } from "next/cache";
 
@@ -34,14 +36,16 @@ export async function getAdminData() {
         const [unitsRes, familiesRes, positionsRes, leadershipRes, profilesRes, membershipRes] = await Promise.all([
             rcf.supabase.from('units').select('*').order('name'),
             rcf.supabase.from('class_sets').select('*').order('entry_year', { ascending: false }),
-            rcf.supabase.from('leadership_positions').select('*').order('category').order('title'),
+            rcf.supabase.from('leadership_positions')
+                .select('*, position_privileges(id, privilege, scope)')
+                .order('category').order('title'),
             // Fetch ALL leadership for the active tenure
             activeTenure
                 ? rcf.supabase.from('leadership')
                     .select(`
                         id, is_lead, unit_id, units(name, type, is_workforce),
                         class_set_id, class_sets(family_name, entry_year),
-                        position:leadership_positions(title, category, is_central, slug),
+                        position:leadership_positions(title, category, is_central, slug, position_privileges(privilege, scope)),
                         profile:profiles(id, first_name, last_name, avatar_url, department, phone_number, gender)
                     `)
                     .eq('tenure_id', activeTenure.id)
@@ -299,18 +303,25 @@ export async function createUnitAction(formData: FormData) {
     const rcf = ictAdmin;
     try {
         const type = formData.get("type") as string;
+        const name = ((formData.get("name") as string) || "").trim();
         // "Loose units" are type UNIT whose members don't count as workforce
         // (e.g. Sisters Unit). Teams never count. Insert directly so we can set it.
         const isWorkforce = type === 'UNIT'
             ? formData.get("isWorkforce") !== "false"
             : false;
+        // units.slug is NOT NULL (migration 0006) and is the Exco:<slug> scope target.
+        // Auto-derive from the name when not supplied; immutable once created.
+        const slug = slugify(((formData.get("slug") as string) || "").trim() || name);
+        if (!slug) return { success: false, error: "A valid name (letters/numbers) is required." };
+
         const { error } = await rcf.supabase.from('units').insert({
-            name: formData.get("name") as string,
+            name,
             type,
             is_workforce: isWorkforce,
+            slug,
         });
         if (error) {
-            if (error.code === '23505') return { success: false, error: "A unit/team with that name already exists." };
+            if (error.code === '23505') return { success: false, error: "A unit/team with that name or slug already exists." };
             return { success: false, error: error.message };
         }
 
@@ -427,32 +438,6 @@ export async function setLevelOverrideAction(classSetId: string, level: string |
 }
 
 /**
- * Toggles a position's CENTRAL privilege. Default positions stay central.
- */
-export async function toggleCentralAction(id: string, current: boolean) {
-    await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
-    try {
-        const { data: pos } = await rcf.supabase
-            .from('leadership_positions').select('is_default, slug').eq('id', id).single();
-        // The ICT Coordinator is the System Admin, never a central.
-        if (pos?.slug === 'ict-coord') {
-            return { success: false, error: "The ICT Coordinator is the System Admin, not a central." };
-        }
-        if (current && pos?.is_default) {
-            return { success: false, error: "Default positions are always central." };
-        }
-        const { error } = await rcf.supabase
-            .from('leadership_positions').update({ is_central: !current }).eq('id', id);
-        if (error) return { success: false, error: error.message };
-        revalidatePath('/dashboard/tenure');
-        return { success: true };
-    } catch (e: any) {
-        return { success: false, error: e.message };
-    }
-}
-
-/**
  * Gets detailed information about a specific unit including assigned leaders
  */
 export async function getUnitDetails(unitId: string) {
@@ -498,11 +483,57 @@ function slugify(value: string): string {
 }
 
 /**
- * Creates a new leadership position (role) with a stable, unique slug.
- *
- * The ict-lib PositionSchema has no alias/slug, so we insert directly. The slug is
- * derived from the provided slug/alias/title, is set ONCE here, and is never changed
- * on update (immutable) — access config references positions by slug.
+ * Parse the `privileges` form field (a JSON array of { tag, scope }) into a clean set,
+ * dropping malformed entries and normalising empty scopes to null.
+ */
+function parsePrivileges(raw: string | null): Privilege[] {
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .filter((p) => p && typeof p.tag === "string")
+            .map((p) => ({
+                tag: p.tag,
+                scope: p.scope == null || p.scope === "" || p.scope === "all" ? null : String(p.scope),
+            })) as Privilege[];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Guard a privilege set before persisting: run the pure validator, then the checks the
+ * DB trigger can't express — President is single & unique ACROSS positions (only one
+ * position may hold it). `excludePositionId` skips the position being edited.
+ * Returns an error string, or null when OK.
+ */
+async function assertPrivilegesAssignable(
+    privs: Privilege[],
+    excludePositionId?: string,
+): Promise<string | null> {
+    const local = validatePrivilegeSet(privs);
+    if (local) return local;
+
+    if (privs.some((p) => p.tag === "PRESIDENT")) {
+        let q = ictAdmin.supabase
+            .from("position_privileges")
+            .select("position_id")
+            .eq("privilege", "PRESIDENT");
+        if (excludePositionId) q = q.neq("position_id", excludePositionId);
+        const { data: existing } = await q.limit(1);
+        if (existing && existing.length > 0) {
+            return "A President role already exists — President is single and unique.";
+        }
+    }
+    return null;
+}
+
+/**
+ * Creates a new leadership position (role) with a stable, unique slug and its privilege
+ * tags (+ scopes). The ict-lib PositionSchema has no alias/slug/privileges, so we insert
+ * directly. Slug is set ONCE here and never changed on update (immutable). The legacy
+ * `category`/`is_central` columns are auto-derived from the privileges for DB compat.
  */
 export async function createPositionAction(formData: FormData) {
     await requireModuleWrite("tenure");
@@ -512,32 +543,91 @@ export async function createPositionAction(formData: FormData) {
         const alias = ((formData.get("alias") as string) || "").trim();
         const rawSlug = ((formData.get("slug") as string) || "").trim();
         const description = ((formData.get("description") as string) || "").trim();
-        const category = formData.get("category") as any;
+        const privileges = parsePrivileges(formData.get("privileges") as string | null);
 
         if (!title) return { success: false, error: "Role title is required." };
 
         const slug = slugify(rawSlug || alias || title);
         if (!slug) return { success: false, error: "A valid slug (letters/numbers) is required." };
 
-        // Central privilege can be set at create; CENTRAL-category roles are central by default.
-        const isCentral = formData.get("isCentral") === "true" || category === "CENTRAL";
+        const privError = await assertPrivilegesAssignable(privileges);
+        if (privError) return { success: false, error: privError };
 
-        const { error } = await rcf.supabase.from("leadership_positions").insert({
-            title,
-            alias: alias || null,
-            slug,
-            category,
-            description: description || null,
-            is_central: isCentral,
-            is_active: true,
-        });
+        const { data: position, error } = await rcf.supabase
+            .from("leadership_positions")
+            .insert({
+                title,
+                alias: alias || null,
+                slug,
+                category: deriveCategory(privileges),
+                description: description || null,
+                is_central: privileges.some((p) => p.tag === "CENTRAL"),
+                is_active: true,
+            })
+            .select("id")
+            .single();
 
-        if (error) {
-            if (error.code === "23505") {
+        if (error || !position) {
+            if (error?.code === "23505") {
                 return { success: false, error: "That role title or slug is already in use." };
             }
-            return { success: false, error: error.message };
+            return { success: false, error: error?.message || "Could not create the role." };
         }
+
+        if (privileges.length > 0) {
+            const { error: pErr } = await rcf.supabase.from("position_privileges").insert(
+                privileges.map((p) => ({ position_id: position.id, privilege: p.tag, scope: p.scope })),
+            );
+            if (pErr) {
+                // Roll back the orphaned position so a failed privilege insert isn't left half-done.
+                await rcf.supabase.from("leadership_positions").delete().eq("id", position.id);
+                return { success: false, error: pErr.message };
+            }
+        }
+
+        revalidatePath('/dashboard/tenure');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Replace a position's privilege tags (+ scopes) atomically — the row editor's save.
+ * The ICT Coordinator's SYSADMIN privilege is immutable (not editable here). Validates
+ * the full set (incl. President single/unique) and refreshes the legacy category/is_central.
+ */
+export async function setPositionPrivilegesAction(positionId: string, privilegesInput: Privilege[]) {
+    await requireModuleWrite("tenure");
+    const rcf = ictAdmin;
+    try {
+        const { data: pos } = await rcf.supabase
+            .from("leadership_positions").select("slug").eq("id", positionId).single();
+        if (!pos) return { success: false, error: "Role not found." };
+        if (pos.slug === "ict-coord") {
+            return { success: false, error: "The ICT Coordinator is the System Admin — its privileges are fixed." };
+        }
+
+        const privileges = parsePrivileges(JSON.stringify(privilegesInput ?? []));
+        const privError = await assertPrivilegesAssignable(privileges, positionId);
+        if (privError) return { success: false, error: privError };
+
+        // Replace: clear then re-insert. The DB trigger still backstops each insert.
+        const { error: delErr } = await rcf.supabase
+            .from("position_privileges").delete().eq("position_id", positionId);
+        if (delErr) return { success: false, error: delErr.message };
+
+        if (privileges.length > 0) {
+            const { error: insErr } = await rcf.supabase.from("position_privileges").insert(
+                privileges.map((p) => ({ position_id: positionId, privilege: p.tag, scope: p.scope })),
+            );
+            if (insErr) return { success: false, error: insErr.message };
+        }
+
+        await rcf.supabase.from("leadership_positions").update({
+            category: deriveCategory(privileges),
+            is_central: privileges.some((p) => p.tag === "CENTRAL"),
+        }).eq("id", positionId);
 
         revalidatePath('/dashboard/tenure');
         return { success: true };
@@ -612,43 +702,43 @@ export async function assignLeaderAction(formData: FormData) {
     const tenureId = formData.get("tenureId") as string;
     const profileId = formData.get("profileId") as string;
     const positionId = formData.get("positionId") as string;
-    const unitId = formData.get("unitId") as string;
-    const classSetId = formData.get("classSetId") as string;
     // Sub-leaders (assistants) share the same position with is_lead = false.
     const isLead = formData.get("isLead") !== "false";
 
     try {
-        // Enforce the single-President rule (mirrors ict-lib assignLeader).
-        const { data: position } = await rcf.supabase
-            .from("leadership_positions").select("category").eq("id", positionId).single();
-        if (!position) return { success: false, error: "Position not found." };
+        // Scope now lives on the position's privileges, not the assignment — so a
+        // President is single & unique: if the target position holds the PRESIDENT
+        // privilege, block when any President is already appointed this tenure.
+        const { data: presidentPriv } = await rcf.supabase
+            .from("position_privileges")
+            .select("id")
+            .eq("position_id", positionId)
+            .eq("privilege", "PRESIDENT")
+            .maybeSingle();
 
-        if (position.category === "PRESIDENT") {
+        if (presidentPriv) {
             const { data: existingPresident } = await rcf.supabase
                 .from("leadership")
-                .select("id, position:leadership_positions!inner(category)")
+                .select("id, position:leadership_positions!inner(position_privileges!inner(privilege))")
                 .eq("tenure_id", tenureId)
-                .eq("position.category", "PRESIDENT")
+                .eq("position.position_privileges.privilege", "PRESIDENT")
                 .maybeSingle();
             if (existingPresident) {
                 return { success: false, error: "A President has already been appointed for this tenure." };
             }
         }
 
-        // A position may have only ONE lead per context; assistants are unlimited.
-        // NULL scopes must be matched with .is(), not .eq().
+        // A position may have only ONE lead per tenure; assistants are unlimited.
         if (isLead) {
-            let leadQuery = rcf.supabase
+            const { data: existingLead } = await rcf.supabase
                 .from("leadership")
                 .select("id")
                 .eq("tenure_id", tenureId)
                 .eq("position_id", positionId)
-                .eq("is_lead", true);
-            leadQuery = unitId ? leadQuery.eq("unit_id", unitId) : leadQuery.is("unit_id", null);
-            leadQuery = classSetId ? leadQuery.eq("class_set_id", classSetId) : leadQuery.is("class_set_id", null);
-            const { data: existingLead } = await leadQuery.maybeSingle();
+                .eq("is_lead", true)
+                .maybeSingle();
             if (existingLead) {
-                return { success: false, error: "This position already has a lead here. Add them as an assistant instead." };
+                return { success: false, error: "This role already has a lead. Add them as an assistant instead." };
             }
         }
 
@@ -656,8 +746,8 @@ export async function assignLeaderAction(formData: FormData) {
             tenure_id: tenureId,
             profile_id: profileId,
             position_id: positionId,
-            unit_id: unitId || null,
-            class_set_id: classSetId || null,
+            unit_id: null,
+            class_set_id: null,
             is_lead: isLead,
         });
         if (error) {

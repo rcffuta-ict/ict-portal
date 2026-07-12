@@ -7,28 +7,33 @@ import {
     assignLeaderAction,
     createPositionAction,
     togglePositionAction,
-    toggleCentralAction,
+    setPositionPrivilegesAction,
     removeUnitLeaderAction,
 } from "../actions";
 import {
     Search,
     UserCheck,
-    Shield,
-    Users,
     Settings,
     Plus,
     Power,
     CheckCircle,
     List,
     Trash2,
-    Mail,
     Phone,
     GraduationCap,
     Loader2,
+    ShieldCheck,
+    Pencil,
+    X,
+    Users,
 } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
 import { AlertModal, useAlertModal } from "@/components/ui/alert-modal";
+import { PrivilegeBuilder } from "./privilege-builder";
+import { PrivilegePills } from "./privilege-pills";
+import { normalizePrivileges } from "@/lib/privileges";
+import type { Privilege } from "@/lib/modules";
 
 export function CabinetTab({ data, onSuccess }: any) {
     const [mode, setMode] = useState<"LIST" | "APPOINT" | "CONFIGURE">("LIST");
@@ -41,55 +46,38 @@ export function CabinetTab({ data, onSuccess }: any) {
             <div className="mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[500px]">
                 <div className="bg-slate-50 border-b border-slate-200 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div>
-                        <h3 className="font-bold text-slate-900">
-                            Leadership Management
-                        </h3>
+                        <h3 className="font-bold text-slate-900">Leadership Management</h3>
                         <p className="text-xs text-slate-500">
                             Active Tenure: {data?.activeTenure?.name}
                         </p>
                     </div>
 
                     <div className="flex bg-white rounded-lg p-1 border border-slate-200 shadow-sm">
-                        <button
-                            onClick={() => setMode("LIST")}
-                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${
-                                mode === "LIST"
-                                    ? "bg-rcf-navy text-white shadow-sm"
-                                    : "text-slate-500 hover:bg-slate-50"
-                            }`}
-                        >
-                            <List className="h-3 w-3" /> Roster
-                        </button>
-                        <button
-                            onClick={() => setMode("APPOINT")}
-                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${
-                                mode === "APPOINT"
-                                    ? "bg-rcf-navy text-white shadow-sm"
-                                    : "text-slate-500 hover:bg-slate-50"
-                            }`}
-                        >
-                            <UserCheck className="h-3 w-3" /> Appoint
-                        </button>
-                        <button
-                            onClick={() => setMode("CONFIGURE")}
-                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${
-                                mode === "CONFIGURE"
-                                    ? "bg-rcf-navy text-white shadow-sm"
-                                    : "text-slate-500 hover:bg-slate-50"
-                            }`}
-                        >
-                            <Settings className="h-3 w-3" /> Roles
-                        </button>
+                        {(
+                            [
+                                ["LIST", List, "Roster"],
+                                ["APPOINT", UserCheck, "Appoint"],
+                                ["CONFIGURE", Settings, "Roles"],
+                            ] as const
+                        ).map(([m, Icon, label]) => (
+                            <button
+                                key={m}
+                                onClick={() => setMode(m)}
+                                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${
+                                    mode === m
+                                        ? "bg-rcf-navy text-white shadow-sm"
+                                        : "text-slate-500 hover:bg-slate-50"
+                                }`}
+                            >
+                                <Icon className="h-3 w-3" /> {label}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
                 <div className="p-0 sm:p-8">
                     {mode === "LIST" && (
-                        <RosterView
-                            data={data}
-                            onSuccess={onSuccess}
-                            showAlert={showAlert}
-                        />
+                        <RosterView data={data} onSuccess={onSuccess} showAlert={showAlert} />
                     )}
                     {mode === "APPOINT" && (
                         <AppointmentView
@@ -102,11 +90,7 @@ export function CabinetTab({ data, onSuccess }: any) {
                         />
                     )}
                     {mode === "CONFIGURE" && (
-                        <ConfigurationView
-                            data={data}
-                            onSuccess={onSuccess}
-                            showAlert={showAlert}
-                        />
+                        <ConfigurationView data={data} onSuccess={onSuccess} showAlert={showAlert} />
                     )}
                 </div>
             </div>
@@ -114,8 +98,8 @@ export function CabinetTab({ data, onSuccess }: any) {
     );
 }
 
+// --- SUB-COMPONENT 1: ROSTER ---
 function RosterView({ data, onSuccess, showAlert }: any) {
-    // FIX: Ensure we fallback to empty array if leadership is undefined
     const leaders = data?.leadership || [];
     const [search, setSearch] = useState("");
 
@@ -123,8 +107,7 @@ function RosterView({ data, onSuccess, showAlert }: any) {
         (l: any) =>
             l.profile.first_name.toLowerCase().includes(search.toLowerCase()) ||
             l.profile.last_name.toLowerCase().includes(search.toLowerCase()) ||
-            l.position.title.toLowerCase().includes(search.toLowerCase()) ||
-            (l.units?.name || "").toLowerCase().includes(search.toLowerCase())
+            l.position.title.toLowerCase().includes(search.toLowerCase()),
     );
 
     const handleRevoke = async (id: string) => {
@@ -165,26 +148,20 @@ function RosterView({ data, onSuccess, showAlert }: any) {
                         <tr>
                             <th className="px-6 py-3">Name</th>
                             <th className="px-6 py-3">Role</th>
-                            <th className="px-6 py-3">Context</th>
+                            <th className="px-6 py-3">Priviledges</th>
                             <th className="px-6 py-3 text-right">Action</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {filtered.length === 0 && (
                             <tr>
-                                <td
-                                    colSpan={4}
-                                    className="p-8 text-center text-slate-400"
-                                >
+                                <td colSpan={4} className="p-8 text-center text-slate-400">
                                     No leaders found.
                                 </td>
                             </tr>
                         )}
                         {filtered.map((l: any) => (
-                            <tr
-                                key={l.id}
-                                className="hover:bg-slate-50 transition-colors"
-                            >
+                            <tr key={l.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">
                                         <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
@@ -192,8 +169,7 @@ function RosterView({ data, onSuccess, showAlert }: any) {
                                         </div>
                                         <div>
                                             <p className="font-bold text-slate-900">
-                                                {l.profile.first_name}{" "}
-                                                {l.profile.last_name}
+                                                {l.profile.first_name} {l.profile.last_name}
                                             </p>
                                             <p className="text-[10px] text-slate-500">
                                                 {l.profile.phone_number}
@@ -211,46 +187,20 @@ function RosterView({ data, onSuccess, showAlert }: any) {
                                                 Assistant
                                             </span>
                                         )}
-                                        {l.position?.slug === "ict-coord" ? (
-                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-indigo-50 text-indigo-600 border border-indigo-100">
-                                                System Admin
-                                            </span>
-                                        ) : (
-                                            l.position?.is_central && (
-                                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-purple-50 text-purple-600 border border-purple-100">
-                                                    Central
-                                                </span>
-                                            )
-                                        )}
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                    {l.position.category === "CENTRAL" && (
-                                        <span className="badge-purple">
-                                            Central Exco
-                                        </span>
-                                    )}
-                                    {l.position.category === "UNIT" && (
-                                        <div className="flex items-center gap-1.5">
-                                            <Shield className="h-3 w-3 text-blue-500" />
-                                            <span className="text-xs font-bold text-blue-700">
-                                                {l.units?.name}
-                                            </span>
-                                        </div>
-                                    )}
-                                    {l.position.category === "LEVEL" && (
-                                        <div className="flex items-center gap-1.5">
-                                            <Users className="h-3 w-3 text-orange-500" />
-                                            <span className="text-xs font-bold text-orange-700">
-                                                {l.class_sets?.entry_year} Set
-                                            </span>
-                                        </div>
-                                    )}
+                                    <PrivilegePills
+                                        privileges={l.position?.position_privileges}
+                                        slug={l.position?.slug}
+                                        emptyLabel="—"
+                                    />
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <button
                                         onClick={() => handleRevoke(l.id)}
                                         className="text-slate-300 hover:text-red-500 transition-colors p-2"
+                                        aria-label="Revoke leadership"
                                     >
                                         <Trash2 className="h-4 w-4" />
                                     </button>
@@ -263,75 +213,60 @@ function RosterView({ data, onSuccess, showAlert }: any) {
         </div>
     );
 }
-// --- SUB-COMPONENT 2: APPOINTMENT FORM (Existing) ---
+
+// --- SUB-COMPONENT 2: APPOINT ---
 function AppointmentView({ data, onSuccess, showAlert }: any) {
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<any[]>([]);
     const [selectedUser, setSelectedUser] = useState<any>(null);
     const [selectedPosId, setSelectedPosId] = useState("");
     const [isSearching, setIsSearching] = useState(false);
-
-    // Debounce Ref (from previous step)
+    const [submitting, setSubmitting] = useState(false);
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    const selectedPosition = data?.positions?.find(
-        (p: any) => p.id === selectedPosId
-    );
+    const selectedPosition = data?.positions?.find((p: any) => p.id === selectedPosId);
     const activePositions = data?.positions?.filter((p: any) => p.is_active);
 
-    const handleSearch = useCallback(
-        (e: React.ChangeEvent<HTMLInputElement>) => {
-            const value = e.target.value;
-            setQuery(value);
-
-            if (searchTimeoutRef.current)
-                clearTimeout(searchTimeoutRef.current);
-
-            if (value.length > 2) {
-                setIsSearching(true);
-                searchTimeoutRef.current = setTimeout(async () => {
-                    try {
-                        const res = await searchMemberAction(value);
-                        setResults(res);
-                    } finally {
-                        setIsSearching(false);
-                    }
-                }, 500);
-            } else {
-                setResults([]);
-                setIsSearching(false);
-            }
-        },
-        []
-    );
+    const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setQuery(value);
+        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+        if (value.length > 2) {
+            setIsSearching(true);
+            searchTimeoutRef.current = setTimeout(async () => {
+                try {
+                    const res = await searchMemberAction(value);
+                    setResults(res);
+                } finally {
+                    setIsSearching(false);
+                }
+            }, 500);
+        } else {
+            setResults([]);
+            setIsSearching(false);
+        }
+    }, []);
 
     const handleAssign = async (formData: FormData) => {
         if (!selectedUser || !data?.activeTenure) return;
+        setSubmitting(true);
         formData.append("profileId", selectedUser.id);
         formData.append("tenureId", data.activeTenure.id);
-
         const res = await assignLeaderAction(formData);
+        setSubmitting(false);
         if (res.success) {
-            showAlert({
-                type: "success",
-                message: "Leader appointed successfully!",
-            });
+            showAlert({ type: "success", message: "Leader appointed successfully!" });
             onSuccess();
             setSelectedUser(null);
             setQuery("");
             setSelectedPosId("");
         } else {
-            showAlert({
-                type: "error",
-                message: res.error,
-            });
+            showAlert({ type: "error", message: res.error });
         }
     };
 
-    // console.debug("selectedUser",selectedUser)
-
     return (
-        <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in">
+        <div className="max-w-3xl mx-auto px-4 sm:px-0 space-y-8 animate-in fade-in">
             {!selectedUser ? (
                 <div className="space-y-6">
                     <div className="space-y-2">
@@ -341,101 +276,76 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
                             </span>
                             Find Member
                         </label>
-                        <div className="relative">
-                            <FormInput
-                                type="text"
-                                placeholder="Search by name, email, or phone..."
-                                value={query}
-                                onChange={handleSearch}
-                                leftIcon={
-                                    isSearching ? (
-                                        <Loader2 className="h-5 w-5 animate-spin text-rcf-navy" />
-                                    ) : (
-                                        <Search className="h-5 w-5" />
-                                    )
-                                }
-                                hideLabel
-                                className="h-14 text-lg"
-                            />
-                        </div>
+                        <FormInput
+                            type="text"
+                            placeholder="Search by name, email, or phone..."
+                            value={query}
+                            onChange={handleSearch}
+                            leftIcon={
+                                isSearching ? (
+                                    <Loader2 className="h-5 w-5 animate-spin text-rcf-navy" />
+                                ) : (
+                                    <Search className="h-5 w-5" />
+                                )
+                            }
+                            hideLabel
+                            className="h-14 text-lg"
+                        />
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                         {results.length > 0 && (
                             <p className="text-xs font-bold text-slate-400 uppercase">
-                                Search Results
+                                {results.length} result{results.length === 1 ? "" : "s"}
                             </p>
                         )}
 
                         {results.map((user) => (
-                            <div
+                            <button
+                                type="button"
                                 key={user.id}
                                 onClick={() => setSelectedUser(user)}
-                                className="group p-4 border border-slate-200 rounded-xl hover:border-rcf-navy hover:bg-slate-50 cursor-pointer flex items-center gap-4 transition-all shadow-sm hover:shadow-md"
+                                className="group w-full text-left p-3 border border-slate-200 rounded-xl hover:border-rcf-navy hover:bg-slate-50 flex items-center gap-3 transition-all"
                             >
-                                {/* Avatar */}
-                                <div className="h-12 w-12 rounded-full bg-slate-100 border-2 border-white shadow-sm flex items-center justify-center overflow-hidden shrink-0">
+                                <div className="h-11 w-11 rounded-full bg-slate-100 border-2 border-white shadow-sm flex items-center justify-center overflow-hidden shrink-0">
                                     {user.avatar_url ? (
-                                        <img
-                                            src={user.avatar_url}
-                                            className="h-full w-full object-cover"
-                                        />
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
                                     ) : (
-                                        <span className="text-sm font-bold text-slate-500">
-                                            {user.first_name[0]}
-                                            {user.last_name[0]}
+                                        <span className="text-xs font-bold text-slate-500">
+                                            {user.first_name?.[0]}
+                                            {user.last_name?.[0]}
                                         </span>
                                     )}
                                 </div>
-
-                                <div className="flex-1">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <p className="font-bold text-slate-900 text-lg leading-tight group-hover:text-rcf-navy transition-colors">
-                                                {user.first_name}{" "}
-                                                {user.last_name}
-                                            </p>
-                                            <p className="text-sm text-slate-500 flex items-center gap-2 mt-0.5">
-                                                <Mail className="h-3 w-3" />{" "}
-                                                {user.email}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="text-xs font-bold bg-slate-100 px-2 py-1 rounded text-slate-600">
-                                                {user.level}
-                                            </div>
-                                        </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-bold text-slate-900 leading-tight truncate group-hover:text-rcf-navy">
+                                        {user.first_name} {user.last_name}
+                                    </p>
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+                                        <span className="inline-flex items-center gap-1">
+                                            <GraduationCap className="h-3 w-3" /> {user.level || "—"}
+                                        </span>
+                                        {user.units && (
+                                            <span className="inline-flex items-center gap-1 text-blue-600">
+                                                <Users className="h-3 w-3" /> {user.units}
+                                            </span>
+                                        )}
                                     </div>
-
-                                    {/* Existing Roles Badge */}
-                                    {(user.units || user.teams) && (
-                                        <div className="flex gap-2 mt-2 pt-2 border-t border-slate-100">
-                                            {user.units && (
-                                                <span className="text-[10px] text-blue-600 font-medium">
-                                                    In: {user.units}
-                                                </span>
-                                            )}
-                                        </div>
-                                    )}
                                 </div>
-                            </div>
+                            </button>
                         ))}
 
-                        {query.length > 2 &&
-                            results.length === 0 &&
-                            !isSearching && (
-                                <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400">
-                                    {`No member found matching "${query}"`}
-                                </div>
-                            )}
+                        {query.length > 2 && results.length === 0 && !isSearching && (
+                            <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400">
+                                {`No member found matching "${query}"`}
+                            </div>
+                        )}
                     </div>
                 </div>
             ) : (
-                <form
-                    action={handleAssign}
-                    className="space-y-8 animate-in slide-in-from-right-8"
-                >
-                    {/* SELECTED USER CARD */}
+                <form action={handleAssign} className="space-y-8 animate-in slide-in-from-right-8">
+                    {/* Selected member */}
                     <div className="space-y-2">
                         <div className="flex justify-between items-center">
                             <label className="text-sm font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2">
@@ -453,48 +363,35 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
                             </button>
                         </div>
 
-                        <div className="p-6 bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center sm:items-start gap-6 shadow-sm">
-                            <div className="h-20 w-20 rounded-full bg-blue-100 border-4 border-white shadow-md flex items-center justify-center text-2xl font-bold text-blue-700 overflow-hidden">
+                        <div className="p-5 bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl flex items-center gap-4 shadow-sm">
+                            <div className="h-16 w-16 rounded-full bg-blue-100 border-4 border-white shadow-md flex items-center justify-center text-xl font-bold text-blue-700 overflow-hidden shrink-0">
                                 {selectedUser.avatar_url ? (
-                                    <img
-                                        src={selectedUser.avatar_url}
-                                        className="h-full w-full object-cover"
-                                    />
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={selectedUser.avatar_url} alt="" className="h-full w-full object-cover" />
                                 ) : (
                                     `${selectedUser.first_name[0]}${selectedUser.last_name[0]}`
                                 )}
                             </div>
-
-                            <div className="flex-1 text-center sm:text-left space-y-3 w-full">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-slate-900">
-                                        {selectedUser.first_name}{" "}
-                                        {selectedUser.last_name}
-                                    </h2>
-                                    <div className="flex flex-wrap justify-center sm:justify-start gap-3 mt-1">
-                                        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
-                                            <Mail className="h-3 w-3" />{" "}
-                                            {selectedUser.email}
-                                        </span>
-                                        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
-                                            <Phone className="h-3 w-3" />{" "}
-                                            {selectedUser.phone_number}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="pt-3 border-t border-slate-200 flex items-center gap-2 text-sm text-slate-600 justify-center sm:justify-start">
-                                    <GraduationCap className="h-4 w-4 text-slate-400" />
-                                    <span className="font-semibold">
-                                        {selectedUser.level}
+                            <div className="min-w-0">
+                                <h2 className="text-xl font-bold text-slate-900 truncate">
+                                    {selectedUser.first_name} {selectedUser.last_name}
+                                </h2>
+                                <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-medium text-slate-500">
+                                    <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                        <GraduationCap className="h-3 w-3" /> {selectedUser.level || "—"}
                                     </span>
+                                    {selectedUser.phone_number && (
+                                        <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                            <Phone className="h-3 w-3" /> {selectedUser.phone_number}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* APPOINTMENT FORM */}
-                    <div className="space-y-5 pt-4 border-t border-slate-100">
+                    {/* Role */}
+                    <div className="space-y-4 pt-4 border-t border-slate-100">
                         <label className="text-sm font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2">
                             <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs">
                                 2
@@ -502,77 +399,33 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
                             Assign Role
                         </label>
 
-                        <div className="grid md:grid-cols-1 gap-6">
-                            <FormSelect
-                                label="Position Title"
-                                name="positionId"
-                                required
-                                value={selectedPosId}
-                                onChange={(e) =>
-                                    setSelectedPosId(e.target.value)
-                                }
-                            >
-                                <option value="">-- Select Position --</option>
-                                {activePositions?.map((p: any) => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.title} ({p.category})
-                                    </option>
-                                ))}
-                            </FormSelect>
+                        <FormSelect
+                            label="Position"
+                            name="positionId"
+                            required
+                            value={selectedPosId}
+                            onChange={(e) => setSelectedPosId(e.target.value)}
+                        >
+                            <option value="">-- Select Position --</option>
+                            {activePositions?.map((p: any) => (
+                                <option key={p.id} value={p.id}>
+                                    {p.title}
+                                </option>
+                            ))}
+                        </FormSelect>
 
-                            {selectedPosition?.category === "UNIT" && (
-                                <div className="p-5 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2 animate-in fade-in">
-                                    <label className="text-xs font-bold text-blue-700 uppercase flex items-center gap-2 mb-1">
-                                        <Shield className="h-4 w-4" /> Select
-                                        Unit Scope
-                                    </label>
-                                    <FormSelect
-                                        name="unitId"
-                                        required
-                                        hideLabel
-                                        className="bg-white border-blue-200 focus:border-blue-500"
-                                    >
-                                        <option value="">
-                                            -- Select Unit --
-                                        </option>
-                                        {data?.units?.map((u: any) => (
-                                            <option key={u.id} value={u.id}>
-                                                {u.name} ({u.type})
-                                            </option>
-                                        ))}
-                                    </FormSelect>
-                                    <p className="text-[10px] text-blue-600/70 ml-1">
-                                        They will gain admin access to this
-                                        unit.
-                                    </p>
-                                </div>
-                            )}
-
-                            {selectedPosition?.category === "LEVEL" && (
-                                <div className="p-5 bg-purple-50/50 rounded-xl border border-purple-100 space-y-2 animate-in fade-in">
-                                    <label className="text-xs font-bold text-purple-700 uppercase flex items-center gap-2 mb-1">
-                                        <Users className="h-4 w-4" /> Select
-                                        Generation Scope
-                                    </label>
-                                    <FormSelect
-                                        name="classSetId"
-                                        required
-                                        hideLabel
-                                        className="bg-white border-purple-200 focus:border-purple-500"
-                                    >
-                                        <option value="">
-                                            -- Select Generation --
-                                        </option>
-                                        {data?.families?.map((f: any) => (
-                                            <option key={f.id} value={f.id}>
-                                                {f.entry_year} Set (
-                                                {f.family_name})
-                                            </option>
-                                        ))}
-                                    </FormSelect>
-                                </div>
-                            )}
-                        </div>
+                        {selectedPosition && (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                    This role grants
+                                </p>
+                                <PrivilegePills
+                                    privileges={selectedPosition.position_privileges}
+                                    slug={selectedPosition.slug}
+                                    emptyLabel="No module access"
+                                />
+                            </div>
+                        )}
 
                         <label className="flex items-start gap-2 text-sm text-slate-600 p-4 rounded-xl bg-slate-50 border border-slate-100">
                             <input type="checkbox" name="isLead" value="false" className="mt-0.5" />
@@ -582,9 +435,16 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
                             </span>
                         </label>
 
-                        <button className="w-full h-14 bg-rcf-navy text-white text-base rounded-xl font-bold shadow-xl shadow-rcf-navy/20 hover:bg-opacity-90 hover:-translate-y-0.5 transition-all flex justify-center items-center gap-3 mt-4">
-                            <CheckCircle className="h-5 w-5" /> Confirm
-                            Appointment
+                        <button
+                            disabled={submitting}
+                            className="w-full h-14 bg-rcf-navy text-white text-base rounded-xl font-bold shadow-xl shadow-rcf-navy/20 hover:bg-opacity-90 hover:-translate-y-0.5 transition-all flex justify-center items-center gap-3 disabled:opacity-60 disabled:hover:translate-y-0"
+                        >
+                            {submitting ? (
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                            ) : (
+                                <CheckCircle className="h-5 w-5" />
+                            )}
+                            {submitting ? "Appointing…" : "Confirm Appointment"}
                         </button>
                     </div>
                 </form>
@@ -593,7 +453,7 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
     );
 }
 
-// --- SUB-COMPONENT 3: CONFIGURATION VIEW (Existing) ---
+// --- SUB-COMPONENT 3: ROLES / CONFIGURE ---
 function slugify(value: string): string {
     return value
         .toLowerCase()
@@ -602,11 +462,22 @@ function slugify(value: string): string {
 }
 
 function ConfigurationView({ data, onSuccess, showAlert }: any) {
-    // Slug is auto-derived from the alias until the user edits it directly, then it
-    // sticks. Access config (Settings) references positions by this stable slug.
+    const units = (data?.units ?? []).map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        type: u.type,
+        slug: u.slug,
+    }));
+
+    // Create-role form state.
     const [alias, setAlias] = useState("");
     const [slug, setSlug] = useState("");
     const [slugTouched, setSlugTouched] = useState(false);
+    const [privileges, setPrivileges] = useState<Privilege[]>([]);
+    const [creating, setCreating] = useState(false);
+
+    // Edit-privileges modal state.
+    const [editing, setEditing] = useState<any | null>(null);
 
     function onAliasChange(value: string) {
         setAlias(value);
@@ -614,26 +485,24 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
     }
 
     async function handleCreate(formData: FormData) {
+        setCreating(true);
+        formData.set("privileges", JSON.stringify(privileges));
         const res = await createPositionAction(formData);
+        setCreating(false);
         if (res.success) {
             setAlias("");
             setSlug("");
             setSlugTouched(false);
+            setPrivileges([]);
             onSuccess();
         } else showAlert({ type: "error", message: res.error });
     }
 
-    async function toggleStatus(
-        id: string,
-        currentStatus: boolean,
-        posData: any
-    ) {
+    async function toggleStatus(id: string, currentStatus: boolean, posData: any) {
         showAlert({
             type: "warning",
             title: `${currentStatus ? "Deactivate" : "Activate"} Role?`,
-            message: `Are you sure you want to ${
-                currentStatus ? "deactivate" : "activate"
-            } this role?`,
+            message: `Are you sure you want to ${currentStatus ? "deactivate" : "activate"} this role?`,
             confirmText: currentStatus ? "Deactivate" : "Activate",
             onConfirm: async () => {
                 await togglePositionAction(id, currentStatus, posData);
@@ -642,38 +511,26 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
         });
     }
 
-    async function toggleCentral(pos: any) {
-        const res = await toggleCentralAction(pos.id, !!pos.is_central);
-        if (res.success) onSuccess();
-        else showAlert({ type: "error", message: res.error });
-    }
-
     return (
-        <div className="grid gap-8 lg:grid-cols-3 animate-in slide-in-from-right-4">
+        <div className="grid gap-8 lg:grid-cols-3 animate-in slide-in-from-right-4 px-4 sm:px-0">
+            {/* Create role */}
             <div className="lg:col-span-1">
                 <form
                     action={handleCreate}
-                    className="bg-slate-50 p-6 rounded-xl border border-slate-200 sticky top-6 space-y-4"
+                    className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4"
                 >
                     <h4 className="font-bold text-slate-900 flex items-center gap-2">
                         <Plus className="h-4 w-4" /> Create New Role
                     </h4>
 
-                    <FormInput
-                        name="title"
-                        label="Role Title"
-                        required
-                        placeholder="e.g. Media Head"
-                    />
-
+                    <FormInput name="title" label="Role Title" required placeholder="e.g. Media Head" />
                     <FormInput
                         name="alias"
                         label="Alias (short name)"
                         value={alias}
                         onChange={(e) => onAliasChange(e.target.value)}
-                        placeholder="e.g. Media Head"
+                        placeholder="e.g. Media"
                     />
-
                     <div className="space-y-1">
                         <FormInput
                             name="slug"
@@ -686,131 +543,164 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
                             placeholder="e.g. media-head"
                         />
                         <p className="text-[10px] text-slate-400">
-                            Stable handle used by app access settings. Auto-filled from the
-                            alias; cannot be changed once created.
+                            Auto-filled from the alias. Stable handle used by access settings; can&apos;t
+                            change once created.
                         </p>
                     </div>
 
-                    <div className="space-y-1">
-                        <FormSelect name="category" label="Category">
-                            <option value="PRESIDENT">President</option>
-                            <option value="CENTRAL">Central Executive</option>
-                            <option value="UNIT">Unit Head</option>
-                            <option value="TEAM">Team Head</option>
-                            <option value="LEVEL">Level Coordinator</option>
-                        </FormSelect>
-                        <p className="text-[10px] text-slate-400">
-                            Hierarchy: President → Central → Unit/Team heads → Level heads.
-                        </p>
-                    </div>
-
-                    <label className="flex items-start gap-2 text-sm text-slate-600">
-                        <input type="checkbox" name="isCentral" value="true" className="mt-0.5" />
-                        <span>
-                            Grant <b>Central</b> privilege (fellowship-wide). Central roles are
-                            central automatically.
+                    <div className="space-y-2">
+                        <span className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
+                            <ShieldCheck className="h-4 w-4 text-rcf-navy" /> Privileges &amp; scope
                         </span>
-                    </label>
+                        <PrivilegeBuilder value={privileges} onChange={setPrivileges} units={units} />
+                    </div>
 
-                    <FormInput
-                        name="description"
-                        label="Description"
-                        placeholder="Role description..."
-                    />
+                    <FormInput name="description" label="Description" placeholder="Role description..." />
 
-                    <button className="btn-primary w-full text-xs">
-                        Add to Master List
+                    <button
+                        disabled={creating}
+                        className="btn-primary w-full text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                        {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {creating ? "Creating…" : "Add to Master List"}
                     </button>
                 </form>
             </div>
 
-            <div className="lg:col-span-2 border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-100 text-slate-500 font-bold text-xs uppercase">
-                        <tr>
-                            <th className="px-4 py-3">Title</th>
-                            <th className="px-4 py-3">Category</th>
-                            <th className="px-4 py-3 text-right">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {data?.positions?.map((pos: any) => (
-                            <tr key={pos.id} className="hover:bg-slate-50">
-                                <td className="px-4 py-3 font-medium text-slate-900">
-                                    {pos.title}
-                                    {pos.slug && (
-                                        <span className="block font-mono text-[10px] font-normal text-slate-400">
-                                            {pos.slug}
-                                        </span>
-                                    )}
-                                </td>
-                                <td className="px-4 py-3">
-                                    <div className="flex flex-wrap items-center gap-1">
-                                        {pos.slug === "ict-coord" ? (
-                                            <span className="px-2 py-1 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700">
-                                                System Admin
-                                            </span>
-                                        ) : (
-                                            <>
-                                                <span
-                                                    className={`px-2 py-1 rounded text-[10px] font-bold ${
-                                                        pos.category === "CENTRAL"
-                                                            ? "bg-purple-100 text-purple-700"
-                                                            : pos.category === "PRESIDENT"
-                                                            ? "bg-rose-100 text-rose-700"
-                                                            : pos.category === "UNIT"
-                                                            ? "bg-blue-100 text-blue-700"
-                                                            : pos.category === "TEAM"
-                                                            ? "bg-teal-100 text-teal-700"
-                                                            : "bg-orange-100 text-orange-700"
+            {/* Positions table */}
+            <div className="lg:col-span-2 border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left min-w-[520px]">
+                        <thead className="bg-slate-100 text-slate-500 font-bold text-xs uppercase">
+                            <tr>
+                                <th className="px-4 py-3">Title</th>
+                                <th className="px-4 py-3">Priviledges</th>
+                                <th className="px-4 py-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {data?.positions?.map((pos: any) => {
+                                const isSysAdmin = pos.slug === "ict-coord";
+                                return (
+                                    <tr key={pos.id} className="hover:bg-slate-50">
+                                        <td className="px-4 py-3 font-medium text-slate-900 align-top">
+                                            {pos.title}
+                                            {pos.slug && (
+                                                <span className="block font-mono text-[10px] font-normal text-slate-400">
+                                                    {pos.slug}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 align-top">
+                                            <PrivilegePills
+                                                privileges={pos.position_privileges}
+                                                slug={pos.slug}
+                                                emptyLabel="None"
+                                            />
+                                        </td>
+                                        <td className="px-4 py-3 align-top">
+                                            <div className="flex items-center justify-end gap-3">
+                                                {!isSysAdmin && (
+                                                    <button
+                                                        onClick={() =>
+                                                            setEditing({
+                                                                ...pos,
+                                                                _privileges: normalizePrivileges(
+                                                                    pos.position_privileges,
+                                                                ),
+                                                            })
+                                                        }
+                                                        title="Edit privileges"
+                                                        className="text-xs font-bold text-rcf-navy hover:text-rcf-navy-light flex items-center gap-1"
+                                                    >
+                                                        <Pencil className="h-3 w-3" /> Edit
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => toggleStatus(pos.id, pos.is_active, pos)}
+                                                    className={`text-xs font-bold flex items-center gap-1 ${
+                                                        pos.is_active
+                                                            ? "text-green-600 hover:text-green-800"
+                                                            : "text-slate-400 hover:text-slate-600"
                                                     }`}
                                                 >
-                                                    {pos.category}
-                                                </span>
-                                                {pos.is_central && pos.category !== "CENTRAL" && (
-                                                    <span className="px-2 py-1 rounded text-[10px] font-bold bg-purple-50 text-purple-600 border border-purple-100">
-                                                        Central
-                                                    </span>
-                                                )}
-                                            </>
-                                        )}
-                                    </div>
-                                </td>
-                                <td className="px-4 py-3">
-                                    <div className="flex items-center justify-end gap-3">
-                                        {/* System Admin (ICT Coordinator) is not a central — no toggle. */}
-                                        {pos.slug !== "ict-coord" && (
-                                            <button
-                                                onClick={() => toggleCentral(pos)}
-                                                title="Toggle central privilege"
-                                                className={`text-xs font-bold ${
-                                                    pos.is_central
-                                                        ? "text-purple-600 hover:text-purple-800"
-                                                        : "text-slate-400 hover:text-slate-600"
-                                                }`}
-                                            >
-                                                {pos.is_central ? "Central ✓" : "Make Central"}
-                                            </button>
-                                        )}
-                                        <button
-                                            onClick={() =>
-                                                toggleStatus(pos.id, pos.is_active, pos)
-                                            }
-                                            className={`text-xs font-bold flex items-center gap-1 ${
-                                                pos.is_active
-                                                    ? "text-green-600 hover:text-green-800"
-                                                    : "text-slate-400 hover:text-slate-600"
-                                            }`}
-                                        >
-                                            <Power className="h-3 w-3" />
-                                            {pos.is_active ? "Active" : "Inactive"}
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                                                    <Power className="h-3 w-3" />
+                                                    {pos.is_active ? "Active" : "Inactive"}
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {editing && (
+                <EditPrivilegesModal
+                    position={editing}
+                    units={units}
+                    onClose={() => setEditing(null)}
+                    onSaved={() => {
+                        setEditing(null);
+                        onSuccess();
+                    }}
+                    showAlert={showAlert}
+                />
+            )}
+        </div>
+    );
+}
+
+function EditPrivilegesModal({ position, units, onClose, onSaved, showAlert }: any) {
+    const [privileges, setPrivileges] = useState<Privilege[]>(position._privileges ?? []);
+    const [saving, setSaving] = useState(false);
+
+    async function save() {
+        setSaving(true);
+        const res = await setPositionPrivilegesAction(position.id, privileges);
+        setSaving(false);
+        if (res.success) onSaved();
+        else showAlert({ type: "error", message: res.error });
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[90vh]">
+                <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+                    <div>
+                        <h3 className="font-bold text-slate-900">Edit Privileges</h3>
+                        <p className="text-xs text-slate-500">{position.title}</p>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-1 hover:bg-slate-200 rounded-full transition-colors"
+                        aria-label="Close"
+                    >
+                        <X className="h-5 w-5 text-slate-500" />
+                    </button>
+                </div>
+                <div className="p-6 overflow-y-auto">
+                    <PrivilegeBuilder value={privileges} onChange={setPrivileges} units={units} />
+                </div>
+                <div className="flex gap-3 border-t border-slate-100 bg-slate-50 p-4 shrink-0">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-white"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={save}
+                        disabled={saving}
+                        className="flex-1 py-2.5 bg-rcf-navy text-white rounded-xl text-sm font-bold hover:bg-opacity-90 flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                        {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {saving ? "Saving…" : "Save Privileges"}
+                    </button>
+                </div>
             </div>
         </div>
     );

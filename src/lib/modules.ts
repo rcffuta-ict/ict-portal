@@ -19,17 +19,53 @@ export interface ModuleAccessRow {
 
 export type ModuleAccessConfig = Record<ModuleId, ModuleAccessRow>;
 
-/** Category tokens recognised in read/write lists (mirror of PositionCategory). */
-export const CATEGORY_TOKENS = [
-    "PRESIDENT",
-    "CENTRAL",
-    "UNIT",
-    "TEAM",
-    "LEVEL",
+// ---------------------------------------------------------------------------
+// Privilege tags (the access model — see db/migrations/0006_privilege_tags.sql)
+// ---------------------------------------------------------------------------
+// Access is granted by PRIVILEGE TAG (optionally scoped), assigned to a leadership
+// position. EXCO scope = a unit/team slug; LEVEL scope = a level token; both un-scoped
+// mean "all". PRESIDENT/SYSADMIN are supreme/bypass tags, never listed in module config.
+
+/** Every privilege tag a position can hold. */
+export const PRIVILEGE_TAGS = [
+    "EXCO",
     "ZONE",
+    "LEVEL",
+    "CENTRAL",
+    "PRESIDENT",
+    "SYSADMIN",
 ] as const;
 
-export type CategoryToken = (typeof CATEGORY_TOKENS)[number];
+export type PrivilegeTag = (typeof PRIVILEGE_TAGS)[number];
+
+/** A single privilege held by a position: a tag plus an optional scope (null = all). */
+export interface Privilege {
+    tag: PrivilegeTag;
+    scope: string | null;
+}
+
+/**
+ * The tags that may appear in a module's read/write config (managed in Settings by
+ * the System Admin). PRESIDENT/SYSADMIN are bypass-only and never configured here.
+ */
+export const CONFIGURABLE_PRIVILEGE_TOKENS = [
+    "CENTRAL",
+    "EXCO",
+    "ZONE",
+    "LEVEL",
+] as const;
+
+/** The valid LEVEL scope tokens (a level token resolves to the current generation there). */
+export const LEVEL_SCOPE_TOKENS = ["100", "200", "300", "400", "500", "pds-uabs"] as const;
+export type LevelScopeToken = (typeof LEVEL_SCOPE_TOKENS)[number];
+
+/**
+ * @deprecated Legacy name kept so the Settings editor keeps compiling this phase.
+ * The vocabulary is now the configurable privilege tags; the scope-aware editor
+ * redesign is a later phase.
+ */
+export const CATEGORY_TOKENS = CONFIGURABLE_PRIVILEGE_TOKENS;
+export type CategoryToken = (typeof CONFIGURABLE_PRIVILEGE_TOKENS)[number];
 
 /** Human labels + descriptions for the modules (used in the Settings UI). */
 export const MODULE_META: Record<ModuleId, { label: string; description: string }> = {
