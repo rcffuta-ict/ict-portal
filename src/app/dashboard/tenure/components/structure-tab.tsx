@@ -3,60 +3,38 @@
 
 import { useState } from "react";
 import { createUnitAction } from "../actions";
-import {
-    Plus,
-    Layers,
-    Users,
-    Search,
-    X,
-    // User,
-    AlertCircle,
-    // UserCheck,
-} from "lucide-react";
+import { Plus, Layers, Users, Search, X, AlertCircle, Mars, Venus } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
-import { ManageUnitModal } from "./manage-unit-modal";
 
-// --- ENHANCED CARD COMPONENT ---
-function StructureCard({ item, onClick }: { item: any; onClick: () => void }) {
-    console.debug(item);
+// --- VISIBILITY CARD (non-interactive) ---
+function StructureCard({ item }: { item: any }) {
     const isUnit = item.type === "UNIT";
-    const leaderCount = item.leaders?.length || 0;
-    const mainLeader = item.leaders?.[0]; // Assuming first is the head/coordinator
+    const isLoose = isUnit && item.is_workforce === false; // "loose unit" (e.g. Sisters Unit)
+    const mainLeader = item.leaders?.[0];
+    const s = item.stats || { total: item.memberCount || 0, male: 0, female: 0 };
 
-    // Theme Config
     const theme = isUnit
-        ? {
-              icon: Layers,
-              bg: "bg-blue-50",
-              text: "text-blue-600",
-              border: "border-blue-100",
-          }
-        : {
-              icon: Users,
-              bg: "bg-orange-50",
-              text: "text-orange-600",
-              border: "border-orange-100",
-          };
+        ? { icon: Layers, bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-100" }
+        : { icon: Users, bg: "bg-orange-50", text: "text-orange-600", border: "border-orange-100" };
 
     return (
-        <div
-            onClick={onClick}
-            className="group relative flex flex-col justify-between bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-all hover:-translate-y-1 cursor-pointer h-full"
-        >
-            {/* 1. Header: Icon & Type */}
+        <div className="flex flex-col justify-between bg-white rounded-2xl border border-slate-200 p-5 shadow-sm h-full">
             <div>
                 <div className="flex justify-between items-start mb-3">
-                    <div
-                        className={`p-2.5 rounded-xl border ${theme.bg} ${theme.text} ${theme.border}`}
-                    >
+                    <div className={`p-2.5 rounded-xl border ${theme.bg} ${theme.text} ${theme.border}`}>
                         <theme.icon className="h-5 w-5" />
                     </div>
-                    <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${theme.bg} ${theme.text} ${theme.border}`}
-                    >
-                        {item.type}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${theme.bg} ${theme.text} ${theme.border}`}>
+                            {item.type}
+                        </span>
+                        {isLoose && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider bg-slate-100 text-slate-500 border-slate-200">
+                                Loose · non-workforce
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <h3 className="font-bold text-slate-900 text-lg leading-tight mb-1 truncate">
@@ -64,82 +42,45 @@ function StructureCard({ item, onClick }: { item: any; onClick: () => void }) {
                 </h3>
             </div>
 
-            {/* 2. Middle: Leadership Status */}
+            {/* Leadership */}
             <div className="mt-4 mb-4">
-                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wide mb-2">
-                    Leadership
-                </p>
-
-                {/* CASE A: No Leaders */}
-                {!item.leaders || item.leaders.length === 0 ? (
-                    <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
-                        <AlertCircle className="h-4 w-4" />
-                        <span className="text-xs font-bold">
-                            No Admin Assigned
-                        </span>
-                    </div>
-                ) : item.leaders.length === 1 ? (
-                    // CASE B: Single Leader (Show Details)
+                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wide mb-2">Leader</p>
+                {mainLeader ? (
                     <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
                         <div className="h-8 w-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm overflow-hidden">
-                            {item.leaders[0].avatar_url ? (
-                                <img
-                                    src={item.leaders[0].avatar_url}
-                                    className="h-full w-full object-cover"
-                                />
+                            {mainLeader.avatar_url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={mainLeader.avatar_url} alt="" className="h-full w-full object-cover" />
                             ) : (
-                                <span>
-                                    {item.leaders[0].first_name[0]}
-                                    {item.leaders[0].last_name[0]}
-                                </span>
+                                <span>{mainLeader.first_name?.[0]}{mainLeader.last_name?.[0]}</span>
                             )}
                         </div>
                         <div className="overflow-hidden">
                             <p className="text-xs font-bold text-slate-900 truncate">
-                                {item.leaders[0].first_name}{" "}
-                                {item.leaders[0].last_name}
+                                {mainLeader.first_name} {mainLeader.last_name}
                             </p>
-                            <p className="text-[10px] text-slate-500 truncate">
-                                {item.leaders[0].role || "Coordinator"}
-                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">{mainLeader.role || "Coordinator"}</p>
                         </div>
                     </div>
                 ) : (
-                    // CASE C: Multiple Leaders
-                    <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100">
-                        <div className="flex -space-x-2 pl-1">
-                            {item.leaders
-                                .slice(0, 3)
-                                .map((l: any, i: number) => (
-                                    <div
-                                        key={i}
-                                        className="h-7 w-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-500 overflow-hidden"
-                                    >
-                                        {l.avatar_url ? (
-                                            <img
-                                                src={l.avatar_url}
-                                                className="h-full w-full object-cover"
-                                            />
-                                        ) : (
-                                            l.first_name[0]
-                                        )}
-                                    </div>
-                                ))}
-                        </div>
-                        <span className="text-xs font-bold text-slate-600 pr-2">
-                            {item.leaders.length} Leaders
-                        </span>
+                    <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="text-xs font-bold">No leader assigned</span>
                     </div>
                 )}
             </div>
 
-            {/* 3. Footer: Member Count */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-slate-500">
-                <span className="text-xs font-medium">Workforce Size</span>
-                <div className="flex items-center gap-1.5 text-slate-900 font-bold text-sm">
-                    <Users className="h-3.5 w-3.5 text-slate-400" />
-                    {item.memberCount}
-                </div>
+            {/* Gender stats */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-sm">
+                <span className="inline-flex items-center gap-1.5 text-sky-600 font-medium">
+                    <Mars className="h-4 w-4" /> {s.male}
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-pink-600 font-medium">
+                    <Venus className="h-4 w-4" /> {s.female}
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-slate-900 font-bold">
+                    <Users className="h-4 w-4 text-slate-400" /> {s.total}
+                </span>
             </div>
         </div>
     );
@@ -147,14 +88,11 @@ function StructureCard({ item, onClick }: { item: any; onClick: () => void }) {
 
 // --- MAIN COMPONENT ---
 export function StructureTab({ data, onSuccess }: any) {
-    const [selectedUnit, setSelectedUnit] = useState<any>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [search, setSearch] = useState("");
     const [filter, setFilter] = useState("ALL");
 
-    console.debug("Data",data)
-
-    const items = data?.units || []; // Assuming units and teams are both in this array from server
+    const items = data?.units || [];
 
     const filtered = items.filter(
         (i: any) =>
@@ -191,9 +129,7 @@ export function StructureTab({ data, onSuccess }: any) {
                                 key={f}
                                 onClick={() => setFilter(f)}
                                 className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
-                                    filter === f
-                                        ? "bg-white shadow text-slate-900"
-                                        : "text-slate-500 hover:text-slate-700"
+                                    filter === f ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"
                                 }`}
                             >
                                 {f === "ALL" ? "All" : f + "s"}
@@ -212,17 +148,13 @@ export function StructureTab({ data, onSuccess }: any) {
             {/* Grid */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filtered.map((item: any) => (
-                    <StructureCard
-                        key={item.id}
-                        item={item}
-                        onClick={() => setSelectedUnit(item)}
-                    />
+                    <StructureCard key={item.id} item={item} />
                 ))}
 
                 {filtered.length === 0 && (
                     <div className="col-span-full flex flex-col items-center justify-center py-16 text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl">
                         <Layers className="h-10 w-10 mb-2 opacity-50" />
-                        <p>No structures found matching your filters.</p>
+                        <p>No units or teams found.</p>
                     </div>
                 )}
             </div>
@@ -232,41 +164,31 @@ export function StructureTab({ data, onSuccess }: any) {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
                         <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-900">
-                                Create Structure
-                            </h3>
-                            <button
-                                onClick={() => setIsModalOpen(false)}
-                                className="p-1 hover:bg-slate-200 rounded-full transition-colors"
-                            >
+                            <h3 className="font-bold text-slate-900">Create Structure</h3>
+                            <button onClick={() => setIsModalOpen(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
                                 <X className="h-5 w-5 text-slate-500" />
                             </button>
                         </div>
                         <form action={handleCreate} className="p-6 space-y-5">
-                            <div className="space-y-1">
-                                <FormInput
-                                    label="Unit / Team Name"
-                                    name="name"
-                                    required
-                                    placeholder="e.g. Protocol"
-                                />
-                            </div>
+                            <FormInput label="Unit / Team Name" name="name" required placeholder="e.g. Protocol" />
                             <div className="space-y-1">
                                 <FormSelect label="Type" name="type">
                                     <option value="UNIT">Workforce Unit</option>
                                     <option value="TEAM">Special Team</option>
                                 </FormSelect>
                                 <p className="text-[10px] text-slate-400 mt-1">
-                                    Units are permanent (e.g. Choir). Teams are
-                                    dynamic/task-force (e.g. Welfare Team).
+                                    Units are permanent (e.g. Choir). Teams are dynamic/task-force.
                                 </p>
                             </div>
+                            <label className="flex items-start gap-2 text-sm text-slate-600">
+                                <input type="checkbox" name="isWorkforce" value="false" className="mt-0.5" />
+                                <span>
+                                    Loose unit — members do <b>not</b> count as workforce (e.g. Sisters
+                                    Unit). Only applies to Units.
+                                </span>
+                            </label>
                             <div className="pt-2 flex gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50"
-                                >
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">
                                     Cancel
                                 </button>
                                 <button className="flex-1 py-2.5 bg-rcf-navy text-white rounded-xl text-sm font-bold hover:bg-opacity-90">
@@ -276,15 +198,6 @@ export function StructureTab({ data, onSuccess }: any) {
                         </form>
                     </div>
                 </div>
-            )}
-
-            {/* Manage Modal */}
-            {selectedUnit && (
-                <ManageUnitModal
-                    unit={selectedUnit}
-                    positions={data.positions}
-                    onClose={() => setSelectedUnit(null)}
-                />
             )}
         </div>
     );

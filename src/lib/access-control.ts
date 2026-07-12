@@ -11,7 +11,7 @@
 import { type AuthUser, createAuthUser } from "@/lib/auth-roles";
 import { getSessionProfileId } from "@/lib/auth/session";
 import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-context";
-import { canReadModule, getModuleAccessConfig, type ModuleId } from "@/lib/module-access";
+import { canReadModule, canWriteModule, getModuleAccessConfig, type ModuleId } from "@/lib/module-access";
 
 /**
  * Resolve the current session's enriched profile context (single RPC), or null.
@@ -39,6 +39,21 @@ export async function requireModuleRead(module: ModuleId): Promise<ProfileContex
     const ctx = await requireContext();
     const config = await getModuleAccessConfig();
     if (!canReadModule(ctx, module, config)) {
+        throw new Error("Access denied: insufficient module access");
+    }
+    return ctx;
+}
+
+/**
+ * Require the current session to have WRITE access to a Tool module per the
+ * `module_access` config (admins always pass). Returns the enriched context so
+ * callers can apply OWN-scope narrowing (via canManageUnit / canManageLevel).
+ * @throws when unauthenticated or not permitted.
+ */
+export async function requireModuleWrite(module: ModuleId): Promise<ProfileContext> {
+    const ctx = await requireContext();
+    const config = await getModuleAccessConfig();
+    if (!canWriteModule(ctx, module, config)) {
         throw new Error("Access denied: insufficient module access");
     }
     return ctx;

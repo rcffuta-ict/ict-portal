@@ -92,7 +92,7 @@ export default function TenureDashboard() {
                 />
                 <TabButton
                     id="structure"
-                    label="Structure & Units"
+                    label="Workforce"
                     icon={Layers}
                     active={activeTab}
                     set={setActiveTab}
