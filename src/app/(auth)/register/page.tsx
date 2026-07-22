@@ -5,7 +5,16 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, ArrowRight, ArrowLeft, ShieldAlert, PartyPopper } from "lucide-react";
+import {
+    Check,
+    Loader2,
+    ArrowRight,
+    ArrowLeft,
+    ShieldAlert,
+    PartyPopper,
+    Mail,
+    PencilLine,
+} from "lucide-react";
 import { DepartmentUtils } from "@rcffuta/ict-lib";
 
 import { Logo } from "@/components/ui/logo";
@@ -16,16 +25,24 @@ import { computeLevel } from "@/lib/levels";
 import {
     validateInviteAction,
     submitRegistrationAction,
+    lookupLevelMemberAction,
     getZonesAction,
     type RegistrationPayload,
 } from "./action";
+
+/** Who this member is, once an update-mode email lookup has matched. */
+interface UpdateTarget {
+    profileId: string;
+    name: string;
+    prefill: Record<string, string | null>;
+}
 
 type InviteState =
     | { status: "loading" }
     | { status: "invalid"; reason: string }
     | {
           status: "ready";
-          purpose: "create" | "update" | "reset";
+          purpose: "create" | "update" | "reset" | "level";
           classSet: { entryYear: number | null; familyName: string | null; isFoundation: boolean } | null;
           targetName?: string;
           prefill: Record<string, string | null> | null;
@@ -50,6 +67,10 @@ function CenteredLoader() {
 function RegisterInner() {
     const params = useSearchParams();
     const token = params.get("invite") || "";
+    // `reason` decides what a LEVEL token is being used for right now — one token, two
+    // links (see the Tokens tab in the Level module).
+    const reason = (params.get("reason") || "register").toLowerCase();
+    const [target, setTarget] = useState<UpdateTarget | null>(null);
     const [invite, setInvite] = useState<InviteState>(() =>
         token
             ? { status: "loading" }
@@ -89,7 +110,16 @@ function RegisterInner() {
 
             {invite.status === "loading" && <CenteredLoader />}
             {invite.status === "invalid" && <InviteBlocked reason={invite.reason} />}
-            {invite.status === "ready" && <RegistrationForm token={token} invite={invite} />}
+            {invite.status === "ready" &&
+                (invite.purpose === "level" && reason === "update" && !target ? (
+                    <EmailGate
+                        token={token}
+                        generationName={invite.classSet?.familyName ?? null}
+                        onFound={setTarget}
+                    />
+                ) : (
+                    <RegistrationForm token={token} invite={invite} target={target} />
+                ))}
         </div>
     );
 }
@@ -118,6 +148,102 @@ function InviteBlocked({ reason }: { reason: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Update mode — confirm who you are before editing anything
+// ---------------------------------------------------------------------------
+
+/**
+ * A level token grants edit rights over the members OF THAT LEVEL, so the first step of
+ * an update link is proving you're one of them: enter the email already on record. The
+ * server matches it exactly and only within this token's generation, and returns the same
+ * message whether the email is unknown or in another level.
+ */
+function EmailGate({
+    token,
+    generationName,
+    onFound,
+}: {
+    token: string;
+    generationName: string | null;
+    onFound: (t: UpdateTarget) => void;
+}) {
+    const [email, setEmail] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    const submit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setBusy(true);
+        setError("");
+        const res = await lookupLevelMemberAction(token, email);
+        setBusy(false);
+        if (res.success) {
+            onFound({ profileId: res.profileId, name: res.name, prefill: res.prefill });
+        } else {
+            setError(res.error || "We couldn't verify that email.");
+        }
+    };
+
+    return (
+        <div className="mx-auto w-full max-w-md space-y-6 py-6">
+            <div className="text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-rcf-navy">
+                    <PencilLine className="h-7 w-7" />
+                </div>
+                <h1 className="text-2xl font-bold text-rcf-navy">Update your details</h1>
+                <p className="mt-2 text-sm text-slate-500">
+                    Confirm the email you registered with
+                    {generationName ? (
+                        <>
+                            {" "}
+                            in <span className="font-semibold text-rcf-navy">{generationName}</span>
+                        </>
+                    ) : null}
+                    , and we&apos;ll load your record for editing.
+                </p>
+            </div>
+
+            <form
+                onSubmit={submit}
+                className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+            >
+                <div className="space-y-1">
+                    <label htmlFor="lookup-email" className="text-xs font-medium text-gray-700">
+                        Email Address
+                    </label>
+                    <div className="relative">
+                        <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <FormInput
+                            id="lookup-email"
+                            type="email"
+                            required
+                            autoComplete="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="you@example.com"
+                            className="pl-9"
+                        />
+                    </div>
+                    {error && <p className="text-xs text-red-500">{error}</p>}
+                </div>
+
+                <button
+                    type="submit"
+                    disabled={busy || !email}
+                    className="btn-primary flex w-full items-center justify-center gap-2 disabled:opacity-60"
+                >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    Continue
+                </button>
+
+                <p className="text-center text-xs text-slate-400">
+                    Not registered yet? Ask your coordinator for the registration link instead.
+                </p>
+            </form>
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Registration form (create / update)
 // ---------------------------------------------------------------------------
 
@@ -126,16 +252,20 @@ const STEPS = ["Bio Data", "Academics", "Location"] as const;
 function RegistrationForm({
     token,
     invite,
+    target,
 }: {
     token: string;
     invite: Extract<InviteState, { status: "ready" }>;
+    /** Set when a LEVEL token is being used to update an existing member. */
+    target?: UpdateTarget | null;
 }) {
+    const isUpdate = invite.purpose === "update" || !!target;
     const [step, setStep] = useState(0);
     const [zones, setZones] = useState<Array<{ id: string; name: string }>>([]);
     const [serverError, setServerError] = useState("");
     const [done, setDone] = useState(false);
     const [avatar, setAvatar] = useState<{ url: string | null; publicId: string | null }>({
-        url: invite.prefill?.avatar_url ?? null,
+        url: (target?.prefill.avatar_url ?? invite.prefill?.avatar_url) ?? null,
         publicId: null,
     });
 
@@ -144,7 +274,7 @@ function RegistrationForm({
         ? computeLevel(invite.classSet.entryYear, invite.classSet.isFoundation, `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`)
         : null;
 
-    const pf = invite.prefill || {};
+    const pf = target?.prefill || invite.prefill || {};
     const {
         register,
         handleSubmit,
@@ -184,11 +314,15 @@ function RegistrationForm({
 
     const onSubmit = async (data: RegistrationPayload) => {
         setServerError("");
-        const res = await submitRegistrationAction(token, {
-            ...data,
-            avatarUrl: avatar.url ?? undefined,
-            avatarPublicId: avatar.publicId ?? undefined,
-        });
+        const res = await submitRegistrationAction(
+            token,
+            {
+                ...data,
+                avatarUrl: avatar.url ?? undefined,
+                avatarPublicId: avatar.publicId ?? undefined,
+            },
+            target?.profileId,
+        );
         if (res.success) {
             setDone(true);
         } else {
@@ -206,7 +340,7 @@ function RegistrationForm({
                 </div>
                 <div>
                     <h1 className="text-2xl font-bold text-rcf-navy">
-                        {invite.purpose === "update" ? "Profile updated" : "You're indexed!"}
+                        {isUpdate ? "Profile updated" : "You're indexed!"}
                     </h1>
                     <p className="text-sm text-slate-500 mt-2">
                         Your details are saved to the RCF FUTA database
@@ -224,7 +358,7 @@ function RegistrationForm({
         <>
             <div className="mb-6 text-center">
                 <h1 className="text-2xl font-bold text-rcf-navy">
-                    {invite.purpose === "update" ? "Update your details" : "Get Indexed"}
+                    {isUpdate ? "Update your details" : "Get Indexed"}
                 </h1>
                 <p className="text-sm text-gray-500">
                     {invite.classSet?.familyName ? (
@@ -248,8 +382,8 @@ function RegistrationForm({
                                     step > i
                                         ? "bg-green-500 text-white"
                                         : step === i
-                                        ? "bg-rcf-navy text-white ring-4 ring-blue-50"
-                                        : "bg-gray-100 text-gray-400"
+                                            ? "bg-rcf-navy text-white ring-4 ring-blue-50"
+                                            : "bg-gray-100 text-gray-400"
                                 }`}
                             >
                                 {step > i ? <Check className="h-4 w-4" /> : i + 1}
@@ -375,7 +509,7 @@ function RegistrationForm({
                         </button>
                     ) : (
                         <button type="submit" disabled={isSubmitting} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : invite.purpose === "update" ? "Save changes" : "Complete registration"}
+                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : isUpdate ? "Save changes" : "Complete registration"}
                         </button>
                     )}
                 </div>

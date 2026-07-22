@@ -13,7 +13,10 @@
 import { randomBytes } from "crypto";
 import { ictAdmin } from "@/lib/ict";
 
-export type InvitePurpose = "create" | "update" | "reset";
+export type InvitePurpose = "create" | "update" | "reset" | "level";
+
+/** What was done with a token (see `invite_events`). */
+export type InviteAction = "generated" | "revoked" | "register" | "update";
 
 export interface InviteInput {
     createdBy: string;
@@ -22,6 +25,7 @@ export interface InviteInput {
     targetProfileId?: string | null;
     expiresAt?: string | null;
     maxUses?: number | null;
+    label?: string | null;
 }
 
 export interface ValidatedInvite {
@@ -55,6 +59,7 @@ export async function createInvite(input: InviteInput): Promise<{ token: string;
             created_by: input.createdBy,
             expires_at: input.expiresAt ?? null,
             max_uses: input.maxUses ?? null,
+            label: input.label ?? null,
         })
         .select("id, token")
         .single();
@@ -139,6 +144,42 @@ export async function revokeInvite(inviteId: string): Promise<void> {
 }
 
 /**
+ * Append one entry to a token's activity log. Name/email are SNAPSHOTS — the log has to
+ * stay readable after a profile is edited or deleted. Never throws: an audit write must
+ * not be able to fail the user-facing operation it describes (it is logged instead).
+ */
+export async function logInviteEvent(input: {
+    inviteId: string;
+    action: InviteAction;
+    profileId?: string | null;
+    actorName?: string | null;
+    actorEmail?: string | null;
+}): Promise<void> {
+    const { error } = await ictAdmin.supabase.from("invite_events").insert({
+        invite_id: input.inviteId,
+        action: input.action,
+        profile_id: input.profileId ?? null,
+        actor_name: input.actorName ?? null,
+        actor_email: input.actorEmail ?? null,
+    });
+    if (error) console.error("logInviteEvent failed:", error.message);
+}
+
+/** A generation's token activity, newest first (the Activity tab). */
+export async function listInviteEventsByClassSet(classSetId: string, limit = 200) {
+    const { data } = await ictAdmin.supabase
+        .from("invite_events")
+        .select(`
+            id, action, actor_name, actor_email, created_at, profile_id,
+            invite:registration_invites!inner(id, token, label, class_set_id)
+        `)
+        .eq("invite.class_set_id", classSetId)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+    return data ?? [];
+}
+
+/**
  * List every invite attached to a generation, whoever created it. Level links belong to
  * the LEVEL, not to the person who happened to click "generate" — so a hand-over of the
  * coordinator role doesn't orphan links the new coordinator can neither see nor revoke.
@@ -147,7 +188,7 @@ export async function revokeInvite(inviteId: string): Promise<void> {
 export async function listInvitesByClassSet(classSetId: string) {
     const { data } = await ictAdmin.supabase
         .from("registration_invites")
-        .select("id, token, purpose, class_set_id, target_profile_id, is_active, use_count, max_uses, expires_at, created_at, created_by, revoked_at")
+        .select("id, token, label, purpose, class_set_id, target_profile_id, is_active, use_count, max_uses, expires_at, created_at, created_by, revoked_at")
         .eq("class_set_id", classSetId)
         .order("created_at", { ascending: false });
     return data ?? [];
