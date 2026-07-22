@@ -2,16 +2,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-    KeyRound,
-    Ban,
-    UserPlus,
-    PencilLine,
-    Loader2,
-    AlertCircle,
-    History,
-} from "lucide-react";
+import { KeyRound, Ban, UserPlus, PencilLine, AlertCircle, History } from "lucide-react";
 import { getLevelTokenActivityAction } from "../actions";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 
 /**
  * What has actually been DONE with this generation's tokens — generated, revoked, and
@@ -44,13 +37,7 @@ export function TokenActivity({ classSetId }: { classSetId: string }) {
         };
     }, [classSetId]);
 
-    if (loading) {
-        return (
-            <div className="flex justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-rcf-navy" />
-            </div>
-        );
-    }
+    if (loading) return <ActivitySkeleton />;
 
     if (error) {
         return (
@@ -110,5 +97,29 @@ export function TokenActivity({ classSetId }: { classSetId: string }) {
                 );
             })}
         </ol>
+    );
+}
+
+/** Row-shaped placeholders, so the list fills in place instead of popping in. */
+function ActivitySkeleton() {
+    return (
+        <SkeletonRegion label="activity">
+            <ol className="space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                    <li
+                        key={i}
+                        className="flex items-start gap-3 rounded-xl border border-slate-100 bg-white p-3"
+                    >
+                        <Skeleton className="h-8 w-8 shrink-0 rounded-lg" />
+                        <div className="min-w-0 flex-1 space-y-2">
+                            <Skeleton className="h-3 w-32" />
+                            <Skeleton className="h-2.5 w-48" />
+                            <Skeleton className="h-2 w-24" />
+                        </div>
+                        <Skeleton className="h-2.5 w-10 shrink-0" />
+                    </li>
+                ))}
+            </ol>
+        </SkeletonRegion>
     );
 }

@@ -28,9 +28,16 @@ ALTER TABLE public.registration_invites
     ADD CONSTRAINT registration_invites_purpose_check
     CHECK (purpose = ANY (ARRAY['create', 'update', 'reset', 'level']));
 
--- A short, human-shareable label so coordinators can tell two tokens apart
--- ("Freshers drive", "Hostel sweep") without reading the random part.
+-- A short, human-readable label kept for historical rows / future use.
 ALTER TABLE public.registration_invites ADD COLUMN IF NOT EXISTS label text;
+
+-- ONE ACTIVE TOKEN PER LEVEL. The generation has a single live token that everything
+-- (registration, updates, anything shared elsewhere) is derived from; rotating it means
+-- revoking the old one first. Enforced in the DB so a double-click or a second
+-- coordinator acting at the same time can't leave two live tokens on one level.
+CREATE UNIQUE INDEX IF NOT EXISTS registration_invites_one_active_level_token
+    ON public.registration_invites (class_set_id)
+    WHERE purpose = 'level' AND is_active;
 
 -- ----------------------------------------------------------------------------
 -- 2. invite_events — append-only activity log

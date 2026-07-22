@@ -1,4 +1,5 @@
 import { DepartmentUtils, FullUserProfile, LeadershipRole, UnitMembership } from "@rcffuta/ict-lib";
+import clsx from "clsx";
 
 export type ExtractedUserProfile = {
     fullName: string;
@@ -155,4 +156,8 @@ export function extractUserProfileInfo(userData: FullUserProfile): ExtractedUser
                 ? teams.map((t) => t.name).join(", ")
                 : "No Teams",
     };
+}
+
+export function cn(...classes: (string | undefined)[]) {
+    return clsx(classes.filter(Boolean));
 }

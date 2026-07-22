@@ -17,7 +17,20 @@ type TabId = "members" | "tokens" | "activity";
  * Tabs (rather than one long page) keep the phone layout to a single scroll per concern;
  * the tab strip scrolls horizontally instead of wrapping on narrow screens.
  */
-export function GenerationDetail({ generation }: { generation: any }) {
+export function GenerationDetail({
+    generation,
+    initialMembers,
+    initialTotal,
+    initialStats,
+    initialTokens,
+}: {
+    generation: any;
+    /** Everything the first paint needs, fetched on the server (see the page). */
+    initialMembers?: any[];
+    initialTotal?: number;
+    initialStats?: any;
+    initialTokens?: any[];
+}) {
     const canWrite = !!generation.canWrite;
     const [tab, setTab] = useState<TabId>("members");
 
@@ -68,8 +81,17 @@ export function GenerationDetail({ generation }: { generation: any }) {
                 </p>
             )}
 
-            {tab === "members" && <MembersGrid classSetId={generation.classSetId} />}
-            {tab === "tokens" && canWrite && <TokenManager classSetId={generation.classSetId} />}
+            {tab === "members" && (
+                <MembersGrid
+                    classSetId={generation.classSetId}
+                    initialMembers={initialMembers}
+                    initialTotal={initialTotal}
+                    initialStats={initialStats}
+                />
+            )}
+            {tab === "tokens" && canWrite && (
+                <TokenManager classSetId={generation.classSetId} initialTokens={initialTokens} />
+            )}
             {tab === "activity" && canWrite && <TokenActivity classSetId={generation.classSetId} />}
         </div>
     );

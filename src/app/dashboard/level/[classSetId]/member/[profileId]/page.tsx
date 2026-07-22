@@ -1,5 +1,5 @@
 import { ShieldAlert } from "lucide-react";
-import { getMemberDetailAction } from "../../../actions";
+import { getMemberDetailAction, getActiveLevelTokenAction } from "../../../actions";
 import { MemberDetailView } from "../../../components/member-detail-view";
 import { Breadcrumb } from "../../../components/breadcrumb";
 import { MemberUpdateLink } from "../../../components/member-update-link";
@@ -13,7 +13,12 @@ export default async function MemberPage({
     params: Promise<{ classSetId: string; profileId: string }>;
 }) {
     const { classSetId, profileId } = await params;
-    const res = await getMemberDetailAction(profileId);
+    // Both server-side and in parallel: the page arrives complete, with no client fetch
+    // and no spinner for the update link.
+    const [res, tokenRes] = await Promise.all([
+        getMemberDetailAction(profileId),
+        getActiveLevelTokenAction(classSetId),
+    ]);
 
     if (!res.success || !res.data) {
         return (
@@ -45,7 +50,7 @@ export default async function MemberPage({
             {res.canWrite && (
                 <MemberUpdateLink
                     classSetId={classSetId}
-                    profileId={profileId}
+                    token={tokenRes.token}
                     memberName={p.firstName || "this member"}
                 />
             )}

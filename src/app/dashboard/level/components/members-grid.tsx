@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { getLevelMembersAction, getLevelStatsAction } from "../actions";
 import { ExportPanel } from "./export-panel";
+import { Skeleton, SkeletonCard, SkeletonRegion } from "@/components/ui/skeleton";
 
 const PAGE_SIZE = 24;
 
@@ -37,18 +38,31 @@ interface Stats {
  * button rather than scroll-triggered so a member on a slow connection stays in control
  * of what they download.
  */
-export function MembersGrid({ classSetId }: { classSetId: string }) {
-    const [members, setMembers] = useState<any[]>([]);
-    const [stats, setStats] = useState<Stats | null>(null);
-    const [total, setTotal] = useState(0);
+export function MembersGrid({
+    classSetId,
+    initialMembers,
+    initialTotal,
+    initialStats,
+}: {
+    classSetId: string;
+    /** First page + stats rendered by the server — the grid paints with no client fetch. */
+    initialMembers?: any[];
+    initialTotal?: number;
+    initialStats?: Stats | null;
+}) {
+    const [members, setMembers] = useState<any[]>(initialMembers ?? []);
+    const [stats, setStats] = useState<Stats | null>(initialStats ?? null);
+    const [total, setTotal] = useState(initialTotal ?? 0);
     const [page, setPage] = useState(1);
     const [query, setQuery] = useState("");
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!initialMembers);
     const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Guards against an older, slower request overwriting a newer one.
     const requestId = useRef(0);
+    // The server already delivered page 1; don't re-fetch it on mount.
+    const primed = useRef(!!initialMembers);
 
     const fetchPage = useCallback(
         async (nextPage: number, term: string, append: boolean) => {
@@ -74,21 +88,26 @@ export function MembersGrid({ classSetId }: { classSetId: string }) {
 
     // Debounced search — one request per pause, not per keystroke.
     useEffect(() => {
+        if (primed.current) {
+            primed.current = false; // mount with server data: nothing to fetch
+            return;
+        }
         const t = setTimeout(() => fetchPage(1, query, false), query ? 300 : 0);
         return () => clearTimeout(t);
     }, [query, fetchPage]);
 
     useEffect(() => {
+        if (initialStats) return;
         getLevelStatsAction(classSetId).then((r) => {
             if (r.success && r.stats) setStats(r.stats as Stats);
         });
-    }, [classSetId]);
+    }, [classSetId, initialStats]);
 
     const hasMore = members.length < total;
 
     return (
         <div className="space-y-4">
-            {stats && <StatsStrip stats={stats} />}
+            {stats ? <StatsStrip stats={stats} /> : <StatsSkeleton />}
 
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -123,14 +142,20 @@ export function MembersGrid({ classSetId }: { classSetId: string }) {
                 )}
 
                 {loading ? (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                            <div
-                                key={i}
-                                className="h-[86px] animate-pulse rounded-xl border border-slate-100 bg-slate-50"
-                            />
-                        ))}
-                    </div>
+                    <SkeletonRegion label="members">
+                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            {Array.from({ length: 6 }).map((_, i) => (
+                                <li key={i} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
+                                    <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
+                                    <span className="min-w-0 flex-1 space-y-2">
+                                        <Skeleton className="h-3 w-2/3" />
+                                        <Skeleton className="h-2.5 w-full" />
+                                        <Skeleton className="h-2.5 w-1/2" />
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </SkeletonRegion>
                 ) : members.length === 0 ? (
                     <p className="rounded-xl border-2 border-dashed border-slate-100 py-10 text-center text-sm text-slate-400">
                         {query ? `No member matches “${query}”.` : "No members yet."}
@@ -200,6 +225,19 @@ function MemberCard({ classSetId, member }: { classSetId: string; member: any })
                 )}
             </span>
         </Link>
+    );
+}
+
+/** Same footprint as StatsStrip so the page doesn't jump when the numbers arrive. */
+function StatsSkeleton() {
+    return (
+        <SkeletonRegion label="statistics">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                    <SkeletonCard key={i} className="h-[62px] rounded-xl" />
+                ))}
+            </div>
+        </SkeletonRegion>
     );
 }
 
