@@ -138,6 +138,21 @@ export async function revokeInvite(inviteId: string): Promise<void> {
     if (error) throw new Error(`Failed to revoke invite: ${error.message}`);
 }
 
+/**
+ * List every invite attached to a generation, whoever created it. Level links belong to
+ * the LEVEL, not to the person who happened to click "generate" — so a hand-over of the
+ * coordinator role doesn't orphan links the new coordinator can neither see nor revoke.
+ * Callers must have already checked `canManageLevel` for this class_set.
+ */
+export async function listInvitesByClassSet(classSetId: string) {
+    const { data } = await ictAdmin.supabase
+        .from("registration_invites")
+        .select("id, token, purpose, class_set_id, target_profile_id, is_active, use_count, max_uses, expires_at, created_at, created_by, revoked_at")
+        .eq("class_set_id", classSetId)
+        .order("created_at", { ascending: false });
+    return data ?? [];
+}
+
 /** List a creator's active invites (for the coordinator/admin dashboards). */
 export async function listInvitesByCreator(createdBy: string) {
     const { data } = await ictAdmin.supabase

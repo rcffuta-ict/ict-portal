@@ -32,6 +32,7 @@ export async function createMemberInviteAction(
             targetProfileId: targetProfileId ?? null,
         });
         revalidatePath("/dashboard/units");
+        revalidatePath("/dashboard/level");
         return { success: true, token };
     } catch (e: any) {
         return { success: false, error: e.message };
@@ -55,15 +56,20 @@ export async function revokeInviteAction(inviteId: string) {
         const ctx = await requireContext();
         const { data: invite } = await ictAdmin.supabase
             .from("registration_invites")
-            .select("created_by")
+            .select("created_by, class_set_id")
             .eq("id", inviteId)
             .maybeSingle();
         if (!invite) return { success: false, error: "Invite not found." };
-        if (invite.created_by !== ctx.profile.id && !ctx.isAdmin) {
+        // Creator, an admin, or the CURRENT coordinator of the link's generation — links
+        // belong to the level, so a hand-over must not leave them unrevokable.
+        const isLevelCoordinator =
+            !!invite.class_set_id && (await canManageLevel(ctx, invite.class_set_id));
+        if (invite.created_by !== ctx.profile.id && !ctx.isAdmin && !isLevelCoordinator) {
             return { success: false, error: "You can't revoke this link." };
         }
         await revokeInvite(inviteId);
         revalidatePath("/dashboard/units");
+        revalidatePath("/dashboard/level");
         return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };
