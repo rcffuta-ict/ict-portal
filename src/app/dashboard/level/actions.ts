@@ -6,6 +6,8 @@ import { requireModuleRead, canManageLevel } from "@/lib/access-control";
 import { getActiveTenure } from "@/utils/action";
 import { computeLevel } from "@/lib/levels";
 import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-context";
+import { listInvitesByClassSet } from "@/lib/invites";
+import { EXPORT_FIELDS, MIN_EXPORT_FIELDS } from "./export-fields";
 
 /**
  * Level module — level (generation) member management for level coordinators.
@@ -183,13 +185,156 @@ export async function getMemberDetailAction(profileId: string) {
         const ctx = await requireModuleRead("level");
         const { data: prof } = await ictAdmin.supabase
             .from("profiles").select("class_set_id").eq("id", profileId).maybeSingle();
-        if (!prof) return { success: false, error: "Member not found." };
+        if (!prof) return { success: false as const, error: "Member not found.", canWrite: false };
         if (prof.class_set_id == null || !(await canReadLevel(ctx, prof.class_set_id))) {
-            return { success: false, error: "You don't have access to this member." };
+            return { success: false as const, error: "You don't have access to this member.", canWrite: false };
         }
         const context = await getProfileContext(profileId);
-        if (!context) return { success: false, error: "Could not load member." };
-        return { success: true, data: context };
+        if (!context) return { success: false as const, error: "Could not load member.", canWrite: false };
+        // `canWrite` drives the member-page update-link control only; the invite action
+        // re-checks `canManageLevel` itself, so this flag is UI convenience, not a gate.
+        const canWrite = await canManageLevel(ctx, prof.class_set_id);
+        return { success: true as const, data: context, canWrite, classSetId: prof.class_set_id };
+    } catch (e: any) {
+        return { success: false as const, error: e.message, canWrite: false };
+    }
+}
+
+/**
+ * Every registration/update link attached to a generation, whoever created it.
+ * Coordinators of the level (and the write-bypass tier) only.
+ */
+export async function listLevelInvitesAction(classSetId: string) {
+    try {
+        const ctx = await requireModuleRead("level");
+        if (!(await canManageLevel(ctx, classSetId))) {
+            return { success: false, error: "You don't coordinate this level.", data: [] };
+        }
+        const data = await listInvitesByClassSet(classSetId);
+        return { success: true, data: data.filter((i: any) => i.purpose !== "reset") };
+    } catch (e: any) {
+        return { success: false, error: e.message, data: [] };
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CSV export
+// ---------------------------------------------------------------------------
+
+const EXPORT_FIELD_KEYS = new Set(EXPORT_FIELDS.map((f) => f.key));
+const EXPORT_LABELS = new Map(EXPORT_FIELDS.map((f) => [f.key, f.label]));
+
+/** Profile columns the export may read (keys that map 1:1 onto `profiles`). */
+const PROFILE_COLUMNS = [
+    "first_name", "last_name", "middle_name", "email", "phone_number", "gender",
+    "matric_number", "department", "faculty", "school_address", "home_address",
+];
+
+/**
+ * RFC4180 cell + spreadsheet formula-injection guard: a value starting with =, +, -, @
+ * (or a tab/CR) is executed as a formula by Excel/Sheets, so prefix it with an apostrophe.
+ */
+function csvCell(value: unknown): string {
+    if (value === null || value === undefined) return "";
+    let s = String(value);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * Export a generation's members as CSV, limited to the caller-selected fields.
+ *
+ * Read-gated exactly like the member list (`canReadLevel`) — an export is just a bulk
+ * read, so it must not be easier to obtain than the screen it mirrors. Field keys are
+ * validated against the shared whitelist, and the minimum-two-fields rule is enforced
+ * here as well as in the UI.
+ */
+export async function exportLevelMembersAction(classSetId: string, fields: string[]) {
+    try {
+        const ctx = await requireModuleRead("level");
+        if (!(await canReadLevel(ctx, classSetId))) {
+            return { success: false, error: "You don't have access to this level." };
+        }
+
+        const selected = (fields ?? []).filter((f) => EXPORT_FIELD_KEYS.has(f));
+        if (selected.length < MIN_EXPORT_FIELDS) {
+            return {
+                success: false,
+                error: `Select at least ${MIN_EXPORT_FIELDS} fields to export.`,
+            };
+        }
+
+        const tenure = await getActiveTenure();
+        const session = tenure?.session ?? null;
+
+        const { data: set } = await ictAdmin.supabase
+            .from("class_sets")
+            .select("id, family_name, entry_year, is_foundation, level_override")
+            .eq("id", classSetId)
+            .maybeSingle();
+        if (!set) return { success: false, error: "Generation not found." };
+
+        const { data: members } = await ictAdmin.supabase
+            .from("profiles")
+            .select(`id, residential_zone_id, ${PROFILE_COLUMNS.join(", ")}`)
+            .eq("class_set_id", classSetId)
+            .order("first_name");
+
+        const rows = (members ?? []) as any[];
+        const ids = rows.map((m) => m.id);
+
+        // Derived columns — fetched only when actually selected.
+        const zoneNames = new Map<string, string>();
+        if (selected.includes("zone")) {
+            const { data: zones } = await ictAdmin.supabase
+                .from("residential_zones")
+                .select("id, name");
+            for (const z of zones ?? []) zoneNames.set(z.id, z.name);
+        }
+
+        const unitByProfile = new Map<string, string>();
+        const teamsByProfile = new Map<string, string[]>();
+        if ((selected.includes("unit") || selected.includes("teams")) && ids.length) {
+            const { data: memberships } = await ictAdmin.supabase
+                .from("membership_units")
+                .select("profile_id, unit:units(name, type)")
+                .in("profile_id", ids);
+            for (const m of (memberships ?? []) as any[]) {
+                const unit = Array.isArray(m.unit) ? m.unit[0] : m.unit;
+                if (!unit) continue;
+                if (unit.type === "TEAM") {
+                    teamsByProfile.set(m.profile_id, [
+                        ...(teamsByProfile.get(m.profile_id) ?? []),
+                        unit.name,
+                    ]);
+                } else {
+                    unitByProfile.set(m.profile_id, unit.name);
+                }
+            }
+        }
+
+        const level = set.level_override || computeLevel(set.entry_year, set.is_foundation, session);
+
+        const valueFor = (m: any, key: string): unknown => {
+            switch (key) {
+                case "level": return level;
+                case "generation": return set.family_name;
+                case "zone": return m.residential_zone_id ? zoneNames.get(m.residential_zone_id) : "";
+                case "unit": return unitByProfile.get(m.id) ?? "";
+                case "teams": return (teamsByProfile.get(m.id) ?? []).join("; ");
+                default: return m[key];
+            }
+        };
+
+        const header = selected.map((k) => csvCell(EXPORT_LABELS.get(k) ?? k)).join(",");
+        const body = rows.map((m) => selected.map((k) => csvCell(valueFor(m, k))).join(","));
+        const csv = [header, ...body].join("\r\n");
+
+        const slug = (set.family_name || "generation")
+            .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const filename = `${slug || "generation"}-members-${new Date().toISOString().slice(0, 10)}.csv`;
+
+        return { success: true, csv, filename, count: rows.length };
     } catch (e: any) {
         return { success: false, error: e.message };
     }

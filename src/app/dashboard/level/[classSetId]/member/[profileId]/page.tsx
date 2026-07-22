@@ -2,6 +2,7 @@ import { ShieldAlert } from "lucide-react";
 import { getMemberDetailAction } from "../../../actions";
 import { MemberDetailView } from "../../../components/member-detail-view";
 import { Breadcrumb } from "../../../components/breadcrumb";
+import { MemberUpdateLink } from "../../../components/member-update-link";
 
 /**
  * Full detail for one member — its own page, breadcrumbed back to its generation.
@@ -40,6 +41,14 @@ export default async function MemberPage({
             />
 
             <MemberDetailView detail={detail} />
+
+            {res.canWrite && (
+                <MemberUpdateLink
+                    classSetId={classSetId}
+                    profileId={profileId}
+                    memberName={p.firstName || "this member"}
+                />
+            )}
         </div>
     );
 }
