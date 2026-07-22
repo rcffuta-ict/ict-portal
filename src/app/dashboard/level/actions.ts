@@ -6,7 +6,14 @@ import { requireModuleRead, canManageLevel } from "@/lib/access-control";
 import { getActiveTenure } from "@/utils/action";
 import { computeLevel } from "@/lib/levels";
 import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-context";
-import { listInvitesByClassSet } from "@/lib/invites";
+import {
+    listInvitesByClassSet,
+    listInviteEventsByClassSet,
+    createInvite,
+    revokeInvite,
+    logInviteEvent,
+} from "@/lib/invites";
+import { revalidatePath } from "next/cache";
 import { EXPORT_FIELDS, MIN_EXPORT_FIELDS } from "./export-fields";
 
 /**
@@ -158,21 +165,111 @@ export async function getGenerationAction(classSetId: string) {
     }
 }
 
-/** Members of a generation (read-gated for centrals/admins + the coordinator). */
-export async function getLevelMembersAction(classSetId: string) {
+/**
+ * Members of a generation, PAGED (read-gated for centrals/admins + the coordinator).
+ *
+ * Paging and search both run in Postgres — a generation can hold several hundred
+ * profiles, and shipping all of them to a phone on mobile data just to filter in the
+ * browser is exactly the thing this project can't afford.
+ */
+export async function getLevelMembersAction(
+    classSetId: string,
+    opts: { page?: number; pageSize?: number; query?: string } = {},
+) {
     try {
         const ctx = await requireModuleRead("level");
         if (!(await canReadLevel(ctx, classSetId))) {
-            return { success: false, error: "You don't have access to this level.", data: [] };
+            return { success: false, error: "You don't have access to this level.", data: [], total: 0 };
         }
-        const { data } = await ictAdmin.supabase
+
+        const pageSize = Math.min(Math.max(opts.pageSize ?? 24, 1), 100);
+        const page = Math.max(opts.page ?? 1, 1);
+        const from = (page - 1) * pageSize;
+
+        let q = ictAdmin.supabase
             .from("profiles")
-            .select("id, first_name, last_name, email, phone_number, department, avatar_url, matric_number, gender")
-            .eq("class_set_id", classSetId)
-            .order("first_name");
-        return { success: true, data: data || [] };
+            .select(
+                "id, first_name, last_name, email, phone_number, department, avatar_url, matric_number, gender",
+                { count: "exact" },
+            )
+            .eq("class_set_id", classSetId);
+
+        const term = opts.query?.trim();
+        if (term) {
+            // Escape PostgREST's or() delimiters before interpolating the user's text.
+            const safe = term.replace(/[,()\\]/g, " ");
+            q = q.or(
+                ["first_name", "last_name", "email", "phone_number", "matric_number"]
+                    .map((c) => `${c}.ilike.%${safe}%`)
+                    .join(","),
+            );
+        }
+
+        const { data, count } = await q
+            .order("first_name")
+            .range(from, from + pageSize - 1);
+
+        return {
+            success: true,
+            data: data || [],
+            total: count ?? 0,
+            page,
+            pageSize,
+            hasMore: (count ?? 0) > from + (data?.length ?? 0),
+        };
     } catch (e: any) {
-        return { success: false, error: e.message, data: [] };
+        return { success: false, error: e.message, data: [], total: 0 };
+    }
+}
+
+/**
+ * Headline stats for a generation: gender split and workforce participation.
+ * "Worker" = belongs to at least one WORKFORCE unit (`units.is_workforce`), so loose
+ * units (e.g. Sisters Unit) correctly don't count someone as a worker.
+ */
+export async function getLevelStatsAction(classSetId: string) {
+    try {
+        const ctx = await requireModuleRead("level");
+        if (!(await canReadLevel(ctx, classSetId))) {
+            return { success: false, error: "You don't have access to this level." };
+        }
+
+        const { data: members } = await ictAdmin.supabase
+            .from("profiles")
+            .select("id, gender")
+            .eq("class_set_id", classSetId);
+
+        const rows = members ?? [];
+        const ids = rows.map((m) => m.id);
+
+        const workerIds = new Set<string>();
+        if (ids.length) {
+            const { data: memberships } = await ictAdmin.supabase
+                .from("membership_units")
+                .select("profile_id, unit:units(is_workforce)")
+                .in("profile_id", ids);
+            for (const m of (memberships ?? []) as any[]) {
+                const unit = Array.isArray(m.unit) ? m.unit[0] : m.unit;
+                if (unit?.is_workforce) workerIds.add(m.profile_id);
+            }
+        }
+
+        const male = rows.filter((m) => m.gender === "male").length;
+        const female = rows.filter((m) => m.gender === "female").length;
+
+        return {
+            success: true,
+            stats: {
+                total: rows.length,
+                male,
+                female,
+                unspecified: rows.length - male - female,
+                workers: workerIds.size,
+                nonWorkers: rows.length - workerIds.size,
+            },
+        };
+    } catch (e: any) {
+        return { success: false, error: e.message };
     }
 }
 
@@ -200,18 +297,133 @@ export async function getMemberDetailAction(profileId: string) {
     }
 }
 
-/**
- * Every registration/update link attached to a generation, whoever created it.
- * Coordinators of the level (and the write-bypass tier) only.
- */
+// ---------------------------------------------------------------------------
+// Level tokens
+// ---------------------------------------------------------------------------
+//
+// A LEVEL TOKEN belongs to the generation, not to a person or a purpose. One token
+// backs both flows — the *link* is assembled at share time
+// (`/register?invite=<token>&reason=register|update`) — so the raw token stays a plain
+// string a coordinator can paste anywhere. Generate/revoke needs WRITE on the level;
+// listing is the same, since a token is a credential and shouldn't be visible to
+// read-only viewers.
+
+/** Every token attached to a generation (active AND revoked), newest first. */
 export async function listLevelInvitesAction(classSetId: string) {
     try {
         const ctx = await requireModuleRead("level");
         if (!(await canManageLevel(ctx, classSetId))) {
             return { success: false, error: "You don't coordinate this level.", data: [] };
         }
-        const data = await listInvitesByClassSet(classSetId);
-        return { success: true, data: data.filter((i: any) => i.purpose !== "reset") };
+        const rows = (await listInvitesByClassSet(classSetId)).filter(
+            (i: any) => i.purpose !== "reset",
+        );
+
+        // Resolve creator names in one extra query (rather than an embed) so the shape
+        // doesn't depend on the FK constraint name.
+        const creatorIds = Array.from(new Set(rows.map((r: any) => r.created_by).filter(Boolean)));
+        const creators = new Map<string, string>();
+        if (creatorIds.length) {
+            const { data: people } = await ictAdmin.supabase
+                .from("profiles")
+                .select("id, first_name, last_name")
+                .in("id", creatorIds);
+            for (const p of people ?? []) {
+                creators.set(p.id, [p.first_name, p.last_name].filter(Boolean).join(" "));
+            }
+        }
+
+        return {
+            success: true,
+            data: rows.map((r: any) => ({
+                ...r,
+                created_by_name: creators.get(r.created_by) || null,
+            })),
+        };
+    } catch (e: any) {
+        return { success: false, error: e.message, data: [] };
+    }
+}
+
+/** Generate a new level token. Write access on the level required. */
+export async function generateLevelTokenAction(classSetId: string, label?: string) {
+    try {
+        const ctx = await requireModuleRead("level");
+        if (!(await canManageLevel(ctx, classSetId))) {
+            return { success: false, error: "You don't coordinate this level." };
+        }
+        const { token, id } = await createInvite({
+            createdBy: ctx.profile.id,
+            purpose: "level",
+            classSetId,
+            label: label?.trim() || null,
+        });
+        await logInviteEvent({
+            inviteId: id,
+            action: "generated",
+            profileId: ctx.profile.id,
+            actorName: [ctx.profile.firstName, ctx.profile.lastName].filter(Boolean).join(" "),
+            actorEmail: ctx.profile.email ?? null,
+        });
+        revalidatePath(`/dashboard/level/${classSetId}`);
+        return { success: true, token };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+/** Revoke a level token. Write access on the level that OWNS the token is required. */
+export async function revokeLevelTokenAction(inviteId: string) {
+    try {
+        const ctx = await requireModuleRead("level");
+        const { data: invite } = await ictAdmin.supabase
+            .from("registration_invites")
+            .select("id, class_set_id, is_active")
+            .eq("id", inviteId)
+            .maybeSingle();
+        if (!invite?.class_set_id) return { success: false, error: "Token not found." };
+        if (!(await canManageLevel(ctx, invite.class_set_id))) {
+            return { success: false, error: "You don't coordinate this level." };
+        }
+        await revokeInvite(inviteId);
+        await logInviteEvent({
+            inviteId,
+            action: "revoked",
+            profileId: ctx.profile.id,
+            actorName: [ctx.profile.firstName, ctx.profile.lastName].filter(Boolean).join(" "),
+            actorEmail: ctx.profile.email ?? null,
+        });
+        revalidatePath(`/dashboard/level/${invite.class_set_id}`);
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+/** Everything that has been done with this generation's tokens, newest first. */
+export async function getLevelTokenActivityAction(classSetId: string) {
+    try {
+        const ctx = await requireModuleRead("level");
+        if (!(await canManageLevel(ctx, classSetId))) {
+            return { success: false, error: "You don't coordinate this level.", data: [] };
+        }
+        const events = await listInviteEventsByClassSet(classSetId);
+        return {
+            success: true,
+            data: events.map((e: any) => {
+                const inv = Array.isArray(e.invite) ? e.invite[0] : e.invite;
+                return {
+                    id: e.id,
+                    action: e.action,
+                    actorName: e.actor_name,
+                    actorEmail: e.actor_email,
+                    profileId: e.profile_id,
+                    createdAt: e.created_at,
+                    token: inv?.token ?? null,
+                    label: inv?.label ?? null,
+                };
+            }),
+        };
     } catch (e: any) {
         return { success: false, error: e.message, data: [] };
     }

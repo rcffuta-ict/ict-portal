@@ -2,7 +2,7 @@
 'use server'
 
 import { ictAdmin } from "@/lib/ict";
-import { getInviteByToken, consumeInvite } from "@/lib/invites";
+import { getInviteByToken, consumeInvite, logInviteEvent } from "@/lib/invites";
 
 /**
  * Invite-only registration.
@@ -60,6 +60,59 @@ export async function validateInviteAction(token: string) {
     };
 }
 
+const PREFILL_COLUMNS =
+    "id, first_name, last_name, middle_name, email, phone_number, gender, dob, matric_number, department, faculty, school_address, home_address, residential_zone_id, avatar_url";
+
+/**
+ * Public: on a LEVEL token used with `reason=update`, confirm the person is already in
+ * the generation that owns the token and hand back their record to edit.
+ *
+ * Deliberately narrow: an exact email match only (no listing, no partial search), and the
+ * profile must belong to *this* token's class_set — so a token grants edit rights over the
+ * members of its own level and nothing else. The same generic message is returned whether
+ * the email is unknown or belongs to another level, so the token can't be used to probe
+ * which addresses exist in the database.
+ */
+export async function lookupLevelMemberAction(token: string, email: string) {
+    try {
+        const result = await getInviteByToken(token);
+        if (!result.valid || !result.invite) {
+            return { success: false as const, error: result.reason || "Invalid link." };
+        }
+        const inv = result.invite;
+        if (inv.purpose !== "level" || !inv.classSetId) {
+            return { success: false as const, error: "This link can't be used to update details." };
+        }
+
+        const clean = email.trim().toLowerCase();
+        if (!clean) return { success: false as const, error: "Enter your email address." };
+
+        const { data: profile } = await ictAdmin.supabase
+            .from("profiles")
+            .select(`${PREFILL_COLUMNS}, class_set_id`)
+            .eq("email", clean)
+            .maybeSingle();
+
+        const notFound =
+            "We couldn't find that email in this level. Check the address, or ask your coordinator for help.";
+        if (!profile || profile.class_set_id !== inv.classSetId) {
+            return { success: false as const, error: notFound };
+        }
+
+        // Hand back only the editable columns — the class_set stays server-side.
+        const prefill: Record<string, any> = { ...(profile as any) };
+        delete prefill.class_set_id;
+        return {
+            success: true as const,
+            profileId: profile.id as string,
+            name: [(profile as any).first_name, (profile as any).last_name].filter(Boolean).join(" "),
+            prefill: prefill as Record<string, string | null>,
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message || "Lookup failed." };
+    }
+}
+
 /** Public: fetch residential zones for the location step (service role — RLS deny). */
 export async function getZonesAction() {
     try {
@@ -97,7 +150,11 @@ function mapProfileColumns(p: RegistrationPayload) {
  * Public: create or update a profile via a 'create'/'update' invite.
  * The profile is pinned to the invite's class_set (generation).
  */
-export async function submitRegistrationAction(token: string, payload: RegistrationPayload) {
+export async function submitRegistrationAction(
+    token: string,
+    payload: RegistrationPayload,
+    targetProfileId?: string,
+) {
     try {
         const result = await getInviteByToken(token);
         if (!result.valid || !result.invite) {
@@ -111,15 +168,38 @@ export async function submitRegistrationAction(token: string, payload: Registrat
         const columns = mapProfileColumns(payload);
         // entry_year comes from the generation, not the member.
         const entryYear = inv.classSet?.entryYear ?? null;
+        const actorName = [payload.firstName, payload.lastName].filter(Boolean).join(" ");
 
-        if (inv.purpose === "update" && inv.targetProfileId) {
+        // A LEVEL token may target any member OF ITS OWN generation — the id comes from
+        // the client, so re-verify the membership here rather than trusting the lookup step.
+        let updateId: string | null = inv.purpose === "update" ? inv.targetProfileId : null;
+        if (inv.purpose === "level" && targetProfileId) {
+            const { data: target } = await ictAdmin.supabase
+                .from("profiles")
+                .select("id, class_set_id")
+                .eq("id", targetProfileId)
+                .maybeSingle();
+            if (!target || target.class_set_id !== inv.classSetId) {
+                return { success: false, error: "That member isn't in this level." };
+            }
+            updateId = target.id as string;
+        }
+
+        if (updateId) {
             const { error } = await ictAdmin.supabase
                 .from("profiles")
                 .update({ ...columns, class_set_id: inv.classSetId, entry_year: entryYear, updated_at: new Date().toISOString() })
-                .eq("id", inv.targetProfileId);
+                .eq("id", updateId);
             if (error) throw error;
             await consumeInvite(inv.id);
-            return { success: true, profileId: inv.targetProfileId };
+            await logInviteEvent({
+                inviteId: inv.id,
+                action: "update",
+                profileId: updateId,
+                actorName,
+                actorEmail: columns.email ?? null,
+            });
+            return { success: true, profileId: updateId };
         }
 
         // create: guard against duplicate email.
@@ -129,7 +209,12 @@ export async function submitRegistrationAction(token: string, payload: Registrat
             .eq("email", columns.email)
             .maybeSingle();
         if (existing) {
-            return { success: false, error: "A profile with this email already exists. Ask your coordinator for an update link." };
+            return {
+                success: false,
+                error:
+                    "A profile with this email already exists. Use the update link for your level " +
+                    "(same token, “Update my details”) to edit it.",
+            };
         }
 
         const { data: created, error } = await ictAdmin.supabase
@@ -140,6 +225,13 @@ export async function submitRegistrationAction(token: string, payload: Registrat
         if (error) throw error;
 
         await consumeInvite(inv.id);
+        await logInviteEvent({
+            inviteId: inv.id,
+            action: "register",
+            profileId: created.id as string,
+            actorName,
+            actorEmail: columns.email ?? null,
+        });
         return { success: true, profileId: created.id as string };
     } catch (e: any) {
         console.error("submitRegistration error:", e);
