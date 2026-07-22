@@ -372,12 +372,14 @@ function RegistrationForm({
                 </p>
             </div>
 
-            {/* Stepper */}
+            {/* Stepper. Registration is sequential (each step gates the next); an UPDATE is
+                not — the record already exists, so any section can be jumped to and saved
+                from directly, without walking through the ones before it. */}
             <div className="mb-8 flex items-center justify-between px-2">
-                {STEPS.map((label, i) => (
-                    <div key={label} className="flex flex-1 items-center last:flex-none">
-                        <div className="flex flex-col items-center gap-1">
-                            <div
+                {STEPS.map((label, i) => {
+                    const dot = (
+                        <>
+                            <span
                                 className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-all ${
                                     step > i
                                         ? "bg-green-500 text-white"
@@ -387,17 +389,48 @@ function RegistrationForm({
                                 }`}
                             >
                                 {step > i ? <Check className="h-4 w-4" /> : i + 1}
-                            </div>
-                            <span className={`text-[10px] font-medium uppercase tracking-wider ${step === i ? "text-rcf-navy" : "text-gray-400"}`}>
+                            </span>
+                            <span
+                                className={`text-[10px] font-medium uppercase tracking-wider ${
+                                    step === i ? "text-rcf-navy" : "text-gray-400"
+                                }`}
+                            >
                                 {label}
                             </span>
+                        </>
+                    );
+                    return (
+                        <div key={label} className="flex flex-1 items-center last:flex-none">
+                            {isUpdate ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setStep(i)}
+                                    aria-current={step === i ? "step" : undefined}
+                                    className="flex flex-col items-center gap-1 rounded-lg p-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy"
+                                >
+                                    {dot}
+                                </button>
+                            ) : (
+                                <div className="flex flex-col items-center gap-1 p-1">{dot}</div>
+                            )}
+                            {i < STEPS.length - 1 && (
+                                <div
+                                    className={`h-1 flex-1 rounded mx-2 transition-colors ${
+                                        step > i ? "bg-rcf-navy" : "bg-gray-100"
+                                    }`}
+                                />
+                            )}
                         </div>
-                        {i < STEPS.length - 1 && (
-                            <div className={`h-1 flex-1 rounded mx-2 transition-colors ${step > i ? "bg-rcf-navy" : "bg-gray-100"}`} />
-                        )}
-                    </div>
-                ))}
+                    );
+                })}
             </div>
+
+            {isUpdate && (
+                <p className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                    Tap any section above to jump straight to it — you can save from anywhere,
+                    and every section is submitted together.
+                </p>
+            )}
 
             <form onSubmit={handleSubmit(onSubmit)} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 {serverError && (
@@ -497,18 +530,26 @@ function RegistrationForm({
                     </motion.div>
                 </AnimatePresence>
 
-                <div className="mt-6 flex gap-3">
+                <div className="mt-6 flex flex-wrap gap-3">
                     {step > 0 && (
                         <button type="button" onClick={() => setStep((s) => s - 1)} className="btn-secondary flex items-center gap-2">
                             <ArrowLeft className="h-4 w-4" /> Back
                         </button>
                     )}
-                    {step < STEPS.length - 1 ? (
+                    {step < STEPS.length - 1 && (
                         <button type="button" onClick={next} className="btn-primary flex-1 flex items-center justify-center gap-2">
                             Next <ArrowRight className="h-4 w-4" />
                         </button>
-                    ) : (
-                        <button type="submit" disabled={isSubmitting} className="btn-primary flex-1 flex items-center justify-center gap-2">
+                    )}
+                    {/* On an update, Save is always available: the whole form is submitted at
+                        once, so a change made on the last section doesn't have to be reached
+                        by re-saving the ones before it. */}
+                    {(isUpdate || step === STEPS.length - 1) && (
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-60"
+                        >
                             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : isUpdate ? "Save changes" : "Complete registration"}
                         </button>
                     )}

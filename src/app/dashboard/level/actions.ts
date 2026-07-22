@@ -345,13 +345,65 @@ export async function listLevelInvitesAction(classSetId: string) {
     }
 }
 
-/** Generate a new level token. Write access on the level required. */
+/**
+ * The level's ONE active token, or null. Used by the member page to build an update link
+ * from the existing token instead of minting a new one per member.
+ */
+export async function getActiveLevelTokenAction(classSetId: string) {
+    try {
+        const ctx = await requireModuleRead("level");
+        if (!(await canManageLevel(ctx, classSetId))) {
+            return { success: false as const, token: null };
+        }
+        const { data } = await ictAdmin.supabase
+            .from("registration_invites")
+            .select("id, token, label, created_at")
+            .eq("class_set_id", classSetId)
+            .eq("purpose", "level")
+            .eq("is_active", true)
+            .maybeSingle();
+        return { success: true as const, token: data?.token ?? null };
+    } catch {
+        return { success: false as const, token: null };
+    }
+}
+
+/**
+ * Rotate the level's token: revoke whatever is live, then issue one new token.
+ *
+ * A generation has exactly ONE active token — everything (registration, updates, anything
+ * shared elsewhere) is derived from it — so "generate" is always a REPLACE. The old token
+ * is revoked in the same call and both steps land in the activity log, which is what makes
+ * a leaked token recoverable: rotate, and every link built from the old one dies at once.
+ */
 export async function generateLevelTokenAction(classSetId: string, label?: string) {
     try {
         const ctx = await requireModuleRead("level");
         if (!(await canManageLevel(ctx, classSetId))) {
             return { success: false, error: "You don't coordinate this level." };
         }
+
+        const actorName = [ctx.profile.firstName, ctx.profile.lastName].filter(Boolean).join(" ");
+
+        // Revoke the current token first — the DB's partial unique index would reject a
+        // second live token anyway, so this ordering is required, not just tidy.
+        const { data: live } = await ictAdmin.supabase
+            .from("registration_invites")
+            .select("id")
+            .eq("class_set_id", classSetId)
+            .eq("purpose", "level")
+            .eq("is_active", true);
+        for (const old of live ?? []) {
+            await revokeInvite(old.id);
+            await logInviteEvent({
+                inviteId: old.id,
+                action: "revoked",
+                profileId: ctx.profile.id,
+                actorName,
+                actorEmail: ctx.profile.email ?? null,
+            });
+        }
+
         const { token, id } = await createInvite({
             createdBy: ctx.profile.id,
             purpose: "level",
@@ -362,7 +414,7 @@ export async function generateLevelTokenAction(classSetId: string, label?: strin
             inviteId: id,
             action: "generated",
             profileId: ctx.profile.id,
-            actorName: [ctx.profile.firstName, ctx.profile.lastName].filter(Boolean).join(" "),
+            actorName,
             actorEmail: ctx.profile.email ?? null,
         });
         revalidatePath(`/dashboard/level/${classSetId}`);

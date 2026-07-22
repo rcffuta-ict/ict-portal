@@ -1,10 +1,19 @@
 import { ShieldAlert } from "lucide-react";
-import { getGenerationAction } from "../actions";
+import {
+    getGenerationAction,
+    getLevelMembersAction,
+    getLevelStatsAction,
+    listLevelInvitesAction,
+} from "../actions";
 import { GenerationDetail } from "../components/generation-detail";
 import { Breadcrumb } from "../components/breadcrumb";
 
 /**
- * A single generation's page (members + registration links) — replaces the old modal.
+ * A single generation's page: members, tokens and token activity.
+ *
+ * Everything the first paint needs is fetched HERE, on the server, in parallel — the
+ * client components mount already populated instead of firing their own round-trips, so
+ * the page is usable the moment it lands rather than after a spinner on mobile data.
  */
 export default async function GenerationPage({
     params,
@@ -28,6 +37,14 @@ export default async function GenerationPage({
 
     const g = res.generation;
 
+    // Tokens are only fetched for coordinators — a token is a credential, so it must not
+    // ride along in the payload of a read-only viewer.
+    const [members, stats, tokens] = await Promise.all([
+        getLevelMembersAction(classSetId, { page: 1, pageSize: 24 }),
+        getLevelStatsAction(classSetId),
+        g.canWrite ? listLevelInvitesAction(classSetId) : Promise.resolve({ data: [] }),
+    ]);
+
     return (
         <div className="space-y-6">
             <Breadcrumb
@@ -47,7 +64,13 @@ export default async function GenerationPage({
                 </p>
             </header>
 
-            <GenerationDetail generation={g} />
+            <GenerationDetail
+                generation={g}
+                initialMembers={members.data || []}
+                initialTotal={members.total || 0}
+                initialStats={"stats" in stats ? stats.stats : null}
+                initialTokens={tokens.data || []}
+            />
         </div>
     );
 }
