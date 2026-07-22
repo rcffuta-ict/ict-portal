@@ -27,11 +27,11 @@ export default function LoadingGeneration() {
 
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
                     {Array.from({ length: 5 }).map((_, i) => (
-                        <SkeletonCard key={i} className="h-[62px] rounded-xl" />
+                        <SkeletonCard key={i} className="h-15.5 rounded-xl" />
                     ))}
                 </div>
 
-                <SkeletonCard className="h-[420px]" />
+                <SkeletonCard className="h-105" />
             </div>
         </SkeletonRegion>
     );
