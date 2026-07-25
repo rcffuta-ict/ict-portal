@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+@theme {
+  /* Define RCF Brand Colors */
+  --color-rcf-navy: #181240;
+  --color-rcf-navy-light: #2a2257;
+  --color-rcf-gold: #fbbf24;
+
+  /* Animation Utilities */
+  --animate-fade-in: fadeIn 0.5s ease-in-out;
+  --animate-slide-up: slideUp 0.5s ease-out;
+  --animate-loading-bar: loadingBar 2s ease-in-out infinite;
+  --animate-float: float 3s ease-in-out infinite;
+  --animate-float-delayed: float 3s ease-in-out infinite 1s;
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes loadingBar {
+    0% {
+      width: 0%;
+      opacity: 0;
+    }
+    50% {
+      width: 100%;
+      opacity: 1;
+    }
+    100% {
+      width: 100%;
+      opacity: 0.8;
+    }
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+      opacity: 0.7;
+    }
+    50% {
+      transform: translateY(-10px);
+      opacity: 1;
+    }
+  }
+}
+
+@layer components {
+  .input-field {
+    @apply h-10 rounded-md border border-gray-300 px-3 text-sm outline-none transition-all focus:border-rcf-navy focus:ring-1 focus:ring-rcf-navy placeholder:text-gray-400;
+  }
+
+  .btn-primary {
+    @apply flex h-10 items-center justify-center rounded-md bg-rcf-navy text-sm font-bold text-white transition-colors hover:bg-rcf-navy-light disabled:opacity-70;
+  }
+
+  /* Animation delay utilities for preloader */
+  .animation-delay-100 {
+    animation-delay: 100ms;
+  }
+
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+
+  .animation-delay-300 {
+    animation-delay: 300ms;
+  }
+
+  
+
+  /* Safe area utilities for mobile devices with notches */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .pb-safe {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .pt-safe {
+    padding-top: calc(1rem + env(safe-area-inset-top));
+  }
+}
+/* Base Styles */
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), sans-serif;
+  /* Next.js default font */
+}
+
+/* Support for dynamic viewport height on mobile */
+@supports (height: 100dvh) {
+  .h-screen-mobile {
+    height: 100dvh;
+  }
+}
+
+/* Print styles: only show the `.printable` area when printing */
+@media print {
+  /* Hide everything by default */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Make the printable area and its children visible */
+  .printable,
+  .printable * {
+    visibility: visible !important;
+  }
+
+  /* Ensure printable area fills the page for printing */
+  .printable {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: #ffffff !important; /* force white bg for clarity */
+    box-shadow: none !important;
+    /* Ask the browser to preserve colors when possible; fallbacks below
+       ensure readability even if background printing is disabled. */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    color: #0f172a !important;
+  }
+
+  /* Any element with .no-print will be hidden in print */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Make sure text that was white on colored backgrounds becomes readable */
+  .printable .text-white {
+    color: inherit !important;
+  }
+
+  /* Remove heavy background gradients/images that most browsers won't print
+     (we keep layout via borders and text color so printed ticket remains clear) */
+  .printable [class*="bg-"] {
+    background: transparent !important;
+    background-image: none !important;
+  }
+
+  /* Ensure borders are visible (use a medium gray) */
+  .printable [class*="border-"] {
+    border-color: #d1d5db !important; /* slate-300 */
+  }
+
+  /* Ensure primary text elements use a dark color for legibility */
+  .printable h1,
+  .printable h2,
+  .printable h3,
+  .printable p,
+  .printable span,
+  .printable div {
+    color: #0f172a !important;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

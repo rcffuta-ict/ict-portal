@@ -1,69 +1,99 @@
-import { Toaster } from 'react-hot-toast';
-import '../styles/style.scss';
-import '@/node_modules/react-modal-video/scss/modal-video.scss';
-import { AuthProvider } from '../context/AuthContext';
-import { AttendeeModel } from '../lib/nobox/structure/attendee';
-import AttendeePill from '../components/common/AttendeePill';
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+//@ts-ignore
+import "./globals.css";
+import { TenureInitializer } from "@/components/dashboard/tenure-initializer";
+import { Suspense } from "react";
 
+const geistSans = Geist({
+    variable: "--font-geist-sans",
+    subsets: ["latin"],
+});
 
-export const metadata = {
-    title: "Combined Family Meeting - Redeemed Christian Fellowship FUTA Chapter",
-    description: "Powered By ICT RCFFTUA",
+const geistMono = Geist_Mono({
+    variable: "--font-geist-mono",
+    subsets: ["latin"],
+});
+
+// 1. Viewport: Controls how it looks on mobile (Safe areas, colors)
+export const viewport: Viewport = {
+    themeColor: "#181240", // RCF Navy
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+};
+
+// 2. Global Metadata
+export const metadata: Metadata = {
+    metadataBase: new URL("https://ict.rcffuta.com"), // Base URL for all relative links
+
+    title: {
+        default: "RCF FUTA ICT Portal",
+        template: "%s | RCF FUTA ICT",
+    },
+
+    description:
+        "The official digital ecosystem for the Redeemed Christian Fellowship, FUTA. Manage membership, attendance, academics, and voting in one secure hub.",
+
+    applicationName: "RCF FUTA ICT Portal",
+
+    keywords: [
+        "RCF FUTA",
+        "FUTA Fellowship",
+        "RCF ICT",
+        "Christian Fellowship",
+        "FUTA Students",
+        "Redeemed Christian Fellowship",
+    ],
+
+    authors: [{ name: "RCF FUTA ICT Unit", url: "https://ict.rcffuta.com" }],
+
+    openGraph: {
+        title: "RCF FUTA Digital Portal",
+        description: "One Family. One Faith. One Digital Community.",
+        url: "https://ict.rcffuta.com",
+        siteName: "RCF FUTA Portal",
+        locale: "en_US",
+        type: "website",
+        images: [
+            {
+                url: "/opengraph-image.jpg", // Make sure this file exists in /public
+                width: 1200,
+                height: 630,
+                alt: "RCF FUTA Portal Banner",
+            },
+        ],
+    },
+
+    twitter: {
+        card: "summary_large_image",
+        title: "RCF FUTA Digital Portal",
+        description: "The official digital hub for RCF FUTA.",
+        images: ["/opengraph-image.jpg"], // Reuses OG image
+    },
+
     icons: {
-        icon: "/images/Logo/logo.png",
+        icon: "/favicon.ico",
+        shortcut: "/favicon.ico",
+        apple: "/apple-touch-icon.png", // Add this to /public for iPhone home screen
     },
 };
 
 export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  return (
-      <html lang="en">
-          <body>
-              <AuthProvider >
-                <AttendeePill/>
+    children,
+}: Readonly<{
+    children: React.ReactNode;
+}>) {
+    return (
+        <html lang="en">
+            <body
+                className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+            >
+                <TenureInitializer/>
+                <Suspense fallback={null}>
                 {children}
-              </AuthProvider>
-
-              <Toaster
-                  toastOptions={{
-                      style: {
-                          background:
-                              "linear-gradient(90deg, rgba(189, 36, 223, 0.1) 0%, rgba(45, 106, 222, 0.1) 97.15%)",
-                          color: "#fff",
-                          border: "1px solid rgba(255, 255, 255, 0.2)",
-                          borderRadius: "10px",
-                          padding: "12px 16px",
-                          fontSize: "16px",
-                          backdropFilter: "blur(10px)",
-                      },
-                      loading: {
-                          icon: "⏳",
-                          style: {
-                              background:
-                                  "linear-gradient(90deg, rgba(189, 36, 223, 0.2) 0%, rgba(45, 106, 222, 0.2) 97.15%)",
-                              color: "#ffffff",
-                              border: "1px solid rgba(255, 255, 255, 0.3)",
-                              animation: "pulse 1.5s infinite",
-                          },
-                      },
-                      success: {
-                          iconTheme: {
-                              primary: "#2D6ADE",
-                              secondary: "#fff",
-                          },
-                      },
-                      error: {
-                          iconTheme: {
-                              primary: "#BD24DF",
-                              secondary: "#fff",
-                          },
-                      },
-                  }}
-              />
-          </body>
-      </html>
-  );
+                </Suspense>
+            </body>
+        </html>
+    );
 }
