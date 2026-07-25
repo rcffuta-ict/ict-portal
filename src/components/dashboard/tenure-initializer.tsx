@@ -25,7 +25,7 @@ export function TenureInitializer() {
                 console.error("Error initializing tenure store:", error);
             }
 
-
+    
 
         }
 
