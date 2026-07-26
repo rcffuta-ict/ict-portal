@@ -255,7 +255,18 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
         const res = await assignLeaderAction(formData);
         setSubmitting(false);
         if (res.success) {
-            showAlert({ type: "success", message: "Leader appointed successfully!" });
+            // Appointment also grants portal access, so say so — otherwise nobody knows
+            // to tell the appointee they can now sign in and set a password.
+            if (res.warning) {
+                showAlert({ type: "error", message: res.warning });
+            } else {
+                showAlert({
+                    type: "success",
+                    message: res.loginCreated
+                        ? "Leader appointed. They can now sign in and set their password."
+                        : "Leader appointed successfully!",
+                });
+            }
             onSuccess();
             setSelectedUser(null);
             setQuery("");

@@ -43,29 +43,83 @@ function generateToken(): string {
     return randomBytes(24).toString("base64url");
 }
 
+// Ambiguous glyphs are excluded on purpose (0/O, 1/l/I): a level token is read off
+// one phone and typed into another, so a character a student can misread is a
+// support ticket. Lowercase only, for the same reason.
+const SHORT_DIGITS = "23456789";
+const SHORT_LETTERS = "abcdefghjkmnpqrstuvwxyz";
+const SHORT_ALPHABET = SHORT_DIGITS + SHORT_LETTERS;
+const SHORT_BODY_LENGTH = 5;
+
+/** Uniform pick from `set` using rejection sampling (no modulo bias). */
+function pick(set: string): string {
+    const limit = 256 - (256 % set.length);
+    for (;;) {
+        const byte = randomBytes(1)[0];
+        if (byte < limit) return set[byte % set.length];
+    }
+}
+
 /**
- * Create an invite and return its token. Reuses an existing active invite of the
- * same (purpose, class_set/target) where sensible so coordinators get a stable link.
+ * Short, human-copyable level token: `rcf-xxxxx`, always with at least two digits
+ * in the body. NOT a secret — it's a shared, revocable link for a whole generation,
+ * so readability beats entropy here. Collisions are handled by the caller retrying
+ * against the table's UNIQUE constraint.
+ */
+function generateShortToken(): string {
+    const chars = [pick(SHORT_DIGITS), pick(SHORT_DIGITS)];
+    while (chars.length < SHORT_BODY_LENGTH) chars.push(pick(SHORT_ALPHABET));
+    // Fisher-Yates, so the two guaranteed digits aren't always in front.
+    for (let i = chars.length - 1; i > 0; i--) {
+        const j = randomBytes(1)[0] % (i + 1);
+        [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return `rcf-${chars.join("")}`;
+}
+
+/**
+ * Canonical form of a token as typed by a user. Short `rcf-` tokens are lowercase by
+ * construction, so we fold case and strip whitespace for them; the long base64url
+ * tokens are case-SENSITIVE and must be left exactly as-is.
+ */
+export function normalizeToken(raw: string): string {
+    const t = raw.trim();
+    return /^rcf-/i.test(t) ? t.toLowerCase() : t;
+}
+
+/**
+ * Create an invite and return its token. Level tokens get the short `rcf-xxxxx` form
+ * (see generateShortToken); everything else gets a long random token. A short token
+ * can collide, so a unique-violation is retried with a fresh one.
  */
 export async function createInvite(input: InviteInput): Promise<{ token: string; id: string }> {
-    const token = generateToken();
-    const { data, error } = await ictAdmin.supabase
-        .from("registration_invites")
-        .insert({
-            token,
-            purpose: input.purpose,
-            class_set_id: input.classSetId ?? null,
-            target_profile_id: input.targetProfileId ?? null,
-            created_by: input.createdBy,
-            expires_at: input.expiresAt ?? null,
-            max_uses: input.maxUses ?? null,
-            label: input.label ?? null,
-        })
-        .select("id, token")
-        .single();
+    const isShort = input.purpose === "level";
+    const attempts = isShort ? 6 : 1;
 
-    if (error || !data) throw new Error(`Failed to create invite: ${error?.message}`);
-    return { token: data.token as string, id: data.id as string };
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        const token = isShort ? generateShortToken() : generateToken();
+        const { data, error } = await ictAdmin.supabase
+            .from("registration_invites")
+            .insert({
+                token,
+                purpose: input.purpose,
+                class_set_id: input.classSetId ?? null,
+                target_profile_id: input.targetProfileId ?? null,
+                created_by: input.createdBy,
+                expires_at: input.expiresAt ?? null,
+                max_uses: input.maxUses ?? null,
+                label: input.label ?? null,
+            })
+            .select("id, token")
+            .single();
+
+        if (!error && data) return { token: data.token as string, id: data.id as string };
+        // 23505 on the token column just means we drew a taken code — draw again.
+        if (error?.code !== "23505" || attempt === attempts - 1) {
+            throw new Error(`Failed to create invite: ${error?.message}`);
+        }
+    }
+    throw new Error("Failed to create invite: could not allocate a unique token.");
 }
 
 /**
@@ -73,8 +127,9 @@ export async function createInvite(input: InviteInput): Promise<{ token: string;
  * or a reason it's invalid. Read-only.
  */
 export async function getInviteByToken(
-    token: string,
+    rawToken: string,
 ): Promise<{ valid: boolean; reason?: string; invite?: ValidatedInvite }> {
+    const token = rawToken ? normalizeToken(rawToken) : "";
     if (!token) return { valid: false, reason: "Missing invite token." };
 
     const { data, error } = await ictAdmin.supabase
