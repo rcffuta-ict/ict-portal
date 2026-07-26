@@ -4,6 +4,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TenureInitializer } from "@/components/dashboard/tenure-initializer";
 import { Suspense } from "react";
+import { PreviewBanner } from "@/components/layout/preview-banner";
+import { isPreviewDeployment } from "@/lib/env";
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -84,11 +86,15 @@ export default function RootLayout({
 }: Readonly<{
     children: React.ReactNode;
 }>) {
+    const showPreviewBanner = isPreviewDeployment();
+
     return (
         <html lang="en">
             <body
                 className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+                data-preview-banner={showPreviewBanner ? "true" : undefined}
             >
+                <PreviewBanner />
                 <TenureInitializer/>
                 <Suspense fallback={null}>
                 {children}
