@@ -195,3 +195,50 @@ body {
     margin: 12mm;
   }
 }
+/* =========================================================================
+   Non-production preview banner (see src/components/layout/preview-banner.tsx)
+   -------------------------------------------------------------------------
+   These rules only ever match when the root layout stamps
+   data-preview-banner="true" on <body>, i.e. never on a production
+   deployment. Left unlayered on purpose: unlayered declarations beat
+   Tailwind's @layer utilities, so they can shift `sticky top-0` headers and
+   full-height shells without !important.
+   ========================================================================= */
+body[data-preview-banner="true"] {
+  --preview-banner-h: calc(1.75rem + env(safe-area-inset-top, 0px));
+  padding-top: var(--preview-banner-h);
+}
+
+/* Full-height shells must shrink, or the page gains a phantom scrollbar. */
+body[data-preview-banner="true"] .h-screen {
+  height: calc(100vh - var(--preview-banner-h));
+}
+
+body[data-preview-banner="true"] .min-h-screen {
+  min-height: calc(100vh - var(--preview-banner-h));
+}
+
+/* Route-level sticky headers would otherwise tuck under the banner. */
+body[data-preview-banner="true"] .sticky.top-0 {
+  top: var(--preview-banner-h);
+}
+
+/* Secondary sticky bars (lo-app sub-nav sits below its own 56px header). */
+body[data-preview-banner="true"] .sticky.top-14 {
+  top: calc(3.5rem + var(--preview-banner-h));
+}
+
+body[data-preview-banner="true"] .sticky.top-4 {
+  top: calc(1rem + var(--preview-banner-h));
+}
+
+/* Fullscreen overlays/modals start below the banner so it stays readable. */
+body[data-preview-banner="true"] .fixed.inset-0 {
+  top: var(--preview-banner-h);
+}
+
+@media print {
+  body[data-preview-banner="true"] {
+    padding-top: 0;
+  }
+}
