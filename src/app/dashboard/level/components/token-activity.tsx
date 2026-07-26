@@ -80,7 +80,12 @@ export function TokenActivity({ classSetId }: { classSetId: string }) {
                             </p>
                             <p className="mt-0.5 truncate text-[10px] text-slate-400">
                                 {e.label || "Level token"} ·{" "}
-                                <span className="font-mono">{(e.token || "").slice(0, 8)}…</span>
+                                <span className="font-mono">
+                                    {/* Short `rcf-` tokens fit whole; older long ones still get clipped. */}
+                                    {(e.token || "").length > 12
+                                        ? `${(e.token || "").slice(0, 8)}…`
+                                        : e.token || ""}
+                                </span>
                             </p>
                         </div>
                         <time

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { X, AlertCircle, CheckCircle2, Info, AlertTriangle } from "lucide-react";
+import { X, AlertCircle, CheckCircle2, Info, AlertTriangle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export type AlertType = "success" | "error" | "warning" | "info";
@@ -13,6 +13,8 @@ interface AlertModalProps {
     message: string;
     type?: AlertType;
     confirmText?: string;
+    /** Label shown on the confirm button while an async `onConfirm` runs. */
+    pendingText?: string;
     onConfirm?: () => void;
 }
 
@@ -23,27 +25,49 @@ export function AlertModal({
     message,
     type = "info",
     confirmText = "OK",
+    pendingText = "Working…",
     onConfirm,
 }: AlertModalProps) {
-    
+    /**
+     * True while an async `onConfirm` is still running. The modal stays open and fully
+     * locked down until it settles: on a slow phone connection the old behaviour left a
+     * live Confirm button with no feedback, so a second tap fired the action twice.
+     */
+    const [pending, setPending] = useState(false);
+
+    // A reopened modal must never inherit the previous confirm's pending state.
+    useEffect(() => {
+        if (!isOpen) setPending(false);
+    }, [isOpen]);
+
+    /** Dismissals (Escape, backdrop, X, Cancel) are ignored while the action is in flight. */
+    const requestClose = () => {
+        if (pending) return;
+        onClose();
+    };
+
     // Close on Escape key
     useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && isOpen) {
+            if (e.key === "Escape" && isOpen && !pending) {
                 onClose();
             }
         };
-        
+
         document.addEventListener("keydown", handleEscape);
         return () => document.removeEventListener("keydown", handleEscape);
-    }, [isOpen, onClose]);
+    }, [isOpen, onClose, pending]);
 
     const handleConfirm = async () => {
+        if (pending) return;
         if (onConfirm) {
+            setPending(true);
             try {
                 await onConfirm();
             } catch (error) {
                 console.error("Error in onConfirm callback:", error);
+            } finally {
+                setPending(false);
             }
         }
         onClose();
@@ -95,7 +119,7 @@ export function AlertModal({
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        onClick={onClose}
+                        onClick={requestClose}
                         className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 min-h-screen"
                     >
                         {/* Modal */}
@@ -104,6 +128,7 @@ export function AlertModal({
                             animate={{ scale: 1, opacity: 1, y: 0 }}
                             exit={{ scale: 0.9, opacity: 0, y: 20 }}
                             onClick={(e) => e.stopPropagation()}
+                            aria-busy={pending}
                             className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
                         >
                             {/* Header with Icon */}
@@ -111,8 +136,11 @@ export function AlertModal({
                                 className={`${bgColor} ${borderColor} border-b p-6 relative`}
                             >
                                 <button
-                                    onClick={onClose}
-                                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                                    onClick={requestClose}
+                                    type="button"
+                                    disabled={pending}
+                                    aria-label="Close"
+                                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     <X className="w-5 h-5" />
                                 </button>
@@ -142,9 +170,10 @@ export function AlertModal({
                             <div className="px-6 pb-6 flex justify-end gap-3">
                                 {onConfirm && (
                                     <button
-                                        onClick={onClose}
+                                        onClick={requestClose}
                                         type="button"
-                                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                                        disabled={pending}
+                                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         Cancel
                                     </button>
@@ -152,17 +181,20 @@ export function AlertModal({
                                 <button
                                     onClick={handleConfirm}
                                     type="button"
-                                    className={`px-6 py-2 rounded-lg text-white font-medium transition-all hover:shadow-lg ${
+                                    disabled={pending}
+                                    aria-busy={pending}
+                                    className={`inline-flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-white font-medium transition-all hover:shadow-lg disabled:cursor-wait disabled:opacity-80 disabled:hover:shadow-none ${
                                         type === "error"
                                             ? "bg-red-500 hover:bg-red-600"
                                             : type === "success"
-                                              ? "bg-green-500 hover:bg-green-600"
-                                              : type === "warning"
-                                                ? "bg-yellow-500 hover:bg-yellow-600"
-                                                : "bg-rcf-navy hover:bg-blue-800"
+                                                ? "bg-green-500 hover:bg-green-600"
+                                                : type === "warning"
+                                                    ? "bg-yellow-500 hover:bg-yellow-600"
+                                                    : "bg-rcf-navy hover:bg-blue-800"
                                     }`}
                                 >
-                                    {confirmText}
+                                    {pending && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+                                    {pending ? pendingText : confirmText}
                                 </button>
                             </div>
                         </motion.div>

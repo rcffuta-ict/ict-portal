@@ -41,8 +41,10 @@ export function TokenManager({
 }) {
     const [tokens, setTokens] = useState<any[]>(initialTokens ?? []);
     const [loading, setLoading] = useState(!initialTokens);
-    const [busy, setBusy] = useState(false);
+    /** Which action is in flight — so only the button you pressed spins. */
+    const [busy, setBusy] = useState<null | "generate" | "revoke">(null);
     const [error, setError] = useState<string | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
 
     useEffect(() => {
@@ -70,12 +72,14 @@ export function TokenManager({
     const past = tokens.filter((t) => !t.is_active);
 
     const doGenerate = async () => {
-        setBusy(true);
+        setBusy("generate");
         setError(null);
+        setNotice(null);
         const res = await generateLevelTokenAction(classSetId);
-        if (!res.success) setError(res.error || "Could not generate a token.");
+        if (res.success) setNotice("New token generated. Reshare the links — the old ones no longer work.");
+        else setError(res.error || "Could not generate a token.");
         await reload();
-        setBusy(false);
+        setBusy(null);
     };
 
     const generate = () => {
@@ -86,6 +90,7 @@ export function TokenManager({
             message:
                 "This level can only have one token. The current one is revoked immediately — anyone still holding the old registration or update link will be turned away, and you'll need to reshare the new one.",
             confirmText: "Replace token",
+            pendingText: "Replacing…",
             onConfirm: doGenerate,
         });
     };
@@ -98,12 +103,18 @@ export function TokenManager({
             message:
                 "Registration and updates for this level stop working until you generate a new token.",
             confirmText: "Revoke",
+            pendingText: "Revoking…",
             onConfirm: async () => {
-                setBusy(true);
+                setBusy("revoke");
+                setError(null);
+                setNotice(null);
                 const res = await revokeLevelTokenAction(active.id);
-                if (!res.success) showAlert({ type: "error", message: res.error });
+                // Reported inline, NOT via showAlert: the modal closes itself once this
+                // resolves, which would take any alert opened from in here with it.
+                if (res.success) setNotice("Token revoked. Generate a new one when you're ready to reopen registration.");
+                else setError(res.error || "Could not revoke the token.");
                 await reload();
-                setBusy(false);
+                setBusy(null);
             },
         });
     };
@@ -114,11 +125,20 @@ export function TokenManager({
         <div className="space-y-5">
             <AlertModal isOpen={isOpen} onClose={closeAlert} {...alertConfig} />
 
-            {error && (
-                <p className="flex items-start gap-1.5 text-xs text-red-600">
-                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
-                </p>
-            )}
+            {/* aria-live so the outcome reaches a screen reader too — the visual change
+                is the only other signal that a revoke landed. */}
+            <div aria-live="polite">
+                {error && (
+                    <p className="flex items-start gap-1.5 text-xs text-red-600">
+                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
+                    </p>
+                )}
+                {notice && !error && (
+                    <p className="flex items-start gap-1.5 text-xs text-emerald-600">
+                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {notice}
+                    </p>
+                )}
+            </div>
 
             {active ? (
                 <ActiveToken token={active} busy={busy} onRotate={generate} onRevoke={revoke} />
@@ -135,11 +155,16 @@ export function TokenManager({
                     <button
                         type="button"
                         onClick={generate}
-                        disabled={busy}
-                        className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-rcf-navy px-5 text-sm font-bold text-white hover:bg-opacity-90 disabled:opacity-60"
+                        disabled={!!busy}
+                        aria-busy={busy === "generate"}
+                        className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-rcf-navy px-5 text-sm font-bold text-white hover:bg-opacity-90 disabled:cursor-wait disabled:opacity-60"
                     >
-                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                        Generate token
+                        {busy === "generate" ? (
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                            <KeyRound className="h-4 w-4" aria-hidden="true" />
+                        )}
+                        {busy === "generate" ? "Generating…" : "Generate token"}
                     </button>
                 </section>
             )}
@@ -179,7 +204,7 @@ function ActiveToken({
     onRevoke,
 }: {
     token: any;
-    busy: boolean;
+    busy: null | "generate" | "revoke";
     onRotate: () => void;
     onRevoke: () => void;
 }) {
@@ -214,26 +239,37 @@ function ActiveToken({
                     <button
                         type="button"
                         onClick={onRotate}
-                        disabled={busy}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:border-rcf-navy/40 hover:text-rcf-navy disabled:opacity-60"
+                        disabled={!!busy}
+                        aria-busy={busy === "generate"}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:border-rcf-navy/40 hover:text-rcf-navy disabled:cursor-wait disabled:opacity-60"
                     >
-                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                        Replace
+                        {busy === "generate" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        ) : (
+                            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                        )}
+                        {busy === "generate" ? "Replacing…" : "Replace"}
                     </button>
                     <button
                         type="button"
                         onClick={onRevoke}
-                        disabled={busy}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-100 px-3 text-xs font-bold text-red-500 hover:bg-red-50 disabled:opacity-60"
+                        disabled={!!busy}
+                        aria-busy={busy === "revoke"}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-100 px-3 text-xs font-bold text-red-500 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
                     >
-                        <Trash2 className="h-3.5 w-3.5" /> Revoke
+                        {busy === "revoke" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        ) : (
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        )}
+                        {busy === "revoke" ? "Revoking…" : "Revoke"}
                     </button>
                 </div>
             </div>
 
             {/* The token on its own — it's used outside these two links too. */}
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 p-2.5">
-                <code className="min-w-0 flex-1 truncate font-mono text-xs text-slate-700">
+                <code className="min-w-0 flex-1 truncate font-bold text-lg text-slate-700 uppercase">
                     {token.token}
                 </code>
                 <button

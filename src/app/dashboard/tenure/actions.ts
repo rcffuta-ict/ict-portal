@@ -5,6 +5,7 @@ import { requireModuleRead, requireModuleWrite } from "@/lib/access-control";
 import { ictAdmin } from "@/lib/ict";
 import { computeLevel, LEVELS } from "@/lib/levels";
 import { validatePrivilegeSet, deriveCategory } from "@/lib/privileges";
+import { ensureLoginProvisioned } from "@/lib/auth/provision";
 import type { Privilege } from "@/lib/modules";
 import { RcfIctClient } from "@rcffuta/ict-lib/server";
 import { revalidatePath } from "next/cache";
@@ -213,7 +214,7 @@ export async function updateTenureAction(formData: FormData) {
  * This is the sanctioned way to end a tenure (see the Tenure Profile tab).
  */
 export async function handoverTenureAction(formData: FormData) {
-    await requireModuleWrite("tenure");
+    const ctx = await requireModuleWrite("tenure");
     const rcf = ictAdmin;
     try {
         const name = ((formData.get("name") as string) || "").trim();
@@ -265,6 +266,16 @@ export async function handoverTenureAction(formData: FormData) {
             { tenure_id: newTenure.id, profile_id: ictCoordProfileId, position_id: ictPos.id, is_lead: true },
         ]);
         if (lErr) return { success: false, error: `Tenure created, but appointing leaders failed: ${lErr.message}` };
+
+        // The incoming VP Admin / ICT Coordinator must be able to sign in, or the new
+        // tenure starts with nobody able to administer it.
+        for (const id of [vpAdminProfileId, ictCoordProfileId]) {
+            try {
+                await ensureLoginProvisioned(id, ctx.profile.id);
+            } catch (e: any) {
+                console.error("handover login provisioning failed:", e.message);
+            }
+        }
 
         revalidatePath('/dashboard/tenure');
         return { success: true };
@@ -697,7 +708,7 @@ export async function searchMemberAction(query: string) {
  */
 export async function assignLeaderAction(formData: FormData) {
     const rcf = RcfIctClient.asAdmin();
-    await requireModuleWrite("tenure");
+    const ctx = await requireModuleWrite("tenure");
 
     const tenureId = formData.get("tenureId") as string;
     const profileId = formData.get("profileId") as string;
@@ -757,7 +768,24 @@ export async function assignLeaderAction(formData: FormData) {
             return { success: false, error: error.message };
         }
 
-        return { success: true };
+        // Appointment IS the grant of portal access — leads and assistants alike. The row
+        // is created with no password, so the appointee sets their own on first login;
+        // we never invent one for them. Idempotent, and never overwrites an existing
+        // password (someone already leading elsewhere keeps theirs).
+        let loginCreated = false;
+        try {
+            ({ created: loginCreated } = await ensureLoginProvisioned(profileId, ctx.profile.id));
+        } catch (e: any) {
+            // The appointment itself succeeded — surface the login failure without
+            // pretending the whole action failed, so the admin knows to retry access.
+            return {
+                success: true,
+                loginCreated: false,
+                warning: `Assigned, but their portal login could not be created: ${e.message}`,
+            };
+        }
+
+        return { success: true, loginCreated };
     } catch (e: any) {
         return { success: false, error: e.message };
     }
