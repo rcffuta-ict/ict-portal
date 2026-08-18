@@ -1,465 +1,700 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import {
-  Loader2,
-  Users,
-  Search,
-  Download,
-  MessageSquare,
-  PieChart,
-  ArrowLeft,
-  Calendar,
-  CheckCircle2,
-  Clock,
-  Filter,
-  ChevronDown,
-  LayoutDashboard,
-  RefreshCcw
-} from "lucide-react";
-import { getEventAdminStats, getEventQuestions } from "./actions";
-import { useProfileStore } from "@/lib/stores/profile.store";
-import { isProfileAdmin } from "@/config/sidebar-items";
 import Link from "next/link";
-import { format } from "date-fns";
-import { motion, AnimatePresence } from "framer-motion";
-import { displayLevelBetter } from "@/lib/utils";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+    ArrowLeft,
+    CheckCircle2,
+    Download,
+    GraduationCap,
+    LayoutDashboard,
+    Loader2,
+    MessageSquare,
+    RefreshCcw,
+    Search,
+    UserRound,
+    Users,
+} from "lucide-react";
+import { EventAdminStats, getEventAdminStats, getEventQuestions } from "./actions";
+import { useProfileStore } from "@/lib/stores/profile.store";
+import { isProfileAdmin } from "@/lib/auth-roles";
+import { formatEventDateTime, levelLabel, parseEventDate } from "@/lib/event-utils";
 
 type TabType = "overview" | "attendees" | "questions";
 
-export default function EventAdminPage() {
-  const params = useParams();
-  const slug = params.slug as string;
-  const { user } = useProfileStore();
-  const router = useRouter();
-
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<any>(null);
-  const [questions, setQuestions] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<TabType>("overview");
-  const [search, setSearch] = useState("");
-
-  const isAdmin = useMemo(() => {
-    return isProfileAdmin(user);
-  }, [user]);
-
-  useEffect(() => {
-    if (!loading && !isAdmin) {
-      router.push(`/events/${slug}`);
-    }
-  }, [isAdmin, loading, router, slug]);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const statsData = await getEventAdminStats(slug);
-      if (statsData) {
-        setStats(statsData);
-        const questionsData = await getEventQuestions(statsData.event.id);
-        if (questionsData.success) {
-          setQuestions(questionsData.data || []);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load admin data", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, [slug]);
-
-  const filteredAttendees = useMemo(() => {
-    if (!stats?.registrants) return [];
-    const term = search.toLowerCase();
-    return stats.registrants.filter((r: any) =>
-      r.first_name.toLowerCase().includes(term) ||
-      r.last_name.toLowerCase().includes(term) ||
-      r.email.toLowerCase().includes(term) ||
-      r.phone_number.includes(term) ||
-      r.department?.toLowerCase().includes(term)
-    );
-  }, [stats?.registrants, search]);
-
-  const exportCSV = () => {
-    if (!stats?.registrants) return;
-    const headers = ["First Name", "Last Name", "Email", "Phone", "Gender", "Level", "Department", "RCF Member", "Registered At"];
-    const rows = stats.registrants.map((r: any) => [
-      r.first_name,
-      r.last_name,
-      r.email,
-      r.phone_number,
-      r.gender || "",
-      r.level || "",
-      r.department || "",
-      r.is_rcf_member ? "Yes" : "No",
-      new Date(r.created_at).toLocaleString()
-    ]);
-
-    const csvContent = [headers, ...rows].map(row => row.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${slug}-attendees.csv`;
-    link.click();
-  };
-
-  if (!isAdmin && !loading) return null;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <Loader2 className="w-10 h-10 text-rcf-navy animate-spin mb-4" />
-        <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Authorizing Admin Access...</p>
-      </div>
-    );
-  }
-
-  const event = stats?.event;
-
-  return (
-    <div className="min-h-screen bg-slate-50/50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href={`/events/${slug}`}
-                className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-500"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </Link>
-              <div>
-                <h1 className="text-xl font-black text-slate-900 tracking-tight">Admin Console</h1>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{event?.title}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-               <button
-                onClick={loadData}
-                className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-500"
-                title="Refresh Data"
-               >
-                 <RefreshCcw className="w-5 h-5" />
-               </button>
-               <button
-                onClick={exportCSV}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/10"
-               >
-                 <Download className="w-4 h-4" />
-                 <span className="hidden sm:inline">Export List</span>
-               </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-2">
-          <div className="flex gap-8">
-            {[
-              { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-              { id: 'attendees', label: 'Attendees', icon: Users, count: stats?.totalRegistered },
-              { id: 'questions', label: 'Lo! Questions', icon: MessageSquare, count: questions.length },
-            ].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id as TabType)}
-                className={`flex items-center gap-2 py-4 text-xs font-black uppercase tracking-widest relative transition-colors ${
-                  activeTab === t.id ? 'text-rcf-navy' : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                <t.icon className="w-4 h-4" />
-                {t.label}
-                {t.count !== undefined && (
-                  <span className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${
-                    activeTab === t.id ? 'bg-rcf-navy/10 text-rcf-navy' : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    {t.count}
-                  </span>
-                )}
-                {activeTab === t.id && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-rcf-navy rounded-full"
-                  />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <AnimatePresence mode="wait">
-          {activeTab === "overview" && (
-            <motion.div
-              key="overview"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-8"
-            >
-              {/* Stat Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <StatCard
-                  label="Total Registered"
-                  value={stats?.totalRegistered}
-                  icon={Users}
-                  color="blue"
-                />
-                <StatCard
-                  label="RCF Members"
-                  value={stats?.rcfMembers}
-                  icon={CheckCircle2}
-                  color="indigo"
-                />
-                <StatCard
-                  label="Guest Attendance"
-                  value={stats?.guests}
-                  icon={Users}
-                  color="amber"
-                />
-                <StatCard
-                  label="Active Questions"
-                  value={questions.length}
-                  icon={MessageSquare}
-                  color="teal"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Level Breakdown */}
-                <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
-                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-2">
-                    <PieChart className="w-4 h-4 text-slate-400" />
-                    Attendees Breakdown
-                  </h3>
-                  <div className="space-y-4">
-                    {Object.entries(stats?.levelBreakdown || {}).sort((a:any, b:any) => b[1] - a[1]).map(([level, count]: [string, any]) => (
-                      <div key={level}>
-                        <div className="flex justify-between items-center text-xs font-bold mb-1.5">
-                          <span className="text-slate-600 uppercase tracking-wider">{level}</span>
-                          <span className="text-slate-900">{count}</span>
-                        </div>
-                        <div className="w-full h-2 bg-slate-50 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-slate-900 rounded-full"
-                            style={{ width: `${(count / stats.totalRegistered) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Gender / Demographic */}
-                <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
-                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-slate-400" />
-                    Gender Distribution
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-6 bg-blue-50/50 rounded-2xl border border-blue-100/50 flex flex-col items-center text-center">
-                      <span className="text-2xl font-black text-blue-700">{stats?.genderBreakdown.male}</span>
-                      <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mt-1">Brothers</span>
-                    </div>
-                    <div className="p-6 bg-pink-50/50 rounded-2xl border border-pink-100/50 flex flex-col items-center text-center">
-                      <span className="text-2xl font-black text-pink-700">{stats?.genderBreakdown.female}</span>
-                      <span className="text-[10px] font-black text-pink-400 uppercase tracking-widest mt-1">Sisters</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {activeTab === "attendees" && (
-            <motion.div
-              key="attendees"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-6"
-            >
-              <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-                <div className="relative w-full sm:max-w-md">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search by name, email or phone..."
-                    className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-rcf-navy/5 focus:border-rcf-navy transition-all"
-                  />
-                </div>
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                  Showing {filteredAttendees.length} of {stats?.totalRegistered}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50/50 border-b border-slate-100">
-                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Name</th>
-                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Identifier</th>
-                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Academic Hub</th>
-                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Ecosystem</th>
-                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Registered</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {filteredAttendees.map((r: any) => (
-                        <tr key={r.id} className="hover:bg-slate-50/30 transition-colors group">
-                          <td className="px-6 py-5">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black text-white ${
-                                r.gender?.toLowerCase() === 'male' ? 'bg-blue-600' :
-                                r.gender?.toLowerCase() === 'female' ? 'bg-pink-500' : 'bg-slate-400'
-                              }`}>
-                                {r.first_name[0]}{r.last_name[0]}
-                              </div>
-                              <div>
-                                <div className="text-sm font-bold text-slate-900 leading-none mb-1">{r.first_name} {r.last_name}</div>
-                                <div className="text-[10px] font-medium text-slate-400">{r.phone_number}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-5">
-                            <div className="text-xs font-bold text-slate-600">{r.email}</div>
-                          </td>
-                          <td className="px-6 py-5">
-                            <div className="flex flex-col">
-                              <span className="text-xs font-bold text-slate-900">{displayLevelBetter(r.level)}</span>
-                              {/* <span className="text-[10px] font-medium text-slate-400 truncate max-w-[150px]">{r.department}</span> */}
-                            </div>
-                          </td>
-                          <td className="px-6 py-5">
-                            {r.is_rcf_member ? (
-                              <span className="px-2.5 py-1 bg-rcf-navy/5 text-rcf-navy text-[9px] font-black uppercase tracking-widest rounded-lg border border-rcf-navy/10">Member</span>
-                            ) : (
-                              <span className="px-2.5 py-1 bg-amber-50 text-amber-600 text-[9px] font-black uppercase tracking-widest rounded-lg border border-amber-100">Guest</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-5">
-                            <div className="text-[10px] font-bold text-slate-400">{format(new Date(r.created_at), "MMM d, HH:mm")}</div>
-                          </td>
-                        </tr>
-                      ))}
-                      {filteredAttendees.length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="px-6 py-20 text-center">
-                             <div className="flex flex-col items-center gap-3">
-                               <Users className="w-10 h-10 text-slate-200" />
-                               <p className="text-sm font-bold text-slate-400">No matching registrants found</p>
-                             </div>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {activeTab === "questions" && (
-            <motion.div
-              key="questions"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-6"
-            >
-              <div className="bg-white rounded-[32px] p-8 border border-slate-200 shadow-sm">
-                 <div className="flex items-center gap-4 mb-8">
-                   <div className="w-12 h-12 bg-rcf-navy rounded-2xl flex items-center justify-center text-white">
-                     <MessageSquare className="w-6 h-6" />
-                   </div>
-                   <div>
-                     <h2 className="text-lg font-black text-slate-900 tracking-tight">Lo! App Interactivity</h2>
-                     <p className="text-xs text-slate-500 font-medium">Monitoring all thoughts and inquiries linked with #{slug}</p>
-                   </div>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   {questions.length === 0 ? (
-                      <div className="md:col-span-2 py-20 text-center bg-slate-50/50 rounded-[28px] border-4 border-dashed border-slate-100">
-                         <p className="text-sm font-bold text-slate-400">No questions have been asked yet for this event tag.</p>
-                      </div>
-                   ) : (
-                     questions.map((q) => (
-                       <div key={q.id} className="p-6 bg-white border border-slate-200 rounded-3xl hover:shadow-xl hover:shadow-slate-200/50 transition-all group">
-                         <div className="flex items-start justify-between mb-4">
-                           <div className="flex items-center gap-2">
-                             <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-black">
-                               {q.asker_name?.[0] || 'A'}
-                             </div>
-                             <div>
-                               <div className="text-xs font-bold text-slate-900">{q.asker_name || 'Anonymous'}</div>
-                               <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">{format(new Date(q.created_at), "MMM d, yyyy")}</div>
-                             </div>
-                           </div>
-                           <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
-                             q.status === 'answered' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                           }`}>
-                             {q.status}
-                           </span>
-                         </div>
-                         <p className="text-sm text-slate-600 leading-relaxed font-medium mb-4">&quot;{q.question_text}&quot;</p>
-                         {q.scripture_reference && (
-                           <div className="flex items-center gap-1.5 p-2 bg-indigo-50 text-indigo-700 rounded-xl text-[10px] font-bold">
-                             <Calendar className="w-3 h-3" />
-                             {q.scripture_reference}
-                           </div>
-                         )}
-                         {q.answer_text && (
-                           <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                             <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                               Official Response
-                             </div>
-                             <p className="text-xs text-slate-600 leading-relaxed italic">&quot;{q.answer_text}&quot;</p>
-                           </div>
-                         )}
-                       </div>
-                     ))
-                   )}
-                 </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
-    </div>
-  );
+interface Registrant {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone_number: string;
+    gender?: string | null;
+    level?: string | null;
+    department?: string | null;
+    matric_number?: string | null;
+    is_rcf_member?: boolean | null;
+    created_at: string;
 }
 
-function StatCard({ label, value, icon: Icon, color }: any) {
-  const colorMap: any = {
-    blue: "bg-blue-600 text-white shadow-blue-500/20",
-    indigo: "bg-indigo-600 text-white shadow-indigo-500/20",
-    amber: "bg-amber-500 text-white shadow-amber-500/20",
-    teal: "bg-teal-600 text-white shadow-teal-500/20",
-  };
+interface EventQuestion {
+    id: string;
+    asker_name?: string | null;
+    question_text: string;
+    answer_text?: string | null;
+    scripture_reference?: string | null;
+    status: string;
+    created_at: string;
+}
 
-  return (
-    <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm relative overflow-hidden group">
-      <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 transition-transform duration-700">
-        <Icon className="w-32 h-32" />
-      </div>
-      <div className="relative z-10 flex flex-col items-start">
-        <div className={`w-10 h-10 ${colorMap[color]} rounded-2xl flex items-center justify-center mb-6 shadow-xl`}>
-          <Icon className="w-5 h-5" />
+const TABS: { id: TabType; label: string; icon: typeof Users }[] = [
+    { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "attendees", label: "Attendees", icon: Users },
+    { id: "questions", label: "Questions", icon: MessageSquare },
+];
+
+/** RFC-4180 quoting — names and departments routinely contain commas. */
+function csvCell(value: unknown): string {
+    const text = value === null || value === undefined ? "" : String(value);
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
+export default function EventAdminPage() {
+    const params = useParams();
+    const slug = params.slug as string;
+    const router = useRouter();
+    const reduceMotion = useReducedMotion();
+    const { user } = useProfileStore();
+
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [stats, setStats] = useState<EventAdminStats | null>(null);
+    const [questions, setQuestions] = useState<EventQuestion[]>([]);
+    const [activeTab, setActiveTab] = useState<TabType>("overview");
+    const [search, setSearch] = useState("");
+    const [levelFilter, setLevelFilter] = useState<string>("all");
+
+    const isAdmin = useMemo(() => isProfileAdmin(user), [user]);
+
+    useEffect(() => {
+        if (!loading && !isAdmin) {
+            router.push(`/events/${slug}`);
+        }
+    }, [isAdmin, loading, router, slug]);
+
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const statsData = await getEventAdminStats(slug);
+            if (!statsData) {
+                setError("This event could not be found.");
+                return;
+            }
+
+            setStats(statsData);
+            const questionsData = await getEventQuestions(
+                (statsData.event as { id: string }).id,
+            );
+            setQuestions(questionsData.success ? ((questionsData.data as EventQuestion[]) || []) : []);
+        } catch (err) {
+            console.error("Failed to load admin data", err);
+            setError("We couldn't load this event's data. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    }, [slug]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    const registrants = useMemo(
+        () => (stats?.registrants || []) as unknown as Registrant[],
+        [stats?.registrants],
+    );
+
+    const filteredAttendees = useMemo(() => {
+        const term = search.trim().toLowerCase();
+
+        return registrants.filter((r) => {
+            if (levelFilter !== "all" && (r.level?.trim() || "Unspecified") !== levelFilter) {
+                return false;
+            }
+            if (!term) return true;
+
+            return (
+                r.first_name?.toLowerCase().includes(term) ||
+                r.last_name?.toLowerCase().includes(term) ||
+                r.email?.toLowerCase().includes(term) ||
+                r.phone_number?.includes(term) ||
+                r.department?.toLowerCase().includes(term)
+            );
+        });
+    }, [registrants, search, levelFilter]);
+
+    const exportCSV = () => {
+        if (!registrants.length) return;
+
+        const headers = [
+            "First Name",
+            "Last Name",
+            "Email",
+            "Phone",
+            "Gender",
+            "Level",
+            "Department",
+            "Matric Number",
+            "RCF Member",
+            "Registered At",
+        ];
+
+        const rows = registrants.map((r) => [
+            r.first_name,
+            r.last_name,
+            r.email,
+            r.phone_number,
+            r.gender || "",
+            r.level || "",
+            r.department || "",
+            r.matric_number || "",
+            r.is_rcf_member ? "Yes" : "No",
+            formatEventDateTime(parseEventDate(r.created_at)),
+        ]);
+
+        const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+        const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${slug}-attendees.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    if (!isAdmin && !loading) return null;
+
+    if (loading) {
+        return (
+            <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 p-4">
+                <Loader2 className="h-8 w-8 animate-spin text-rcf-navy" />
+                <p className="text-sm font-medium text-slate-500">Loading event data...</p>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+                <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-8 text-center">
+                    <h1 className="text-lg font-bold text-slate-900">Something went wrong</h1>
+                    <p className="mt-2 text-sm text-slate-500">{error}</p>
+                    <button
+                        type="button"
+                        onClick={loadData}
+                        className="mt-6 w-full rounded-2xl bg-rcf-navy px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light"
+                    >
+                        Try again
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    const event = stats?.event as { title?: string; date?: string } | undefined;
+    const levelStats = stats?.levelStats || [];
+
+    return (
+        <div className="min-h-screen bg-slate-50">
+            <header className="sticky top-0 z-30 border-b border-slate-200 bg-white pt-safe">
+                <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <Link
+                                href={`/events/${slug}`}
+                                aria-label="Back to event"
+                                className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                            >
+                                <ArrowLeft className="h-5 w-5" />
+                            </Link>
+                            <div className="min-w-0">
+                                <h1 className="truncate text-base font-bold text-slate-900">
+                                    {event?.title || "Event"}
+                                </h1>
+                                <p className="truncate text-xs text-slate-500">
+                                    {formatEventDateTime(parseEventDate(event?.date))}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={loadData}
+                                aria-label="Refresh data"
+                                className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                            >
+                                <RefreshCcw className="h-5 w-5" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={exportCSV}
+                                disabled={!registrants.length}
+                                className="flex items-center gap-2 rounded-xl bg-rcf-navy px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light disabled:opacity-40"
+                            >
+                                <Download className="h-4 w-4" />
+                                <span className="hidden sm:inline">Export CSV</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <nav className="no-scrollbar mt-2 flex gap-1 overflow-x-auto" aria-label="Sections">
+                        {TABS.map((tab) => {
+                            const count =
+                                tab.id === "attendees"
+                                    ? stats?.totalRegistered
+                                    : tab.id === "questions"
+                                        ? questions.length
+                                        : undefined;
+                            const isActive = activeTab === tab.id;
+
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setActiveTab(tab.id)}
+                                    aria-current={isActive ? "page" : undefined}
+                                    className={`relative flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold whitespace-nowrap transition-colors ${
+                                        isActive
+                                            ? "bg-rcf-navy/5 text-rcf-navy"
+                                            : "text-slate-500 hover:text-slate-900"
+                                    }`}
+                                >
+                                    <tab.icon className="h-4 w-4" />
+                                    {tab.label}
+                                    {count !== undefined && (
+                                        <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                                            {count}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </nav>
+                </div>
+            </header>
+
+            <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+                <motion.div
+                    key={activeTab}
+                    initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                >
+                    {activeTab === "overview" && (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                                <StatCard
+                                    label="Registered"
+                                    value={stats?.totalRegistered ?? 0}
+                                    icon={Users}
+                                />
+                                <StatCard
+                                    label="Members"
+                                    value={stats?.rcfMembers ?? 0}
+                                    icon={CheckCircle2}
+                                />
+                                <StatCard
+                                    label="Guests"
+                                    value={stats?.guests ?? 0}
+                                    icon={UserRound}
+                                />
+                                <StatCard
+                                    label="Questions"
+                                    value={questions.length}
+                                    icon={MessageSquare}
+                                />
+                            </div>
+
+                            {/* Levels — the breakdown the team plans logistics around */}
+                            <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6">
+                                <div className="flex items-center gap-2">
+                                    <GraduationCap className="h-4 w-4 text-slate-400" />
+                                    <h2 className="text-base font-bold text-slate-900">
+                                        Attendees by level
+                                    </h2>
+                                </div>
+
+                                {!stats?.collectsLevel && (
+                                    <p className="mt-2 text-sm text-slate-500">
+                                        This event&apos;s form doesn&apos;t ask for level. Enable the
+                                        &ldquo;Level / status&rdquo; field when editing the event to
+                                        collect it.
+                                    </p>
+                                )}
+
+                                {levelStats.length === 0 ? (
+                                    <p className="mt-4 text-sm text-slate-400">
+                                        No registrations yet.
+                                    </p>
+                                ) : (
+                                    <ul className="mt-5 space-y-4">
+                                        {levelStats.map((stat) => (
+                                            <li key={stat.level}>
+                                                <div className="flex items-baseline justify-between gap-3">
+                                                    <span className="text-sm font-semibold text-slate-900">
+                                                        {stat.label}
+                                                    </span>
+                                                    <span className="text-sm text-slate-500 tabular-nums">
+                                                        <span className="font-semibold text-slate-900">
+                                                            {stat.count}
+                                                        </span>{" "}
+                                                        · {stat.percentage}%
+                                                    </span>
+                                                </div>
+                                                <div
+                                                    className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100"
+                                                    role="img"
+                                                    aria-label={`${stat.label}: ${stat.count} of ${stats?.totalRegistered} registrations`}
+                                                >
+                                                    <div
+                                                        className="h-full rounded-full bg-rcf-navy"
+                                                        style={{ width: `${stat.percentage}%` }}
+                                                    />
+                                                </div>
+                                                <p className="mt-1.5 text-xs text-slate-500">
+                                                    {stat.members} member
+                                                    {stat.members === 1 ? "" : "s"} · {stat.guests}{" "}
+                                                    guest{stat.guests === 1 ? "" : "s"}
+                                                </p>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </section>
+
+                            <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6">
+                                <h2 className="text-base font-bold text-slate-900">Gender split</h2>
+                                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                    <Tile
+                                        label="Brothers"
+                                        value={stats?.genderBreakdown.male ?? 0}
+                                    />
+                                    <Tile
+                                        label="Sisters"
+                                        value={stats?.genderBreakdown.female ?? 0}
+                                    />
+                                    {!!stats?.genderBreakdown.other && (
+                                        <Tile
+                                            label="Unspecified"
+                                            value={stats.genderBreakdown.other}
+                                        />
+                                    )}
+                                </div>
+                            </section>
+                        </div>
+                    )}
+
+                    {activeTab === "attendees" && (
+                        <div className="space-y-4">
+                            <div className="space-y-3">
+                                <div className="relative">
+                                    <Search className="absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                    <label htmlFor="attendee-search" className="sr-only">
+                                        Search attendees
+                                    </label>
+                                    <input
+                                        id="attendee-search"
+                                        type="search"
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                        placeholder="Search name, email, phone or department"
+                                        className="w-full rounded-2xl border border-slate-200 bg-white py-3 pr-4 pl-11 text-sm font-medium outline-none transition-all placeholder:text-slate-400 focus:border-rcf-navy focus:ring-4 focus:ring-rcf-navy/10"
+                                    />
+                                </div>
+
+                                {levelStats.length > 1 && (
+                                    <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+                                        <FilterChip
+                                            active={levelFilter === "all"}
+                                            onClick={() => setLevelFilter("all")}
+                                        >
+                                            All ({stats?.totalRegistered ?? 0})
+                                        </FilterChip>
+                                        {levelStats.map((stat) => (
+                                            <FilterChip
+                                                key={stat.level}
+                                                active={levelFilter === stat.level}
+                                                onClick={() => setLevelFilter(stat.level)}
+                                            >
+                                                {stat.label} ({stat.count})
+                                            </FilterChip>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <p className="text-xs font-medium text-slate-500">
+                                    Showing {filteredAttendees.length} of {stats?.totalRegistered ?? 0}
+                                </p>
+                            </div>
+
+                            {filteredAttendees.length === 0 ? (
+                                <div className="rounded-3xl border border-slate-200 bg-white px-6 py-16 text-center">
+                                    <Users className="mx-auto h-8 w-8 text-slate-300" />
+                                    <p className="mt-3 text-sm font-medium text-slate-500">
+                                        No attendees match this filter.
+                                    </p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Cards on phones — a 5-column table is unusable at 360px */}
+                                    <ul className="space-y-3 md:hidden">
+                                        {filteredAttendees.map((r) => (
+                                            <li
+                                                key={r.id}
+                                                className="rounded-2xl border border-slate-200 bg-white p-4"
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-bold text-slate-900">
+                                                            {r.first_name} {r.last_name}
+                                                        </p>
+                                                        <p className="truncate text-xs text-slate-500">
+                                                            {r.email}
+                                                        </p>
+                                                        <p className="text-xs text-slate-500">
+                                                            {r.phone_number}
+                                                        </p>
+                                                    </div>
+                                                    <MemberBadge isMember={!!r.is_rcf_member} />
+                                                </div>
+                                                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                                    <span className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-600">
+                                                        {r.level ? levelLabel(r.level) : "No level"}
+                                                    </span>
+                                                    {r.department && (
+                                                        <span className="rounded-lg bg-slate-100 px-2 py-1 text-slate-600">
+                                                            {r.department}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+
+                                    <div className="hidden overflow-hidden rounded-3xl border border-slate-200 bg-white md:block">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left">
+                                                <thead>
+                                                    <tr className="border-b border-slate-100 bg-slate-50/60">
+                                                        {[
+                                                            "Name",
+                                                            "Contact",
+                                                            "Level",
+                                                            "Type",
+                                                            "Registered",
+                                                        ].map((h) => (
+                                                            <th
+                                                                key={h}
+                                                                scope="col"
+                                                                className="px-5 py-3 text-xs font-semibold tracking-wide text-slate-500 uppercase"
+                                                            >
+                                                                {h}
+                                                            </th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {filteredAttendees.map((r) => (
+                                                        <tr
+                                                            key={r.id}
+                                                            className="transition-colors hover:bg-slate-50/60"
+                                                        >
+                                                            <td className="px-5 py-4">
+                                                                <p className="text-sm font-semibold text-slate-900">
+                                                                    {r.first_name} {r.last_name}
+                                                                </p>
+                                                                {r.department && (
+                                                                    <p className="text-xs text-slate-500">
+                                                                        {r.department}
+                                                                    </p>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-5 py-4">
+                                                                <p className="text-sm text-slate-600">
+                                                                    {r.email}
+                                                                </p>
+                                                                <p className="text-xs text-slate-500">
+                                                                    {r.phone_number}
+                                                                </p>
+                                                            </td>
+                                                            <td className="px-5 py-4 text-sm font-medium text-slate-700">
+                                                                {r.level ? levelLabel(r.level) : "—"}
+                                                            </td>
+                                                            <td className="px-5 py-4">
+                                                                <MemberBadge
+                                                                    isMember={!!r.is_rcf_member}
+                                                                />
+                                                            </td>
+                                                            <td className="px-5 py-4 text-xs text-slate-500">
+                                                                {formatEventDateTime(
+                                                                    parseEventDate(r.created_at),
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === "questions" && (
+                        <div className="space-y-3">
+                            <p className="text-sm text-slate-500">
+                                Questions asked on Lo! tagged{" "}
+                                <span className="font-mono font-semibold text-slate-700">
+                                    #{slug}
+                                </span>
+                            </p>
+
+                            {questions.length === 0 ? (
+                                <div className="rounded-3xl border border-slate-200 bg-white px-6 py-16 text-center">
+                                    <MessageSquare className="mx-auto h-8 w-8 text-slate-300" />
+                                    <p className="mt-3 text-sm font-medium text-slate-500">
+                                        No questions yet for this event.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    {questions.map((q) => (
+                                        <article
+                                            key={q.id}
+                                            className="rounded-3xl border border-slate-200 bg-white p-5"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-900">
+                                                        {q.asker_name || "Anonymous"}
+                                                    </p>
+                                                    <p className="text-xs text-slate-500">
+                                                        {formatEventDateTime(
+                                                            parseEventDate(q.created_at),
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                <span
+                                                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                                        q.status === "answered"
+                                                            ? "bg-emerald-50 text-emerald-700"
+                                                            : "bg-amber-50 text-amber-700"
+                                                    }`}
+                                                >
+                                                    {q.status}
+                                                </span>
+                                            </div>
+
+                                            <p className="mt-3 text-sm leading-relaxed text-slate-700">
+                                                {q.question_text}
+                                            </p>
+
+                                            {q.scripture_reference && (
+                                                <p className="mt-3 inline-block rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                                    {q.scripture_reference}
+                                                </p>
+                                            )}
+
+                                            {q.answer_text && (
+                                                <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+                                                    <p className="text-xs font-semibold tracking-wide text-slate-400 uppercase">
+                                                        Response
+                                                    </p>
+                                                    <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                                                        {q.answer_text}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </article>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </motion.div>
+            </main>
         </div>
-        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</div>
-        <div className="text-4xl font-black text-slate-900 tracking-tighter">{value || 0}</div>
-      </div>
-    </div>
-  );
+    );
+}
+
+function StatCard({
+    label,
+    value,
+    icon: Icon,
+}: {
+    label: string;
+    value: number;
+    icon: typeof Users;
+}) {
+    return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+            <div className="flex items-center gap-2 text-slate-400">
+                <Icon className="h-4 w-4" />
+                <span className="text-xs font-semibold tracking-wide uppercase">{label}</span>
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums sm:text-3xl">
+                {value}
+            </p>
+        </div>
+    );
+}
+
+function Tile({ label, value }: { label: string; value: number }) {
+    return (
+        <div className="rounded-2xl bg-slate-50 p-4 text-center">
+            <p className="text-2xl font-bold text-slate-900 tabular-nums">{value}</p>
+            <p className="mt-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                {label}
+            </p>
+        </div>
+    );
+}
+
+function MemberBadge({ isMember }: { isMember: boolean }) {
+    return (
+        <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                isMember ? "bg-rcf-navy/5 text-rcf-navy" : "bg-amber-50 text-amber-700"
+            }`}
+        >
+            {isMember ? "Member" : "Guest"}
+        </span>
+    );
+}
+
+function FilterChip({
+    active,
+    onClick,
+    children,
+}: {
+    active: boolean;
+    onClick: () => void;
+    children: React.ReactNode;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-pressed={active}
+            className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-colors ${
+                active
+                    ? "border-rcf-navy bg-rcf-navy text-white"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+            }`}
+        >
+            {children}
+        </button>
+    );
 }
