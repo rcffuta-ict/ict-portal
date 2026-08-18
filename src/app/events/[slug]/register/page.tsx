@@ -1,57 +1,121 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  User,
-  Mail,
-  Phone,
-  GraduationCap,
-  Users,
-  CheckCircle2,
-  ArrowRight,
-  Loader2,
-  AlertCircle,
-  ArrowLeft,
-  X,
-  LogIn,
-  Info,
-  BookOpen,
-  Sparkles,
-  School,
-  IdCard,
-  Building,
-  ClipboardList,
-  Lock
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
+import { Resolver, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+    AlertCircle,
+    ArrowLeft,
+    CalendarDays,
+    CheckCircle2,
+    Clock,
+    Loader2,
+    Lock,
+    LogIn,
+    MapPin,
+    X,
+} from "lucide-react";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { getEventBySlug, registerForEvent } from "../../actions";
 import { CompactPreloader } from "@/components/ui/preloader";
 import { Logo } from "@/components/ui/logo";
-import { GenericFooter } from "@/components/events/footer";
-import { Copyright } from "@/components/ui/copyright";
-import { useTenureStore } from "@/lib/stores/tenure.store";
+import {
+    EVENT_TIME_ZONE_LABEL,
+    EventRecord,
+    formatEventDate,
+    formatEventTime,
+    getEventLocation,
+    getRegistrationConfig,
+    levelOptionsFor,
+    parseEventDate,
+} from "@/lib/event-utils";
 
-type RegistrationStep = "form" | "success";
+/* -------------------------------------------------------------------------- */
+/* Page shell — handles loading / not-found / closed states                    */
+/* -------------------------------------------------------------------------- */
 
 export default function GenericEventRegistration() {
-  const params = useParams();
-  const router = useRouter();
-  const slug = params.slug as string;
-  const user = useProfileStore(e=>e.user);
-  const tenureName = useTenureStore(e=>e.activeTenure);
-  const isAuthenticated = !!user;
+    const params = useParams();
+    const slug = params.slug as string;
 
-  const [event, setEvent] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [step, setStep] = useState<RegistrationStep>("form");
-  const [showLoginBanner, setShowLoginBanner] = useState(true);
+    const [event, setEvent] = useState<EventRecord | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState<Record<string, string>>({
+    const load = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await getEventBySlug(slug);
+            if (result.success && result.data) {
+                setEvent(result.data as EventRecord);
+            } else {
+                setError(result.error || "Event not found");
+            }
+        } catch (err) {
+            console.error("Failed to load event:", err);
+            setError("We couldn't load this event. Please check your connection.");
+        } finally {
+            setLoading(false);
+        }
+    }, [slug]);
+
+    useEffect(() => {
+        load();
+    }, [load]);
+
+    if (loading) {
+        return <CompactPreloader title="Loading registration..." showUserIcon={false} />;
+    }
+
+    if (error || !event) {
+        return (
+            <Centered
+                title="Registration unavailable"
+                description={error || "This event could not be found."}
+                icon={<AlertCircle className="h-8 w-8 text-red-500" />}
+            >
+                <button
+                    type="button"
+                    onClick={load}
+                    className="rounded-2xl bg-rcf-navy px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light"
+                >
+                    Try again
+                </button>
+                <Link
+                    href="/events"
+                    className="rounded-2xl px-6 py-3 text-sm font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                >
+                    Browse events
+                </Link>
+            </Centered>
+        );
+    }
+
+    // `event` is settled here, so the form mounts with the final field config.
+    return <RegistrationView event={event} slug={slug} />;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Form                                                                        */
+/* -------------------------------------------------------------------------- */
+
+type FieldName =
+    | "firstName"
+    | "lastName"
+    | "email"
+    | "phone"
+    | "gender"
+    | "level"
+    | "department"
+    | "matricNumber";
+type FormValues = Record<FieldName, string>;
+
+const EMPTY_VALUES: FormValues = {
     firstName: "",
     lastName: "",
     email: "",
@@ -60,326 +124,517 @@ export default function GenericEventRegistration() {
     level: "",
     department: "",
     matricNumber: "",
-  });
+};
 
-  const regConfig = useMemo(() => {
-    return event?.config?.registration || { enabled: false, fields: [] };
-  }, [event]);
+/** Only the fields the admin chose to collect are validated. */
+function buildSchema(fields: string[]) {
+    const required = (message: string) => z.string().trim().min(1, message);
+    const optional = z.string().optional();
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const result = await getEventBySlug(slug);
-        if (result.success) {
-          const eventData = result.data;
-          if (!eventData.config?.registration?.enabled) {
-            setError("Registration is not available for this event.");
-          }
-          setEvent(eventData);
-
-          // Pre-fill if authenticated
-          if (isAuthenticated && user?.profile) {
-            setFormData({
-              firstName: user.profile.firstName || "",
-              lastName: user.profile.lastName || "",
-              email: user.profile.email || "",
-              phone: user.profile.phoneNumber || "",
-              gender: user.profile.gender || "",
-              level: user.academics?.currentLevel || "",
-              department: user.academics.department || "",
-              matricNumber: user.academics.matricNumber || "",
-            });
-          }
-        } else {
-          setError(result.error || "Event not found");
-        }
-      } catch (err) {
-        setError("Failed to initialize registration page");
-      } finally {
-        setLoading(false);
-      }
+    const shape: Record<FieldName, z.ZodTypeAny> = {
+        firstName: fields.includes("firstName")
+            ? required("Enter your first name")
+            : optional,
+        lastName: fields.includes("lastName") ? required("Enter your last name") : optional,
+        email: fields.includes("email")
+            ? z
+                .string()
+                .trim()
+                .min(1, "Enter your email address")
+                .regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, "Enter a valid email address")
+            : optional,
+        phone: fields.includes("phone")
+            ? z
+                .string()
+                .trim()
+                .min(1, "Enter your phone number")
+                .regex(/^[0-9+\-\s()]{7,20}$/, "Enter a valid phone number")
+            : optional,
+        gender: fields.includes("gender") ? required("Select an option") : optional,
+        level: fields.includes("level") ? required("Select your level") : optional,
+        department: fields.includes("department") ? required("Enter your department") : optional,
+        matricNumber: fields.includes("matricNumber")
+            ? required("Enter your matric number")
+            : optional,
     };
-    init();
-  }, [slug, isAuthenticated, user]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+    return z.object(shape);
+}
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
+function RegistrationView({ event, slug }: { event: EventRecord; slug: string }) {
+    const user = useProfileStore((e) => e.user);
+    const reduceMotion = useReducedMotion();
+    const isAuthenticated = !!user;
 
-    try {
-      const result = await registerForEvent({
-        event_id: event.id,
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        email: formData.email,
-        phone_number: formData.phone,
-        gender: formData.gender,
-        level: formData.level,
-        department: formData.department,
-        matric_number: formData.matricNumber,
-        is_rcf_member: isAuthenticated || !!user,
-      });
+    const [submitError, setSubmitError] = useState<string | null>(null);
+    const [submitted, setSubmitted] = useState(false);
+    const [showLoginHint, setShowLoginHint] = useState(true);
 
-      if (result.success) {
-        setStep("success");
-      } else {
-        setError(result.error || "Registration failed");
-      }
-    } catch (err) {
-      setError("An unexpected error occurred");
-    } finally {
-      setSubmitting(false);
+    const regConfig = useMemo(() => getRegistrationConfig(event.config), [event.config]);
+    const location = useMemo(() => getEventLocation(event.config), [event.config]);
+    const eventDate = useMemo(() => parseEventDate(event.date), [event.date]);
+    const levels = useMemo(() => levelOptionsFor(regConfig), [regConfig]);
+
+    const defaultValues = useMemo<FormValues>(() => {
+        if (!user?.profile) return EMPTY_VALUES;
+        return {
+            firstName: user.profile.firstName || "",
+            lastName: user.profile.lastName || "",
+            email: user.profile.email || "",
+            phone: user.profile.phoneNumber || "",
+            gender: user.profile.gender || "",
+            level: user.academics?.currentLevel || "",
+            department: user.academics?.department || "",
+            matricNumber: user.academics?.matricNumber || "",
+        };
+    }, [user]);
+
+    const {
+        register,
+        handleSubmit,
+        reset,
+        formState: { errors, isSubmitting },
+    } = useForm<FormValues>({
+        resolver: zodResolver(buildSchema(regConfig.fields)) as Resolver<FormValues>,
+        defaultValues,
+    });
+
+    // Profile arrives from the store after hydration; refill once it does.
+    useEffect(() => {
+        reset(defaultValues);
+    }, [defaultValues, reset]);
+
+    const collects = (field: FieldName) => regConfig.fields.includes(field);
+
+    const onSubmit = async (values: FormValues) => {
+        setSubmitError(null);
+        try {
+            const result = await registerForEvent({
+                event_id: event.id,
+                first_name: values.firstName,
+                last_name: values.lastName,
+                email: values.email,
+                phone_number: values.phone,
+                gender: values.gender,
+                level: values.level,
+                department: values.department,
+                matric_number: values.matricNumber,
+                is_rcf_member: isAuthenticated,
+            });
+
+            if (result.success) {
+                setSubmitted(true);
+            } else {
+                setSubmitError(result.error || "Registration failed. Please try again.");
+            }
+        } catch (err) {
+            console.error("Registration failed:", err);
+            setSubmitError("Something went wrong. Please check your connection and retry.");
+        }
+    };
+
+    if (!regConfig.enabled || !event.is_active) {
+        return (
+            <Centered
+                title="Registration closed"
+                description={`Registration for ${event.title} is not open${
+                    regConfig.enabled ? " at the moment" : " — no sign-up is needed"
+                }.`}
+                icon={<X className="h-8 w-8 text-slate-400" />}
+            >
+                <Link
+                    href={`/events/${slug}`}
+                    className="rounded-2xl bg-rcf-navy px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light"
+                >
+                    Event details
+                </Link>
+            </Centered>
+        );
     }
-  };
 
-  if (loading) return <CompactPreloader title="Loading Registration..." />;
+    if (event.is_exclusive && !isAuthenticated) {
+        return (
+            <Centered
+                title="Members only"
+                description="This event is exclusive to fellowship members. Log in to continue."
+                icon={<Lock className="h-8 w-8 text-rcf-navy" />}
+            >
+                <Link
+                    href={`/login?returnUrl=/events/${slug}/register`}
+                    className="rounded-2xl bg-rcf-navy px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light"
+                >
+                    Log in
+                </Link>
+                <Link
+                    href="/register"
+                    className="rounded-2xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                    Join the fellowship
+                </Link>
+            </Centered>
+        );
+    }
 
-  if (error && !event) {
+    if (submitted) {
+        return (
+            <Centered
+                title="You're registered"
+                description={`Your spot for ${event.title} is confirmed. See you there!`}
+                icon={<CheckCircle2 className="h-8 w-8 text-emerald-600" />}
+            >
+                <Link
+                    href={`/events/${slug}`}
+                    className="rounded-2xl bg-rcf-navy px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light"
+                >
+                    Event details
+                </Link>
+                <Link
+                    href="/events"
+                    className="rounded-2xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                    All events
+                </Link>
+            </Centered>
+        );
+    }
+
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-4xl p-12 text-center shadow-xl">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-6" />
-          <h1 className="text-2xl font-black text-slate-900 mb-4">Registration Unavailable</h1>
-          <p className="text-slate-500 mb-8">{error}</p>
-          <button onClick={() => router.back()} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold">Go Back</button>
-        </div>
-      </div>
-    );
-  }
-
-  const isFieldRequired = (fieldName: string) => {
-    return regConfig.fields?.includes(fieldName);
-  };
-
-  const availableLevels = [];
-  if (regConfig.allowStudents) {
-    availableLevels.push("100L", "200L", "300L", "400L", "500L", "Postgraduate");
-  }
-  if (regConfig.allowAlumni) availableLevels.push("Alumni");
-  if (regConfig.allowGuest) availableLevels.push("Guest");
-
-  return (
-    <>
-        <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
-        {/* Left Panel - Event Summary */}
-        <div className="lg:w-1/3 lg:fixed lg:inset-y-0 lg:left-0 bg-slate-900 p-8 lg:p-12 flex flex-col justify-between overflow-hidden">
-            <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '32px 32px'}} />
-
-            <div className="relative z-10">
-            <Link href={`/events/${slug}`} className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-12 font-bold group">
-                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-                Back to Details
-            </Link>
-
-            <div className="mb-6">
-                <Logo width={90} variant="white"/>
-            </div>
-            <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-                <ClipboardList className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-blue-400 font-black uppercase tracking-widest text-xs">Event Registration</span>
-            </div>
-
-            <h1 className="text-3xl lg:text-4xl font-black text-white mb-6 leading-tight">
-                {event?.title}
-            </h1>
-
-            <p className="text-slate-400 text-lg mb-8 leading-relaxed italic">
-                &ldquo;{event?.description?.slice(0, 150)}{event?.description?.length > 150 ? '...' : ''}&rdquo;
-            </p>
-            </div>
-
-
-
-            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.6, duration: 0.8 }}
-                                className="flex items-center gap-4 text-xs font-medium text-gray-400"
+        <div className="min-h-screen bg-slate-50">
+            {/* Event summary — a header on mobile, a side rail from lg up */}
+            <div className="lg:flex lg:min-h-screen">
+                <aside className="bg-rcf-navy px-4 pt-safe pb-6 text-white sm:px-6 lg:w-2/5 lg:max-w-md lg:shrink-0 lg:px-10 lg:py-10">
+                    <div className="mx-auto max-w-lg lg:mx-0">
+                        <div className="flex items-center justify-between gap-4 pt-4 lg:pt-0">
+                            <Link
+                                href={`/events/${slug}`}
+                                className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5 text-sm font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white"
                             >
-                                <Copyright tenure={tenureName?.name} variant="light" />
-                            </motion.div>
-        </div>
+                                <ArrowLeft className="h-4 w-4" />
+                                Back
+                            </Link>
+                            <Logo width={72} variant="white" />
+                        </div>
 
-        {/* Right Panel - Form / messaging */}
-        <div className="lg:w-2/3 lg:ml-[33.33%] min-h-screen">
-            <AnimatePresence mode="wait">
-            {!event?.is_active ? (
-                <motion.div key="closed" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="p-8 lg:p-16 max-w-xl mx-auto flex flex-col items-center justify-center min-h-screen text-center">
-                    <div className="w-24 h-24 bg-slate-100 rounded-4xl flex items-center justify-center mb-8">
-                        <X className="w-12 h-12 text-slate-400" />
+                        <p className="mt-6 text-xs font-semibold tracking-wide text-rcf-gold uppercase">
+                            Registration
+                        </p>
+                        <h1 className="mt-2 text-2xl leading-tight font-bold text-balance lg:text-3xl">
+                            {event.title}
+                        </h1>
+
+                        <dl className="mt-5 space-y-3 text-sm text-white/80">
+                            <div className="flex items-start gap-3">
+                                <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-rcf-gold" />
+                                <div>
+                                    <dt className="sr-only">Date</dt>
+                                    <dd>{formatEventDate(eventDate)}</dd>
+                                </div>
+                            </div>
+                            <div className="flex items-start gap-3">
+                                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-rcf-gold" />
+                                <div>
+                                    <dt className="sr-only">Time</dt>
+                                    <dd>
+                                        {formatEventTime(eventDate)} {EVENT_TIME_ZONE_LABEL}
+                                    </dd>
+                                </div>
+                            </div>
+                            <div className="flex items-start gap-3">
+                                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-rcf-gold" />
+                                <div>
+                                    <dt className="sr-only">Location</dt>
+                                    <dd>
+                                        {location ? location.venue : "Venue to be announced"}
+                                        {location?.address && (
+                                            <span className="mt-0.5 block text-white/60">
+                                                {location.address}
+                                            </span>
+                                        )}
+                                    </dd>
+                                </div>
+                            </div>
+                        </dl>
                     </div>
-                    <h2 className="text-4xl font-black text-slate-900 mb-4">Registration Closed</h2>
-                    <p className="text-slate-500 text-lg mb-10 font-medium leading-relaxed">Registration for <strong>{event?.title}</strong> is currently closed or has concluded. Please check back for future updates.</p>
-                    <Link href="/events" className="px-10 py-5 bg-slate-900 text-white rounded-3xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all">Browse Events</Link>
-                </motion.div>
-            ) : event?.is_exclusive && !isAuthenticated ? (
-                <motion.div key="exclusive" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="p-8 lg:p-16 max-w-xl mx-auto flex flex-col items-center justify-center min-h-screen text-center">
-                    <div className="w-24 h-24 bg-blue-50 rounded-4xl flex items-center justify-center mb-8">
-                        <Lock className="w-12 h-12 text-blue-600" />
-                    </div>
-                    <h2 className="text-4xl font-black text-slate-900 mb-4">Exclusive Access</h2>
-                    <p className="text-slate-500 text-lg mb-10 font-medium leading-relaxed">This event is exclusive to members. Please login to your portal account to proceed with registration.</p>
-                    <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
-                        <Link href={`/login?returnUrl=/events/${slug}/register`} className="px-10 py-5 bg-blue-600 text-white rounded-3xl font-black uppercase tracking-widest text-xs hover:bg-blue-500 transition-all shadow-xl shadow-blue-500/20">Login to Portal</Link>
-                        <Link href="/register" className="px-10 py-5 bg-white border border-slate-200 text-slate-900 rounded-3xl font-black uppercase tracking-widest text-xs hover:bg-slate-50 transition-all">Join Fellowship</Link>
-                    </div>
-                </motion.div>
-            ) : step === "form" ? (
-                <motion.div key="form" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="p-8 lg:p-16 max-w-2xl mx-auto">
-                <div className="mb-10">
-                    <h2 className="text-3xl font-black text-slate-900 mb-2">Registration Form</h2>
-                    <p className="text-slate-500 font-medium">Please provide the necessary details below to secure your attendance.</p>
-                </div>
+                </aside>
 
-                {!isAuthenticated && showLoginBanner && (
-                    <div className="mb-8 p-6 bg-blue-50 border border-blue-100 rounded-3xl flex items-start gap-4">
-                    <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center shrink-0">
-                        <LogIn className="w-6 h-6 text-blue-600" />
-                    </div>
-                    <div className="flex-1">
-                        <p className="text-blue-900 font-bold mb-1">Already have an account?</p>
-                        <p className="text-blue-700 text-sm mb-4">Login to automatically fill the form with your profile data.</p>
-                        <div className="flex gap-3">
-                        <Link href={`/login?returnUrl=/events/${slug}/register`} className="px-4 py-2 bg-blue-600 text-white text-xs font-black uppercase rounded-xl">Login</Link>
-                        <button onClick={() => setShowLoginBanner(false)} className="px-4 py-2 text-blue-600 text-xs font-black uppercase">Dismiss</button>
-                        </div>
-                    </div>
-                    </div>
-                )}
+                <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+                    <motion.div
+                        initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="mx-auto max-w-lg"
+                    >
+                        <h2 className="text-xl font-bold text-slate-900">Your details</h2>
+                        <p className="mt-1 text-sm text-slate-500">
+                            All fields below are required to complete your registration.
+                        </p>
 
-                {error && (
-                    <div className="mb-8 p-6 bg-red-50 border border-red-100 rounded-3xl flex items-center gap-4">
-                    <AlertCircle className="w-6 h-6 text-red-600 shrink-0" />
-                    <p className="text-red-700 text-sm font-bold">{error}</p>
-                    </div>
-                )}
-
-                <form onSubmit={handleSubmit} className="space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {isFieldRequired("firstName") && (
-                        <div className="space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">First Name</label>
-                        <div className="relative">
-                            <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                            <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} required className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold" placeholder="Enter first name" />
-                        </div>
-                        </div>
-                    )}
-
-                    {isFieldRequired("lastName") && (
-                        <div className="space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Last Name</label>
-                        <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} required className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold" placeholder="Enter last name" />
-                        </div>
-                    )}
-
-                    {isFieldRequired("email") && (
-                        <div className="md:col-span-2 space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Email Address</label>
-                        <div className="relative">
-                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                            <input type="email" name="email" value={formData.email} onChange={handleInputChange} required className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold" placeholder="yourname@example.com" />
-                        </div>
-                        </div>
-                    )}
-
-                    {isFieldRequired("phone") && (
-                        <div className="space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Phone Number</label>
-                        <div className="relative">
-                            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                            <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} required className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold" placeholder="080..." />
-                        </div>
-                        </div>
-                    )}
-
-                    {isFieldRequired("gender") && (
-                        <div className="space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Gender</label>
-                        <div className="relative">
-                            <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                            <select name="gender" value={formData.gender} onChange={handleInputChange} required className="w-full pl-12 pr-10 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold appearance-none">
-                            <option value="">Select gender</option>
-                            <option value="male">Brother</option>
-                            <option value="female">Sister</option>
-                            </select>
-                        </div>
-                        </div>
-                    )}
-
-                    {isFieldRequired("level") && (
-                        <div className="space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Current Status</label>
-                        <div className="relative">
-                            <GraduationCap className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                            <select name="level" value={formData.level} onChange={handleInputChange} required className="w-full pl-12 pr-10 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold appearance-none">
-                            <option value="">Select status</option>
-                            {availableLevels.map(lvl => (
-                                <option key={lvl} value={lvl}>{lvl}</option>
-                            ))}
-                            </select>
-                        </div>
-                        </div>
-                    )}
-
-                    {isFieldRequired("department") && (
-                        <div className="space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Department</label>
-                        <div className="relative">
-                            <Building className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                            <input type="text" name="department" value={formData.department} onChange={handleInputChange} className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold" placeholder="Computer Science..." />
-                        </div>
-                        </div>
-                    )}
-
-                    {isFieldRequired("matricNumber") && (
-                        <div className="space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Matric Number</label>
-                        <div className="relative">
-                            <IdCard className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                            <input type="text" name="matricNumber" value={formData.matricNumber} onChange={handleInputChange} className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold" placeholder="12/3456" />
-                        </div>
-                        </div>
-                    )}
-                    </div>
-
-                    <div className="pt-6">
-                    <button type="submit" disabled={submitting} className="w-full py-5 bg-slate-900 hover:bg-blue-600 text-white font-black uppercase tracking-widest rounded-3xl transition-all flex items-center justify-center gap-3 shadow-2xl shadow-slate-900/10 disabled:opacity-50 group">
-                        {submitting ? (
-                        <><Loader2 className="w-6 h-6 animate-spin" /> Processing...</>
-                        ) : (
-                        <>Register <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" /></>
+                        {!isAuthenticated && showLoginHint && (
+                            <div className="mt-5 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                                <LogIn className="mt-0.5 h-5 w-5 shrink-0 text-rcf-navy" />
+                                <div className="flex-1">
+                                    <p className="text-sm font-semibold text-slate-900">
+                                        Already a member?
+                                    </p>
+                                    <p className="mt-0.5 text-sm text-slate-500">
+                                        Log in and we&apos;ll fill this in for you.
+                                    </p>
+                                    <div className="mt-3 flex gap-2">
+                                        <Link
+                                            href={`/login?returnUrl=/events/${slug}/register`}
+                                            className="rounded-xl bg-rcf-navy px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-rcf-navy-light"
+                                        >
+                                            Log in
+                                        </Link>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowLoginHint(false)}
+                                            className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-900"
+                                        >
+                                            Dismiss
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         )}
-                    </button>
-                    </div>
-                </form>
-                </motion.div>
-            ) : (
-                <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="p-8 lg:p-16 max-w-xl mx-auto flex flex-col items-center justify-center min-h-screen text-center">
-                <div className="w-24 h-24 bg-green-100 rounded-4xl flex items-center justify-center mb-8">
-                    <CheckCircle2 className="w-12 h-12 text-green-600" />
-                </div>
-                <h2 className="text-4xl font-black text-slate-900 mb-4">You&apos;re Registered!</h2>
-                <p className="text-slate-500 text-lg mb-10 font-medium leading-relaxed">Your registration for <strong>{event?.title}</strong> was successful. We look forward to seeing you there!</p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
-                    <Link href={`/events/${slug}`} className="px-8 py-4 bg-slate-100 text-slate-900 rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-slate-200 transition-colors">Event Details</Link>
-                    <Link href="/events" className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-slate-800 transition-colors">Back to Events</Link>
-                </div>
-                </motion.div>
+                        {submitError && (
+                            <div
+                                role="alert"
+                                className="mt-5 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4"
+                            >
+                                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                                <p className="text-sm font-medium text-red-700">{submitError}</p>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-5" noValidate>
+                            <div className="grid gap-5 sm:grid-cols-2">
+                                {collects("firstName") && (
+                                    <Field
+                                        id="firstName"
+                                        label="First name"
+                                        error={errors.firstName?.message}
+                                    >
+                                        <input
+                                            id="firstName"
+                                            autoComplete="given-name"
+                                            className={inputClass(!!errors.firstName)}
+                                            placeholder="Grace"
+                                            {...register("firstName")}
+                                        />
+                                    </Field>
+                                )}
+
+                                {collects("lastName") && (
+                                    <Field
+                                        id="lastName"
+                                        label="Last name"
+                                        error={errors.lastName?.message}
+                                    >
+                                        <input
+                                            id="lastName"
+                                            autoComplete="family-name"
+                                            className={inputClass(!!errors.lastName)}
+                                            placeholder="Adeyemi"
+                                            {...register("lastName")}
+                                        />
+                                    </Field>
+                                )}
+
+                                {collects("email") && (
+                                    <Field
+                                        id="email"
+                                        label="Email address"
+                                        error={errors.email?.message}
+                                        className="sm:col-span-2"
+                                    >
+                                        <input
+                                            id="email"
+                                            type="email"
+                                            inputMode="email"
+                                            autoComplete="email"
+                                            className={inputClass(!!errors.email)}
+                                            placeholder="you@example.com"
+                                            {...register("email")}
+                                        />
+                                    </Field>
+                                )}
+
+                                {collects("phone") && (
+                                    <Field
+                                        id="phone"
+                                        label="Phone number"
+                                        error={errors.phone?.message}
+                                    >
+                                        <input
+                                            id="phone"
+                                            type="tel"
+                                            inputMode="tel"
+                                            autoComplete="tel"
+                                            className={inputClass(!!errors.phone)}
+                                            placeholder="080..."
+                                            {...register("phone")}
+                                        />
+                                    </Field>
+                                )}
+
+                                {collects("gender") && (
+                                    <Field id="gender" label="Gender" error={errors.gender?.message}>
+                                        <select
+                                            id="gender"
+                                            className={inputClass(!!errors.gender)}
+                                            {...register("gender")}
+                                        >
+                                            <option value="">Select</option>
+                                            <option value="male">Brother</option>
+                                            <option value="female">Sister</option>
+                                        </select>
+                                    </Field>
+                                )}
+
+                                {collects("level") && (
+                                    <Field
+                                        id="level"
+                                        label="Level / status"
+                                        error={errors.level?.message}
+                                    >
+                                        <select
+                                            id="level"
+                                            className={inputClass(!!errors.level)}
+                                            {...register("level")}
+                                        >
+                                            <option value="">Select</option>
+                                            {levels.map((lvl) => (
+                                                <option key={lvl} value={lvl}>
+                                                    {lvl}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </Field>
+                                )}
+
+                                {collects("department") && (
+                                    <Field
+                                        id="department"
+                                        label="Department"
+                                        error={errors.department?.message}
+                                    >
+                                        <input
+                                            id="department"
+                                            className={inputClass(!!errors.department)}
+                                            placeholder="Computer Science"
+                                            {...register("department")}
+                                        />
+                                    </Field>
+                                )}
+
+                                {collects("matricNumber") && (
+                                    <Field
+                                        id="matricNumber"
+                                        label="Matric number"
+                                        error={errors.matricNumber?.message}
+                                    >
+                                        <input
+                                            id="matricNumber"
+                                            className={inputClass(!!errors.matricNumber)}
+                                            placeholder="CSC/20/1234"
+                                            {...register("matricNumber")}
+                                        />
+                                    </Field>
+                                )}
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rcf-navy px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {isSubmitting ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Submitting...
+                                    </>
+                                ) : (
+                                    "Complete registration"
+                                )}
+                            </button>
+
+                            <p className="pb-safe text-center text-xs text-slate-400">
+                                Your details are used only for this event.
+                            </p>
+                        </form>
+                    </motion.div>
+                </main>
+            </div>
+        </div>
+    );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Small building blocks                                                       */
+/* -------------------------------------------------------------------------- */
+
+function inputClass(hasError: boolean) {
+    return `w-full rounded-2xl border bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:ring-4 ${
+        hasError
+            ? "border-red-300 focus:border-red-500 focus:ring-red-500/10"
+            : "border-slate-200 focus:border-rcf-navy focus:ring-rcf-navy/10"
+    }`;
+}
+
+function Field({
+    id,
+    label,
+    error,
+    className = "",
+    children,
+}: {
+    id: string;
+    label: string;
+    error?: string;
+    className?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className={`space-y-1.5 ${className}`}>
+            <label
+                htmlFor={id}
+                className="block text-xs font-semibold tracking-wide text-slate-500 uppercase"
+            >
+                {label}
+            </label>
+            {children}
+            {error && (
+                <p className="text-xs font-medium text-red-600" role="alert">
+                    {error}
+                </p>
             )}
-            </AnimatePresence>
         </div>
-        </div>
+    );
+}
 
-    </>
-  );
+function Centered({
+    title,
+    description,
+    icon,
+    children,
+}: {
+    title: string;
+    description: string;
+    icon: React.ReactNode;
+    children?: React.ReactNode;
+}) {
+    return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
+            <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-8 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-50">
+                    {icon}
+                </div>
+                <h1 className="mt-5 text-xl font-bold text-slate-900">{title}</h1>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">{description}</p>
+                <div className="mt-6 flex flex-col gap-2">{children}</div>
+            </div>
+        </div>
+    );
 }
