@@ -80,7 +80,7 @@ export default function LoAppPage() {
     }, [isAdmin, user]);
 
     if (loading) {
-         return <CompactPreloader title="Loading Lo! App..." />;
+        return <CompactPreloader title="Loading Lo! App..." />;
     }
 
     return (

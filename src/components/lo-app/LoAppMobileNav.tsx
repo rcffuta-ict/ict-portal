@@ -1,9 +1,9 @@
 "use client";
 
-import { MessageSquare, Calendar, Shield } from "lucide-react";
+import { MessageSquare, Calendar, HandHeart, Shield } from "lucide-react";
 
 type ViewTab = "feed" | "admin";
-type FeedTab = "questions" | "events";
+type FeedTab = "questions" | "testimonies" | "events";
 
 interface LoAppMobileNavProps {
     isAdmin: boolean;
@@ -37,6 +37,22 @@ export function LoAppMobileNav({
                     <MessageSquare className="w-5 h-5" />
                     <span className="text-[10px] font-medium mt-0.5">
                         Questions
+                    </span>
+                </button>
+                <button
+                    onClick={() => {
+                        setActiveTab("feed");
+                        setFeedTab("testimonies");
+                    }}
+                    className={`flex-1 flex flex-col items-center py-2.5 transition-colors ${
+                        feedTab === "testimonies" && activeTab === "feed"
+                            ? "text-rcf-gold"
+                            : "text-white/40"
+                    }`}
+                >
+                    <HandHeart className="w-5 h-5" />
+                    <span className="text-[10px] font-medium mt-0.5">
+                        Testimonies
                     </span>
                 </button>
                 <button
