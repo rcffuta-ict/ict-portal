@@ -8,7 +8,7 @@ import { LoAppInfoButton } from "./LoAppInfoModal";
 import type { AuthUser } from "./LoAppClient";
 
 type ViewTab = "feed" | "admin";
-type FeedTab = "questions" | "events";
+type FeedTab = "questions" | "testimonies" | "events";
 
 interface LoAppHeaderProps {
     isAdmin: boolean;

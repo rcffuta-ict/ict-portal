@@ -8,7 +8,7 @@ when reality and this file disagree, fix this file in the same PR.
 
 A Next.js web portal for the RCF FUTA fellowship: public event pages + QR check-in,
 a members dashboard (profile, units, zones, tenure/leadership structure), and a
-lightweight Q&A feature ("lo-app"). **The primary audience is university students,
+lightweight Q&A + testimonies feature ("lo-app"). **The primary audience is university students,
 mostly on mid-range Android phones and limited mobile data.** UI/UX polish and
 performance are product requirements, not nice-to-haves — see the dedicated section
 below before touching any screen a member will see.
@@ -89,7 +89,16 @@ Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more th
   never a field the client can set directly.
 - The `publicRoutes` list is hardcoded inside `src/proxy.ts`. Adding a new top-level
   public route requires updating that list too, or anonymous users get redirected to
-  `/login` incorrectly.
+  `/login` incorrectly. Note it matches `pathname` EXACTLY — sub-paths need their own
+  `startsWith` rule (as `/events/` and `/lo-app/` have).
+- **Lo! member recognition is NOT authentication** (`src/lib/lo-member.ts`). Lo! is
+  open without a login, but only members may post testimonies, and only leaders have
+  `profile_login` rows — so a visitor confirms themselves against the `profiles`
+  roster (matric number or email + surname) and is remembered by an opaque,
+  DB-backed, revocable cookie token (`lo_member_links`, same shape as
+  `auth_sessions`). A recognition link unlocks testimonies and nothing else: never
+  accept it in place of a portal session, and never derive ADMIN/MODERATOR from it.
+  The roster lookup is rate-limited and logged (`lo_member_verify_attempts`).
 - `AUTHENTICATION.md` and `AUTH_MANUAL.md` at the repo root describe an earlier/
   aspirational version of this architecture (e.g. they reference a
   `src/types/app.type.ts` that doesn't currently exist). When these docs disagree with

@@ -5,6 +5,12 @@ import { checkEnhancedAdminAccess } from "@/lib/access-control";
 import { validateSession } from "@/lib/auth-utils";
 import { RcfIctClient } from "@rcffuta/ict-lib/server";
 import { ict } from "@/lib/ict";
+import {
+    forgetLoMemberLink,
+    getLoMember,
+    verifyAndLinkMember,
+    type LoMember,
+} from "@/lib/lo-member";
 
 // Initialize QAService with service role for server actions
 const qaService = new QAService(
@@ -246,15 +252,15 @@ export async function clusterQuestions(questionIds: string[]) {
     try {
         const adminCheck = await checkEnhancedAdminAccess();
         if (!adminCheck.isAdmin) {
-             return { success: false, error: "Unauthorized" };
+            return { success: false, error: "Unauthorized" };
         }
 
         if (questionIds.length < 2) {
-             return { success: false, error: "Select at least 2 questions to cluster." };
+            return { success: false, error: "Select at least 2 questions to cluster." };
         }
 
         const { data, error } = await ict.supabase.rpc('cluster_questions', {
-             question_ids: questionIds
+            question_ids: questionIds
         });
 
         if (error) throw new Error(error.message);
@@ -262,4 +268,26 @@ export async function clusterQuestions(questionIds: string[]) {
     } catch (error: any) {
         return { success: false, error: error.message };
     }
+}
+
+// ─── Member recognition (see src/lib/lo-member.ts) ───
+
+/**
+ * Lo! has no login. These wrap the recognition layer so client components can ask
+ * "who is this?" and confirm membership without ever touching the roster directly.
+ *
+ * Recognition unlocks testimonies only. It is NOT a portal session and grants no
+ * admin rights — admin still comes from the real session via `access-control`.
+ */
+export async function getLoMemberIdentity(): Promise<LoMember | null> {
+    return getLoMember();
+}
+
+export async function verifyLoMember(identifier: string, surname: string) {
+    return verifyAndLinkMember(identifier, surname);
+}
+
+export async function forgetLoMember() {
+    await forgetLoMemberLink();
+    return { success: true };
 }

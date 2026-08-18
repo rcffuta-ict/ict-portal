@@ -21,7 +21,11 @@ export async function proxy(request: NextRequest) {
   // Public routes that don't need authentication
   const publicRoutes = ['/', '/forgot-password', '/about', '/lo-app', '/events']
   const isPublicRoute = publicRoutes.includes(pathname) ||
-                       (pathname.startsWith('/events/') && !pathname.endsWith('/admin'))
+                       (pathname.startsWith('/events/') && !pathname.endsWith('/admin')) ||
+                       // Lo! is a login-free app, and a shared testimony link must open
+                       // for someone with no account at all. What each page shows is
+                       // still decided by the server actions, not here.
+                       pathname.startsWith('/lo-app/')
 
   // Handle authentication requirements
   if (!token) {

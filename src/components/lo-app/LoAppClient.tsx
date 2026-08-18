@@ -19,6 +19,8 @@ import { AskQuestionForm } from "./AskQuestionForm";
 import { QuestionFeed } from "./QuestionFeed";
 import { AdminPanel } from "./AdminPanel";
 import { EventCard } from "./EventCard";
+import { TestimonyFeed } from "./testimonies/TestimonyFeed";
+import { TestimonyModeration } from "./testimonies/TestimonyModeration";
 import {
     getQuestions,
     answerQuestion,
@@ -80,8 +82,9 @@ interface LoAppClientProps {
 }
 
 type ViewTab = "feed" | "admin";
-type FeedTab = "questions" | "events";
+type FeedTab = "questions" | "testimonies" | "events";
 type FilterType = "all" | "answered" | "unanswered";
+type AdminSection = "questions" | "testimonies";
 
 // ─── Main Component ───
 
@@ -96,6 +99,7 @@ export function LoAppClient({
     // ── State ──
     const [activeTab, setActiveTab] = useState<ViewTab>("feed");
     const [feedTab, setFeedTab] = useState<FeedTab>("questions");
+    const [adminSection, setAdminSection] = useState<AdminSection>("questions");
     const [questions, setQuestions] = useState<Question[]>(initialQuestions);
     const [filter, setFilter] = useState<FilterType>("all");
     const [searchTerm, setSearchTerm] = useState("");
@@ -175,7 +179,7 @@ export function LoAppClient({
             // Optionally refresh or update local state if needed
             // For now, no visible change might happen unless we show clusters
         } else {
-             showToast("error", result.error || "Failed to cluster questions");
+            showToast("error", result.error || "Failed to cluster questions");
         }
     };
 
@@ -187,11 +191,11 @@ export function LoAppClient({
                 prev.map((q) =>
                     q.id === id
                         ? {
-                              ...q,
-                              answer_text: text,
-                              status: "answered" as const,
-                              answered_at: new Date().toISOString(),
-                          }
+                            ...q,
+                            answer_text: text,
+                            status: "answered" as const,
+                            answered_at: new Date().toISOString(),
+                        }
                         : q
                 )
             );
@@ -313,6 +317,7 @@ export function LoAppClient({
                 <main className="flex-1 min-w-0 border-x border-slate-200/80 bg-white min-h-screen">
                     {activeTab === "feed" ? (
                         <FeedView
+                            onNotify={showToast}
                             feedTab={feedTab}
                             setFeedTab={setFeedTab}
                             filter={filter}
@@ -336,19 +341,33 @@ export function LoAppClient({
                             onQuestionSubmitted={fetchQuestions}
                             onRetry={fetchQuestions}
                         />
+                    ) : adminSection === "testimonies" ? (
+                        <>
+                            <AdminSectionTabs
+                                section={adminSection}
+                                setSection={setAdminSection}
+                            />
+                            <TestimonyModeration onNotify={showToast} />
+                        </>
                     ) : (
-                        <AdminPanel
-                            questions={questions}
-                            onAnswer={handleAnswer}
-                            onToggleVisibility={handleToggleVisibility}
-                            onRefresh={fetchQuestions}
-                            loading={loading}
-                            starCounts={starCounts}
-                            userStars={userStars}
-                            onToggleStar={handleToggleStar}
-                            events={events}
-                            onCluster={handleCluster}
-                        />
+                        <>
+                            <AdminSectionTabs
+                                section={adminSection}
+                                setSection={setAdminSection}
+                            />
+                            <AdminPanel
+                                questions={questions}
+                                onAnswer={handleAnswer}
+                                onToggleVisibility={handleToggleVisibility}
+                                onRefresh={fetchQuestions}
+                                loading={loading}
+                                starCounts={starCounts}
+                                userStars={userStars}
+                                onToggleStar={handleToggleStar}
+                                events={events}
+                                onCluster={handleCluster}
+                            />
+                        </>
                     )}
                 </main>
 
@@ -392,6 +411,7 @@ export function LoAppClient({
 // ─── Feed View (inline, keeps LoAppClient focused on state) ───
 
 interface FeedViewProps {
+    onNotify: (type: ToastType, message: string) => void;
     feedTab: FeedTab;
     setFeedTab: (tab: FeedTab) => void;
     filter: FilterType;
@@ -417,6 +437,7 @@ interface FeedViewProps {
 }
 
 function FeedView({
+    onNotify,
     feedTab,
     setFeedTab,
     filter,
@@ -458,6 +479,12 @@ function FeedView({
                         count={totalQuestions}
                         active={feedTab === "questions"}
                         onClick={() => setFeedTab("questions")}
+                    />
+                    <FeedTabButton
+                        label="Testimonies"
+                        count={0}
+                        active={feedTab === "testimonies"}
+                        onClick={() => setFeedTab("testimonies")}
                     />
                     <FeedTabButton
                         label="Events"
@@ -551,6 +578,8 @@ function FeedView({
                         </div>
                     )}
                 </>
+            ) : feedTab === "testimonies" ? (
+                <TestimonyFeed events={events} onNotify={onNotify} />
             ) : (
                 <>
                     {/* Mobile Search */}
@@ -701,6 +730,34 @@ function EmptyState({
             </div>
             <h3 className="text-lg font-bold text-slate-900 mb-1">{title}</h3>
             <p className="text-sm text-slate-500 max-w-sm">{description}</p>
+        </div>
+    );
+}
+
+function AdminSectionTabs({
+    section,
+    setSection,
+}: {
+    section: "questions" | "testimonies";
+    setSection: (s: "questions" | "testimonies") => void;
+}) {
+    return (
+        <div className="sticky top-14 z-20 flex gap-1 border-b border-slate-200/80 bg-white/95 px-4 py-2 backdrop-blur-xl">
+            {(["questions", "testimonies"] as const).map((id) => (
+                <button
+                    key={id}
+                    type="button"
+                    onClick={() => setSection(id)}
+                    aria-pressed={section === id}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold capitalize transition-colors ${
+                        section === id
+                            ? "bg-rcf-navy/5 text-rcf-navy"
+                            : "text-slate-400 hover:text-slate-600"
+                    }`}
+                >
+                    {id}
+                </button>
+            ))}
         </div>
     );
 }
