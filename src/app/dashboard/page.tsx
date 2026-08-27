@@ -12,6 +12,7 @@ import { getSidebarItems, eventSidebarItems } from "@/config/sidebar-items";
 import type { SidebarItem } from "@/config/sidebar-items";
 import { useMemo, useState, useEffect } from "react";
 import { getEvents } from "@/app/events/actions";
+import { formatEventShortDate, parseEventDate } from "@/lib/event-utils";
 
 
 export default function DashboardHome() {
@@ -37,8 +38,10 @@ export default function DashboardHome() {
                         // 2. Must NOT be exclusive
                         // 3. Must be upcoming or recurring? Usually dashboards show current/future.
                         // Let's include upcoming + recurring.
-                        const eDate = new Date(e.date);
-                        const isUpcoming = eDate >= today;
+                        // parseEventDate keeps legacy date-only rows on Lagos
+                        // wall-clock instead of UTC midnight.
+                        const eDate = parseEventDate(e.date);
+                        const isUpcoming = !!eDate && eDate >= today;
                         // Recurring check? If is_recurring is boolean.
                         // We need access to is_recurring field which might be missing in older event definitions
                         // but getEvents uses select('*').
@@ -51,7 +54,9 @@ export default function DashboardHome() {
                         href: `/events/${e.slug}`,
                         icon: Calendar,
                         color: "bg-purple-500", // Default color
-                        description: e.description || `Event on ${new Date(e.date).toLocaleDateString()}`,
+                        description:
+                            e.description ||
+                            `Event on ${formatEventShortDate(parseEventDate(e.date))}`,
                         section: "events" as const,
                     }));
                 setDynamicEvents(mappedEvents);
