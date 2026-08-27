@@ -2,6 +2,7 @@
 
 import { Calendar, Hash, MapPin, ChevronRight } from "lucide-react";
 import type { LoEvent } from "./LoAppClient";
+import { formatEventShortDate, parseEventDate } from "@/lib/event-utils";
 
 interface EventCardProps {
     event: LoEvent;
@@ -10,7 +11,10 @@ interface EventCardProps {
 
 export function EventCard({ event, index }: EventCardProps) {
     const isActive = event.is_active;
-    const eventDate = event.date ? new Date(event.date) : null;
+    // parseEventDate (not `new Date`) so legacy date-only rows are read as Lagos
+    // midnight, and formatEventShortDate so the label matches every other screen
+    // instead of the phone's own timezone.
+    const eventDate = parseEventDate(event.date);
 
     const formatDate = (date: Date) => {
         const now = new Date();
@@ -21,12 +25,7 @@ export function EventCard({ event, index }: EventCardProps) {
         if (diffDays === 1) return "Tomorrow";
         if (diffDays > 0 && diffDays <= 7) return `In ${diffDays} days`;
 
-        return date.toLocaleDateString("en-NG", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-        });
+        return formatEventShortDate(date);
     };
 
     const isPast = eventDate ? eventDate.getTime() < Date.now() : false;

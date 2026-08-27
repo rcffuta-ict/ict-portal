@@ -89,10 +89,30 @@ export function formatLocationLine(location: EventLocation | null): string {
 /* Dates                                                                       */
 /* -------------------------------------------------------------------------- */
 
+/** A bare "YYYY-MM-DD" with no time component. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * `events.date` used to be a Postgres `date` column, so rows written before
+ * migration 0009 come back as a bare "YYYY-MM-DD". `new Date("2026-09-12")`
+ * parses that as UTC midnight, which renders as 1:00 AM in Lagos — the phantom
+ * time this project kept showing. Read a date-only value as Lagos midnight
+ * instead, so a legacy row reads 12:00 AM and re-saving it doesn't drift.
+ */
 export function parseEventDate(value: string | null | undefined): Date | null {
     if (!value) return null;
-    const parsed = new Date(value);
+
+    const normalized = DATE_ONLY.test(value)
+        ? fromDateTimeLocalValue(`${value}T00:00`)
+        : value;
+
+    const parsed = new Date(normalized);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/** True when the stored value carries no time of day (legacy date-only row). */
+export function isDateOnlyEventValue(value: string | null | undefined): boolean {
+    return !!value && DATE_ONLY.test(value);
 }
 
 function formatIn(date: Date, options: Intl.DateTimeFormatOptions): string {

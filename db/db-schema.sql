@@ -46,7 +46,7 @@ CREATE TABLE public.events (
   slug text NOT NULL UNIQUE,
   title text NOT NULL,
   description text,
-  date date DEFAULT CURRENT_DATE,
+  date timestamp with time zone DEFAULT now(), -- start instant; Lagos wall-clock in the UI (migration 0009)
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
   config jsonb DEFAULT '{"max_shopping_items": 2}'::jsonb,
