@@ -15,6 +15,9 @@ import {
 } from "@/lib/invites";
 import { revalidatePath } from "next/cache";
 import { EXPORT_FIELDS, MIN_EXPORT_FIELDS } from "./export-fields";
+// Shared with the Oracle export — the formula-injection guard in csvCell is not
+// something that should exist in two places.
+import { csvCell } from "@/lib/csv";
 
 /**
  * Level module — level (generation) member management for level coordinators.
@@ -493,17 +496,6 @@ const PROFILE_COLUMNS = [
     "first_name", "last_name", "middle_name", "email", "phone_number", "gender",
     "matric_number", "department", "faculty", "school_address", "home_address",
 ];
-
-/**
- * RFC4180 cell + spreadsheet formula-injection guard: a value starting with =, +, -, @
- * (or a tab/CR) is executed as a formula by Excel/Sheets, so prefix it with an apostrophe.
- */
-function csvCell(value: unknown): string {
-    if (value === null || value === undefined) return "";
-    let s = String(value);
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 /**
  * Export a generation's members as CSV, limited to the caller-selected fields.
