@@ -8,6 +8,7 @@ import {
     Calendar,
     GraduationCap,
     Settings,
+    Database,
 } from "lucide-react";
 import type { FullUserProfile } from "@rcffuta/ict-lib";
 import type { ModuleId } from "@/lib/modules";
@@ -145,6 +146,15 @@ const toolItems: SidebarItem[] = [
         module: "level",
         color: "bg-rcf-navy",
         description: "Manage the members of your level.",
+    },
+    {
+        name: "Oracle",
+        href: "/dashboard/oracle",
+        icon: Database,
+        section: "tools",
+        ictOnly: true,
+        color: "bg-rcf-navy",
+        description: "Search every member, and correct their records.",
     },
     {
         name: "Settings",

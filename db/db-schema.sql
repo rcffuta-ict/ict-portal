@@ -525,3 +525,18 @@ CREATE TABLE public.fyb_pairings (
   CONSTRAINT fyb_pairings_partner_registration_id_fkey FOREIGN KEY (partner_registration_id) REFERENCES public.fyb_registrations(id),
   CONSTRAINT fyb_pairings_confirmed_by_fkey FOREIGN KEY (confirmed_by) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.admin_audit_log ( -- migration 0010
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  actor_profile_id uuid NOT NULL,
+  actor_name text,
+  target_profile_id uuid,
+  target_name text,
+  action text NOT NULL,
+  field text,
+  old_value text,
+  new_value text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT admin_audit_log_pkey PRIMARY KEY (id),
+  CONSTRAINT admin_audit_log_actor_profile_id_fkey FOREIGN KEY (actor_profile_id) REFERENCES public.profiles(id),
+  CONSTRAINT admin_audit_log_target_profile_id_fkey FOREIGN KEY (target_profile_id) REFERENCES public.profiles(id)
+);

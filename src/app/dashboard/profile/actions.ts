@@ -1,17 +1,40 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { BioData, LocationData, RcfIctClient } from "@rcffuta/ict-lib/server";
+import { BioData, LocationData } from "@rcffuta/ict-lib/server";
 import { revalidatePath } from "next/cache";
+import { ictAdmin } from "@/lib/ict";
+import { getSessionProfileId } from "@/lib/auth/session";
+import { requireSysAdmin } from "@/lib/access-control";
 
-export async function updateProfileAction(formData: FormData, userId: string) {
-
-    // We use the Admin Client to bypass RLS if needed, or stick to user client if RLS allows update
-    // Using Admin Client is safer for profile updates to ensure fields are written
-    const adminRcf = RcfIctClient.asAdmin();
-
+/**
+ * Update a member's own profile.
+ *
+ * AUTHORIZATION — this action writes through the SERVICE-ROLE client, which bypasses
+ * RLS, so it has to establish who the caller is by itself. It does that from the
+ * session cookie via `getSessionProfileId()`; it never trusts an id sent by the client.
+ *
+ * `targetId` therefore only means "edit someone else", and that path requires the
+ * System Admin. Left off (the normal case), the caller edits themselves and any id the
+ * browser happened to send is ignored entirely.
+ *
+ * This used to take `userId` as a plain argument with no session check at all, which
+ * made it an unauthenticated write over every member's record — server actions are
+ * reachable as POST endpoints, and `src/proxy.ts` only checks that a token is present,
+ * so it was no help here.
+ */
+export async function updateProfileAction(formData: FormData, targetId?: string) {
     try {
-        // 2. Prepare Data Objects
+        const callerId = await getSessionProfileId();
+        if (!callerId) {
+            return { success: false, error: "You need to sign in again." };
+        }
+
+        const userId = targetId && targetId !== callerId ? targetId : callerId;
+        if (userId !== callerId) {
+            // Editing someone else is a System Admin capability; throws otherwise.
+            await requireSysAdmin();
+        }
 
         // BIO DATA
         const bioData: Partial<BioData> = {
@@ -30,57 +53,39 @@ export async function updateProfileAction(formData: FormData, userId: string) {
             residentialZoneId: (formData.get("residentialZoneId") as string) || undefined,
         };
 
-        const currentLevel = formData.get("currentLevel") as string;
-
-        // 3. Perform Updates (Parallel)
-        const updates = [];
-
         // Optional Cloudinary avatar (only written when present in the form).
         const avatarUrl = formData.get("avatarUrl") as string | null;
         const avatarPublicId = formData.get("avatarPublicId") as string | null;
         const hasAvatarField = formData.has("avatarUrl");
 
-        // Update Bio (Direct DB update since lib might not have a dedicated updateBio method exposed yet)
-        updates.push(
-            adminRcf.supabase
-                .from('profiles')
-                .update({
-                    first_name: bioData.firstName,
-                    last_name: bioData.lastName,
-                    middle_name: bioData.middleName,
-                    phone_number: bioData.phoneNumber,
-                    gender: bioData.gender,
-                    dob: bioData.dob || null,
-                    // Only touch avatar columns when the editor submitted them.
-                    ...(hasAvatarField
-                        ? { avatar_url: avatarUrl || null, avatar_public_id: avatarPublicId || null }
-                        : {}),
-                })
-                .eq('id', userId)
-        );
+        const bioResult = await ictAdmin.supabase
+            .from('profiles')
+            .update({
+                first_name: bioData.firstName,
+                last_name: bioData.lastName,
+                middle_name: bioData.middleName,
+                phone_number: bioData.phoneNumber,
+                gender: bioData.gender,
+                dob: bioData.dob || null,
+                // Only touch avatar columns when the editor submitted them.
+                ...(hasAvatarField
+                    ? { avatar_url: avatarUrl || null, avatar_public_id: avatarPublicId || null }
+                    : {}),
+            })
+            .eq('id', userId);
 
-        // Update Location (Using lib method which handles validation)
-        updates.push(
-            adminRcf.auth.updateLocationInfo(userId, locationData)
-        );
+        if (bioResult.error) throw bioResult.error;
 
-        if (currentLevel) {
-            updates.push(
-                adminRcf.supabase
-                    .from('academics')
-                    .update({ current_level: currentLevel })
-                    .eq('id', userId)
-            );
-        }
+        // Supabase resolves with an error rather than throwing, so this result is checked
+        // too — an earlier version only inspected the bio update and reported a silent
+        // failure here as success.
+        await ictAdmin.auth.updateLocationInfo(userId, locationData);
 
-        // Execute all
-        const results = await Promise.all(updates);
-
-        // Check for DB errors in the Bio update (index 0)
-        const bioUpdateResult = results[0];
-        if ('error' in bioUpdateResult && bioUpdateResult.error) {
-            throw bioUpdateResult.error;
-        }
+        // NOTE: there is deliberately no "current level" write. Level is COMPUTED from
+        // the member's generation (`class_sets` + the active session, via
+        // `rcf_compute_level`) — there is no `academics` table and no `current_level`
+        // column. A previous version wrote to `from('academics')` and, because its
+        // result was never checked, discarded every such edit without a word.
 
         revalidatePath('/dashboard/profile');
         return { success: true };

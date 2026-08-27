@@ -20,9 +20,6 @@ export function ProfileEdit() {
     const updateStoreLocation = useProfileStore(
         (state) => state.updateLocation,
     );
-    const updateStoreAcademics = useProfileStore(
-        (state) => state.updateAcademics,
-    );
 
     const [zones, setZones] = useState<any[]>([]);
     const [isLoadingZones, setIsLoadingZones] = useState(true);
@@ -49,7 +46,6 @@ export function ProfileEdit() {
             phoneNumber: userProfile?.profile.phoneNumber || "",
             gender: userProfile?.profile.gender || "",
             dob: userProfile?.profile.dob || "",
-            currentLevel: userProfile?.academics?.currentLevel || "",
             matricNumber: userProfile?.academics?.matricNumber || "",
             department: userProfile?.academics?.department || "",
             residentialZoneId: userProfile?.location?.residentialZone || "",
@@ -79,7 +75,7 @@ export function ProfileEdit() {
             formData.append("avatarUrl", avatar.url ?? "");
             formData.append("avatarPublicId", avatar.publicId ?? "");
 
-            const res = await updateProfileAction(formData, userProfile?.profile.id || "");
+            const res = await updateProfileAction(formData);
 
             if (res.success) {
                 // Optimistic Update
@@ -99,10 +95,6 @@ export function ProfileEdit() {
                     residentialZone: zones.find(
                         (z) => z.id === data.residentialZoneId,
                     )?.name,
-                });
-
-                updateStoreAcademics({
-                    currentLevel: data.currentLevel,
                 });
 
                 // Reset form dirty state with new values
@@ -192,17 +184,24 @@ export function ProfileEdit() {
                     Fellowship
                 </h3>
                 <div className="grid gap-6 md:grid-cols-2">
-                    <FormSelect
-                        label="Level"
-                        {...register("currentLevel")}
-                    >
-                        <option value="">Select Level...</option>
-                        <option value="100L">100L</option>
-                        <option value="200L">200L</option>
-                        <option value="300L">300L</option>
-                        <option value="400L">400L</option>
-                        <option value="500L">500L</option>
-                    </FormSelect>
+                    {/*
+                      Level is COMPUTED from your generation and the active session, so it
+                      isn't editable here. It used to be a select that silently discarded
+                      whatever you chose (it wrote to a table that doesn't exist), which is
+                      worse than showing you the real value.
+                    */}
+                    <div className="space-y-1">
+                        <span className="ml-1 text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Level
+                        </span>
+                        <p className="flex h-12 items-center rounded-xl border border-slate-200 bg-slate-100 px-4 text-sm font-medium text-slate-600">
+                            {userProfile?.academics?.currentLevel || "Not set"}
+                        </p>
+                        <p className="ml-1 text-[11px] leading-snug text-slate-400">
+                            Worked out from your generation each session. Ask your level
+                            coordinator if this looks wrong.
+                        </p>
+                    </div>
                 </div>
             </div>
 
