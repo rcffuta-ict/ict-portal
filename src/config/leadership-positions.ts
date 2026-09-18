@@ -22,6 +22,7 @@
  * Client-safe: plain data, no server imports.
  */
 import { LEVELS } from "@/lib/levels";
+import { unitBySlug } from "@/config/fellowship-units";
 import type { Privilege } from "@/lib/modules";
 
 /**
@@ -38,7 +39,6 @@ export const POSITION_TIERS = [
     "VP",
     "EXECUTIVE",
     "COORDINATOR",
-    "SYSTEM",
 ] as const;
 
 export type PositionTier = (typeof POSITION_TIERS)[number];
@@ -48,7 +48,6 @@ export const TIER_LABELS: Record<PositionTier, string> = {
     VP: "Vice Presidents",
     EXECUTIVE: "Executives",
     COORDINATOR: "Level Coordinators",
-    SYSTEM: "System",
 };
 
 /** Rank order for display — lower sorts first. */
@@ -57,7 +56,6 @@ export const TIER_ORDER: Record<PositionTier, number> = {
     VP: 1,
     EXECUTIVE: 2,
     COORDINATOR: 3,
-    SYSTEM: 4,
 };
 
 export interface PositionSpec {
@@ -74,13 +72,23 @@ export interface PositionSpec {
     category: "PRESIDENT" | "CENTRAL" | "UNIT" | "TEAM" | "LEVEL" | "ZONE";
     /** One of the two protected offices that must exist in every tenure. */
     isDefault?: boolean;
-    /** Marked central in the legacy column (President, VPs). */
-    isCentral?: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // Fixed offices
 // ---------------------------------------------------------------------------
+
+/**
+ * The Information and Communications Unit's slug.
+ *
+ * Short on purpose. A slug is an access-control scope — it appears in every
+ * `position_privileges` row, in the catalogue UI, and inside the derived position name
+ * `exco-<slug>`. `ict` reads as a permission token; the full unit name did not. The
+ * display title stays "Information and Communications Unit"; only the handle is short.
+ *
+ * Immutable once seeded: renaming the office must never move its permissions.
+ */
+export const ICT_UNIT_SLUG = "ict";
 
 export const FIXED_POSITIONS: PositionSpec[] = [
     {
@@ -89,7 +97,6 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         alias: "President",
         tier: "PRESIDENT",
         category: "PRESIDENT",
-        isCentral: true,
         description:
             "Head of the fellowship. Sees every module including Settings, and is globally write-blocked.",
         // PRESIDENT is EXCLUSIVE — the DB trigger from migration 0006 rejects any
@@ -103,7 +110,6 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         tier: "VP",
         category: "CENTRAL",
         isDefault: true,
-        isCentral: true,
         description:
             "Administrative head. Appoints leaders, approves unit transfers, and runs the handover.",
         privileges: [{ tag: "CENTRAL", scope: null }],
@@ -114,7 +120,6 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         alias: "VP Church Growth",
         tier: "VP",
         category: "CENTRAL",
-        isCentral: true,
         description: "Growth and outreach head. Church-wide read access.",
         privileges: [{ tag: "CENTRAL", scope: null }],
     },
@@ -122,15 +127,22 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         slug: "ict-coord",
         title: "ICT Coordinator",
         alias: "ICT Coord",
-        tier: "SYSTEM",
-        category: "CENTRAL",
+        // An EXECUTIVE, not a tier of their own: the ICT Coordinator sits alongside the
+        // other unit heads in the hierarchy. Tier is placement only — it takes nothing
+        // away from SYSADMIN, because authorization has only ever read privilege tags.
+        tier: "EXECUTIVE",
+        category: "UNIT",
         isDefault: true,
-        // Deliberately NOT central: the System Admin is not an exco, and central
-        // logic/UI should not sweep them up (see migration 0005).
-        isCentral: false,
         description:
-            "System Admin. Full read and write everywhere, including Settings and the Oracle.",
-        privileges: [{ tag: "SYSADMIN", scope: null }],
+            "System Admin, and Executive of the Information and Communications Unit. Full read and write everywhere, including Settings and the Oracle.",
+        // Two tags, two distinct jobs: SYSADMIN is the portal-wide System Admin right;
+        // EXCO:ict is leading their own unit like any other exco. Because this position
+        // already carries the ICT unit's EXCO scope, buildCatalogue() must NOT also mint
+        // `exco-ict` — see buildCatalogue() below, or the unit ends up with two leads.
+        privileges: [
+            { tag: "SYSADMIN", scope: null },
+            { tag: "EXCO", scope: ICT_UNIT_SLUG },
+        ],
     },
 ];
 
@@ -144,10 +156,15 @@ export function excoPositionFor(unit: {
     name: string;
     type: "UNIT" | "TEAM";
 }): PositionSpec {
+    // The office's POPULAR name ("Chief Usher"), not a mechanical one. Units seeded
+    // outside the bootstrap catalogue have none on record, so they fall back to a
+    // derived label rather than shipping an empty alias.
+    const alias = unitBySlug(unit.slug)?.positionAlias ?? `${unit.name} Exco`;
+
     return {
         slug: `exco-${unit.slug}`,
         title: `Executive — ${unit.name}`,
-        alias: `${unit.name} Exco`,
+        alias,
         tier: "EXECUTIVE",
         category: unit.type === "TEAM" ? "TEAM" : "UNIT",
         description: `Leads ${unit.name}. Adds and removes its members directly.`,
@@ -210,7 +227,10 @@ export function buildCatalogue(
 ): PositionSpec[] {
     return [
         ...FIXED_POSITIONS,
-        ...units.map(excoPositionFor),
+        // The ICT unit is led by `ict-coord`, which already carries EXCO:ict. Minting a
+        // second `exco-ict` position here would give the unit two leads and two sets of
+        // identical privileges.
+        ...units.filter((u) => u.slug !== ICT_UNIT_SLUG).map(excoPositionFor),
         ...levelCoordinatorPositions(),
     ];
 }
