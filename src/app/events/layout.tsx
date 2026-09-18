@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sectionTitle } from "@/lib/metadata";
 
 /**
  * Title-only layout.
@@ -7,7 +8,7 @@ import type { Metadata } from "next";
  * `metadata` — so the title lives here instead. Renders nothing of its own.
  */
 export const metadata: Metadata = {
-    title: "Events",
+    title: sectionTitle("Events"),
     description: "Upcoming and past RCF FUTA events.",
 };
 

@@ -6,6 +6,7 @@ import { TenureInitializer } from "@/components/dashboard/tenure-initializer";
 import { Suspense } from "react";
 import { PreviewBanner } from "@/components/layout/preview-banner";
 import { isPreviewDeployment } from "@/lib/env";
+import { TITLE_TEMPLATE } from "@/lib/metadata";
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -31,7 +32,7 @@ export const metadata: Metadata = {
 
     title: {
         default: "RCF FUTA ICT Portal",
-        template: "%s | ICT Portal, RCFFUTA",
+        template: TITLE_TEMPLATE,
     },
 
     description:

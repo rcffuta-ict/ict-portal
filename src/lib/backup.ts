@@ -53,7 +53,7 @@ export type { BackupGroup, TableSpec } from "@/lib/backup-tables";
 
 export interface BackupManifest {
     formatVersion: number;
-    tenure: { id: string | null; name: string | null; session: string | null };
+    tenure: { id: string | null; name: string | null; session: string | null; theme: string | null };
     label: string;
     takenAt: string;
     takenBy: { id: string; name: string } | null;
@@ -140,9 +140,9 @@ export async function buildBackup(options: {
 }): Promise<Backup> {
     const { data: tenure } = options.tenureId
         ? await ictAdmin.supabase
-            .from("tenures").select("id, name, session").eq("id", options.tenureId).maybeSingle()
+            .from("tenures").select("id, name, session, theme").eq("id", options.tenureId).maybeSingle()
         : await ictAdmin.supabase
-            .from("tenures").select("id, name, session").eq("is_active", true).maybeSingle();
+            .from("tenures").select("id, name, session, theme").eq("is_active", true).maybeSingle();
 
     const tenureId = tenure?.id ?? null;
 
@@ -178,8 +178,9 @@ export async function buildBackup(options: {
                 id: tenureId,
                 name: tenure?.name ?? null,
                 session: tenure?.session ?? null,
+                theme: tenure?.theme ?? null,
             },
-            label: backupLabel(tenure?.name ?? null, tenure?.session ?? null),
+            label: backupLabel(tenure?.name ?? null, tenure?.theme ?? null, tenure?.session ?? null),
             takenAt: new Date().toISOString(),
             takenBy: options.takenBy,
             counts,
@@ -196,19 +197,49 @@ export async function buildBackup(options: {
     };
 }
 
-/** "dominion-2026-2027" — the human handle for this snapshot. */
-export function backupLabel(name: string | null, session: string | null): string {
-    const slug = (value: string) =>
-        value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    return [name && slug(name), session && slug(session)].filter(Boolean).join("-") || "fellowship";
+/** Lowercase, hyphenated, ASCII — safe in a filename on any operating system. */
+export function slugify(value: string): string {
+    return value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 }
 
 /**
- * "rcf-backup-dominion-2026-2027-20260827.rcfbak"
+ * "dominion-arise-and-shine-2026-2027" — the human handle for this snapshot.
  *
- * Encrypted bundles always get `.rcfbak` whatever they wrap — the extension says
- * "this needs a passphrase", which is the thing a person needs to know when they find
- * the file. Unencrypted ones get the extension their contents actually are.
+ * Name, theme and session together, because a filename is how someone finds the right
+ * backup in a folder years later. The tenure is remembered by its theme at least as
+ * often as by its name.
+ */
+export function backupLabel(
+    name: string | null,
+    theme: string | null,
+    session: string | null,
+): string {
+    return (
+        [name, theme, session].filter(Boolean).map((v) => slugify(v as string)).filter(Boolean).join("-")
+        || "fellowship"
+    );
+}
+
+/**
+ * The extension for a locked backup.
+ *
+ * Distinctive on purpose: searching a drive for "*.rcfvault" finds every fellowship
+ * archive and nothing else, and an unfamiliar extension tells whoever stumbles on the
+ * file that it isn't something to double-click and skim. Unlocked downloads keep the
+ * extension their contents actually are (.json / .zip), because those genuinely do
+ * open in ordinary tools.
+ */
+export const VAULT_EXTENSION = "rcfvault";
+
+/**
+ * "rcf-backup-dominion-arise-and-shine-2026-2027-20260918.rcfvault"
+ *
+ * Encrypted bundles always get the vault extension whatever they wrap — it says "this
+ * needs a passphrase", which is the thing a person needs to know when they find the
+ * file a year later.
  */
 export function backupFilename(
     manifest: BackupManifest,
@@ -216,7 +247,7 @@ export function backupFilename(
     csv = false,
 ): string {
     const stamp = manifest.takenAt.slice(0, 10).replace(/-/g, "");
-    const ext = encrypted ? "rcfbak" : csv ? "zip" : "json";
+    const ext = encrypted ? VAULT_EXTENSION : csv ? "zip" : "json";
     return `rcf-backup-${manifest.label}-${stamp}.${ext}`;
 }
 
