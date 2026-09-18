@@ -5,8 +5,6 @@ import { useState } from "react";
 import {
     createTenureAction,
     updateTenureAction,
-    handoverTenureAction,
-    searchMemberAction,
 } from "../actions";
 import {
     Save,
@@ -20,15 +18,13 @@ import {
     Edit3,
     X,
     ArrowRightLeft,
-    Search,
-    Loader2,
     Sparkles,
 } from "lucide-react";
+import Link from "next/link";
 import FormInput from "@/components/ui/FormInput";
 
 export function TenureTab({ data, onSuccess }: any) {
     const [isEditing, setIsEditing] = useState(false);
-    const [isHandingOver, setIsHandingOver] = useState(false);
     const active = data?.activeTenure;
     const stats = data?.sessionStats;
 
@@ -136,12 +132,12 @@ export function TenureTab({ data, onSuccess }: any) {
                                 </p>
                             </div>
                         </div>
-                        <button
-                            onClick={() => setIsHandingOver(true)}
-                            className="shrink-0 rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-amber-700"
+                        <Link
+                            href="/dashboard/tenure/handover"
+                            className="shrink-0 rounded-lg bg-amber-600 px-6 py-2.5 text-center text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700"
                         >
                             Begin Handover
-                        </button>
+                        </Link>
                     </div>
                 </>
             ) : (
@@ -168,9 +164,6 @@ export function TenureTab({ data, onSuccess }: any) {
 
             {isEditing && active && (
                 <EditTenureModal tenure={active} onClose={() => setIsEditing(false)} onSuccess={onSuccess} />
-            )}
-            {isHandingOver && active && (
-                <HandoverModal onClose={() => setIsHandingOver(false)} onSuccess={onSuccess} />
             )}
         </div>
     );
@@ -219,160 +212,6 @@ function EditTenureModal({ tenure, onClose, onSuccess }: any) {
                     </button>
                 </form>
             </div>
-        </div>
-    );
-}
-
-/** Two-member handover: appoints incoming VP Admin + ICT Coordinator into a new tenure. */
-function HandoverModal({ onClose, onSuccess }: any) {
-    const [vpAdmin, setVpAdmin] = useState<any>(null);
-    const [ictCoord, setIctCoord] = useState<any>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [saving, setSaving] = useState(false);
-
-    async function handleSubmit(formData: FormData) {
-        setError(null);
-        if (!vpAdmin || !ictCoord) {
-            setError("Select both the incoming VP Admin and ICT Coordinator.");
-            return;
-        }
-        formData.append("vpAdminProfileId", vpAdmin.id);
-        formData.append("ictCoordProfileId", ictCoord.id);
-        setSaving(true);
-        const res = await handoverTenureAction(formData);
-        setSaving(false);
-        if (res.success) {
-            onSuccess();
-            onClose();
-        } else setError(res.error || "Handover failed.");
-    }
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in overflow-y-auto">
-            <div className="my-8 bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-                <div className="bg-amber-50 px-6 py-4 border-b border-amber-100 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <ArrowRightLeft className="h-5 w-5 text-amber-600" />
-                        <h3 className="font-bold text-slate-900">Tenure Handover</h3>
-                    </div>
-                    <button onClick={onClose}>
-                        <X className="h-5 w-5 text-slate-500" />
-                    </button>
-                </div>
-                <form action={handleSubmit} className="p-6 space-y-5">
-                    <div className="rounded-lg bg-slate-50 border border-slate-100 p-4 space-y-4">
-                        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                            New Tenure
-                        </p>
-                        <FormInput label="Name" name="name" required placeholder="e.g. The Dominion Tenure" />
-                        <FormInput label="Theme" name="theme" placeholder="e.g. Arise & Shine" />
-                        <div className="grid grid-cols-2 gap-4">
-                            <FormInput label="Session" name="session" required placeholder="2026/2027" />
-                            <FormInput label="Start Date" name="startDate" type="date" required />
-                        </div>
-                    </div>
-
-                    <MemberPicker label="Incoming VP Admin" selected={vpAdmin} onSelect={setVpAdmin} />
-                    <MemberPicker label="Incoming ICT Coordinator" selected={ictCoord} onSelect={setIctCoord} />
-
-                    {error && (
-                        <p className="flex items-center gap-1.5 text-sm font-medium text-red-600">
-                            <AlertCircle className="h-4 w-4" /> {error}
-                        </p>
-                    )}
-
-                    <div className="flex gap-3 pt-2">
-                        <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm">
-                            Cancel
-                        </button>
-                        <button
-                            disabled={saving}
-                            className="flex-1 inline-flex justify-center items-center gap-2 py-2.5 rounded-xl bg-amber-600 text-white font-bold text-sm disabled:opacity-50"
-                        >
-                            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                            {saving ? "Handing over…" : "Confirm Handover"}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-/** Debounced member search + selection (reused by handover). */
-function MemberPicker({ label, selected, onSelect }: any) {
-    const [query, setQuery] = useState("");
-    const [results, setResults] = useState<any[]>([]);
-    const [searching, setSearching] = useState(false);
-
-    async function onQuery(value: string) {
-        setQuery(value);
-        if (value.length < 3) {
-            setResults([]);
-            return;
-        }
-        setSearching(true);
-        try {
-            setResults(await searchMemberAction(value));
-        } finally {
-            setSearching(false);
-        }
-    }
-
-    if (selected) {
-        return (
-            <div className="space-y-1.5">
-                <p className="text-sm font-medium text-slate-700">{label}</p>
-                <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                    <span className="text-sm font-bold text-slate-800">
-                        {selected.first_name} {selected.last_name}
-                        <span className="ml-2 text-xs font-normal text-slate-500">{selected.email}</span>
-                    </span>
-                    <button type="button" onClick={() => onSelect(null)} className="text-xs font-bold text-red-500 hover:underline">
-                        Change
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="space-y-1.5">
-            <p className="text-sm font-medium text-slate-700">{label}</p>
-            <div className="relative">
-                {searching ? (
-                    <Loader2 className="absolute left-3 top-2.5 h-4 w-4 animate-spin text-rcf-navy" />
-                ) : (
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                )}
-                <input
-                    value={query}
-                    onChange={(e) => onQuery(e.target.value)}
-                    placeholder="Search name, email or phone…"
-                    className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-rcf-navy"
-                />
-            </div>
-            {results.length > 0 && (
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
-                    {results.map((u) => (
-                        <button
-                            key={u.id}
-                            type="button"
-                            onClick={() => {
-                                onSelect(u);
-                                setQuery("");
-                                setResults([]);
-                            }}
-                            className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-50"
-                        >
-                            <span className="text-sm font-medium text-slate-800">
-                                {u.first_name} {u.last_name}
-                            </span>
-                            <span className="text-xs text-slate-400">{u.email}</span>
-                        </button>
-                    ))}
-                </div>
-            )}
         </div>
     );
 }

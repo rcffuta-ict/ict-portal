@@ -9,17 +9,23 @@ import {
     Crown,
     Users,
     ShieldAlert,
+    ArrowLeftRight,
+    Network,
 } from "lucide-react";
 import { TenureTab } from "./components/tenure-tab";
 import { StructureTab } from "./components/structure-tab";
 import { CabinetTab } from "./components/cabinet-tab";
 import { FamilyTab } from "./components/family-tab";
+import { TransfersTab } from "./components/transfers-tab";
+import { CataloguePanel } from "./components/catalogue-panel";
 import { CompactPreloader } from "@/components/ui/preloader";
 
 /**
- * Executive Console - Tenure Management Dashboard
- * Allows admins to manage tenures, structure, leadership, and families
- * Access is restricted to emails in ADMIN_EMAILS environment variable
+ * Executive Console — tenure, structure, leadership, generations, transfers.
+ *
+ * Access is gated server-side by the `tenure` module's access config (see
+ * getAdminData → requireModuleRead). The old ADMIN_EMAILS environment whitelist is
+ * long gone; roles come from leadership positions and their privilege tags.
  */
 export default function TenureDashboard() {
     const [activeTab, setActiveTab] = useState("tenure");
@@ -66,7 +72,7 @@ export default function TenureDashboard() {
                     Access Denied
                 </h1>
                 <p className="text-slate-500 max-w-md mt-2">
-                    Your email is not authorized for the Executive Console.
+                    You don&rsquo;t hold a position with access to the Tenure module.
                 </p>
             </div>
         );
@@ -111,6 +117,20 @@ export default function TenureDashboard() {
                     active={activeTab}
                     set={setActiveTab}
                 />
+                <TabButton
+                    id="transfers"
+                    label="Transfers"
+                    icon={ArrowLeftRight}
+                    active={activeTab}
+                    set={setActiveTab}
+                />
+                <TabButton
+                    id="structure-map"
+                    label="Hierarchy"
+                    icon={Network}
+                    active={activeTab}
+                    set={setActiveTab}
+                />
             </nav>
 
             <div className="min-h-100">
@@ -125,6 +145,13 @@ export default function TenureDashboard() {
                 )}
                 {activeTab === "families" && (
                     <FamilyTab data={data} onSuccess={refresh} />
+                )}
+                {activeTab === "transfers" && (
+                    <TransfersTab onSuccess={refresh} />
+                )}
+                {activeTab === "structure-map" && (
+                    // Editing the catalogue is the VP Admin's job; everyone else reads it.
+                    <CataloguePanel canEdit={!!data?.canEditCatalogue} />
                 )}
             </div>
         </div>

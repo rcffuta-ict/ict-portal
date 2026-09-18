@@ -106,3 +106,77 @@ export async function setLoginActive(profileId: string, isActive: boolean): Prom
         .eq("profile_id", profileId);
     if (error) throw new Error(`Failed to update login status: ${error.message}`);
 }
+
+/**
+ * Revoke portal access when someone is no longer a leader.
+ *
+ * Appointment IS the grant of access (see {@link ensureLoginProvisioned}), so removal
+ * has to be the revocation — otherwise "who may log in" drifts away from "who has been
+ * appointed" one departure at a time, and last tenure's cabinet keeps its keys.
+ *
+ * The test is "holds NO position in the active tenure", not "lost a position": someone
+ * who leads two units and steps down from one still needs to sign in. When they do hold
+ * nothing, every session is revoked first (so an open tab dies immediately rather than
+ * lasting until its cookie expires) and the `profile_login` row is deleted.
+ *
+ * `login_events` is untouched — it references `profiles`, not `profile_login`, so the
+ * authentication audit trail survives the person losing access. That record is the one
+ * you would want if an account were ever misused, and it should not be erasable by an
+ * ordinary personnel change.
+ *
+ * @returns whether a login row was actually removed.
+ */
+export async function deprovisionLoginIfUnappointed(
+    profileId: string,
+): Promise<{ removed: boolean; reason?: string }> {
+    const { data: tenure } = await ictAdmin.supabase
+        .from("tenures")
+        .select("id")
+        .eq("is_active", true)
+        .maybeSingle();
+
+    // With no active tenure there is nothing to measure "still appointed" against.
+    // Leave access alone rather than locking everyone out on a half-finished handover.
+    if (!tenure?.id) return { removed: false, reason: "no active tenure" };
+
+    const { data: stillHeld } = await ictAdmin.supabase
+        .from("leadership")
+        .select("id")
+        .eq("profile_id", profileId)
+        .eq("tenure_id", tenure.id)
+        .limit(1);
+
+    if (stillHeld && stillHeld.length > 0) {
+        return { removed: false, reason: "still holds a position" };
+    }
+
+    await revokeAllSessions(profileId, "leadership_removed");
+
+    const { error } = await ictAdmin.supabase
+        .from("profile_login")
+        .delete()
+        .eq("profile_id", profileId);
+    if (error) throw new Error(`Failed to remove login: ${error.message}`);
+
+    return { removed: true };
+}
+
+/**
+ * Revoke every live session for a profile.
+ *
+ * Setting `revoked_at` (rather than deleting the rows) is what the audit trigger from
+ * migration 0001 watches — it turns each revocation into a `session_revoked` event.
+ */
+export async function revokeAllSessions(
+    profileId: string,
+    reason: string,
+): Promise<number> {
+    const { data, error } = await ictAdmin.supabase
+        .from("auth_sessions")
+        .update({ revoked_at: new Date().toISOString(), revoked_reason: reason })
+        .eq("profile_id", profileId)
+        .is("revoked_at", null)
+        .select("id");
+    if (error) throw new Error(`Failed to revoke sessions: ${error.message}`);
+    return data?.length ?? 0;
+}

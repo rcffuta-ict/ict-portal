@@ -90,6 +90,32 @@ export async function requirePresidentOrSysAdmin(): Promise<ProfileContext> {
 }
 
 /**
+ * Require the current session to be the VP Admin (or the System Admin, who can do
+ * anything).
+ *
+ * This is the gate on the LEADERSHIP CATALOGUE and on unit-transfer decisions. The
+ * catalogue is frozen in the sense that it stays the same across tenures — a handover
+ * replaces the people in `leadership`, not the positions — but it is not immutable:
+ * when the fellowship genuinely restructures, the VP Admin owns that change, because
+ * appointing leaders and defining what they may do is the VP Admin's office.
+ *
+ * Note this is narrower than `requireModuleWrite("tenure")`, which the rest of the
+ * tenure module uses: anyone the config grants tenure-write can appoint people into
+ * positions, but only the VP Admin can change what the positions ARE.
+ *
+ * @throws when unauthenticated or neither VP Admin nor System Admin.
+ */
+export async function requireVpAdmin(): Promise<ProfileContext> {
+    const ctx = await requireContext();
+    if (!ctx.isVpAdmin && !ctx.isSysAdmin) {
+        throw new Error(
+            "Access denied: only the VP Admin can change the leadership structure.",
+        );
+    }
+    return ctx;
+}
+
+/**
  * @deprecated Renamed to {@link requireSysAdmin} (the ICT Coordinator IS the System
  * Admin). Kept as an alias while callers migrate.
  */

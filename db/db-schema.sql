@@ -129,6 +129,10 @@ CREATE TABLE public.leadership_positions (
   description text,
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
+  -- migration 0011: hierarchy rank (display/ordering only — authorization is by
+  -- privilege tag) and the frozen-catalogue marker (protected rows can't be deleted).
+  tier text CHECK (tier IS NULL OR tier = ANY (ARRAY['PRESIDENT'::text, 'VP'::text, 'EXECUTIVE'::text, 'COORDINATOR'::text, 'SYSTEM'::text])),
+  is_protected boolean NOT NULL DEFAULT false,
   CONSTRAINT leadership_positions_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.membership_units (
@@ -539,4 +543,24 @@ CREATE TABLE public.admin_audit_log ( -- migration 0010
   CONSTRAINT admin_audit_log_pkey PRIMARY KEY (id),
   CONSTRAINT admin_audit_log_actor_profile_id_fkey FOREIGN KEY (actor_profile_id) REFERENCES public.profiles(id),
   CONSTRAINT admin_audit_log_target_profile_id_fkey FOREIGN KEY (target_profile_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.unit_transfer_requests ( -- migration 0011
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  profile_id uuid NOT NULL,
+  tenure_id uuid NOT NULL,
+  from_unit_id uuid,
+  to_unit_id uuid NOT NULL,
+  requested_by uuid,
+  requested_at timestamp with time zone NOT NULL DEFAULT now(),
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'declined'::text, 'cancelled'::text])),
+  decided_by uuid,
+  decided_at timestamp with time zone,
+  decline_reason text,
+  CONSTRAINT unit_transfer_requests_pkey PRIMARY KEY (id),
+  CONSTRAINT unit_transfer_requests_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id),
+  CONSTRAINT unit_transfer_requests_tenure_id_fkey FOREIGN KEY (tenure_id) REFERENCES public.tenures(id),
+  CONSTRAINT unit_transfer_requests_from_unit_id_fkey FOREIGN KEY (from_unit_id) REFERENCES public.units(id),
+  CONSTRAINT unit_transfer_requests_to_unit_id_fkey FOREIGN KEY (to_unit_id) REFERENCES public.units(id),
+  CONSTRAINT unit_transfer_requests_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.profiles(id),
+  CONSTRAINT unit_transfer_requests_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES public.profiles(id)
 );

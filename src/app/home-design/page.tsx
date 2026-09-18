@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ArrowRight, BookOpen, Users, Calendar } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
+
+export const metadata: Metadata = {
+    title: "Design Preview",
+    description:
+        "Internal design reference for the RCF FUTA portal.",
+};
 
 export default function HomeDesign() {
     return (
