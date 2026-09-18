@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
     Download,
+    Loader2,
     FileType,
     FileJson,
     FileSpreadsheet,
@@ -51,6 +52,8 @@ export function BackupPicker({
     const [lock, setLock] = useState(true);
     const [useCustom, setUseCustom] = useState(false);
     const [custom, setCustom] = useState("");
+    const [status, setStatus] = useState<"idle" | "preparing" | "done">("idle");
+    const [error, setError] = useState<string | null>(null);
 
     const groups = useMemo(() => {
         const order: BackupGroup[] = [
@@ -99,6 +102,49 @@ export function BackupPicker({
         const qs = params.toString();
         return `/dashboard/tenure/backup${qs ? `?${qs}` : ""}`;
     }, [tenureId, selected, format, canLock, useCustom, passphrase]);
+
+    const download = async () => {
+        setStatus("preparing");
+        setError(null);
+
+        try {
+            const res = await fetch(href);
+
+            if (!res.ok) {
+                // The route answers failures as JSON, so surface its actual reason
+                // (403, a missing table) rather than a generic "download failed".
+                let message = `Backup failed (${res.status}).`;
+                try {
+                    const body = await res.json();
+                    if (body?.error) message = body.error;
+                } catch {
+                    /* non-JSON error body — keep the status message */
+                }
+                setError(message);
+                setStatus("idle");
+                return;
+            }
+
+            // Filename comes from the server so it always matches what was actually built.
+            const disposition = res.headers.get("Content-Disposition") ?? "";
+            const match = disposition.match(/filename="([^"]+)"/);
+            const filename = match?.[1] ?? "rcf-backup";
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            setStatus("done");
+            onDownloaded?.();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Backup failed.");
+            setStatus("idle");
+        }
+    };
 
     return (
         <div className="space-y-5">
@@ -300,25 +346,66 @@ export function BackupPicker({
                 )}
             </section>
 
-            {/* A plain link, not fetch(): the file streams straight to disk. */}
-            <a
-                href={href}
-                onClick={() => onDownloaded?.()}
-                aria-disabled={lock && !passphrase}
-                className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy sm:w-auto ${
-                    lock && !passphrase
-                        ? "pointer-events-none bg-slate-300"
-                        : "bg-rcf-navy hover:opacity-90"
-                }`}
+            {error && (
+                <p
+                    role="alert"
+                    className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    {error}
+                </p>
+            )}
+
+            {status === "done" && !error && (
+                <p
+                    role="status"
+                    className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+                >
+                    <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    Backup downloaded. Keep it somewhere you&rsquo;ll still have it next year.
+                </p>
+            )}
+
+            {/*
+              Fetched rather than linked. A plain <a download> gives the browser the job
+              and gives us NOTHING to show — no pending state while the server pages
+              thousands of rows, and a 403 or a failed build would render as a blank tab
+              instead of an error. Going through fetch costs holding the file in memory
+              briefly (a few MB) and buys an honest progress and failure story.
+            */}
+            <button
+                type="button"
+                disabled={status === "preparing" || (lock && !passphrase)}
+                onClick={download}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-rcf-navy px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto"
             >
-                {canLock ? (
+                {status === "preparing" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : canLock ? (
                     <Lock className="h-4 w-4" aria-hidden="true" />
                 ) : (
                     <Download className="h-4 w-4" aria-hidden="true" />
                 )}
-                Download {canLock ? "locked " : ""}{format === "csv" ? "CSV" : "JSON"} backup
-                {tenureName ? ` — ${tenureName}` : ""}
-            </a>
+                {status === "preparing"
+                    ? "Preparing backup…"
+                    : `Download ${canLock ? "locked " : ""}${format === "csv" ? "CSV" : "JSON"} backup${tenureName ? ` — ${tenureName}` : ""}`}
+            </button>
+
+            <p className="text-[11px] text-slate-500">
+                You&rsquo;ll get a{" "}
+                <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px]">
+                    .{canLock ? "rcfvault" : format === "csv" ? "zip" : "json"}
+                </code>{" "}
+                file named after the tenure and its theme.
+                {canLock && " Keep the passphrase — there is no way to open it without one."}
+            </p>
+
+            {status === "preparing" && (
+                <p className="text-[11px] text-slate-500" role="status" aria-live="polite">
+                    Reading every table for this tenure{canLock ? " and encrypting the file" : ""}.
+                    On a large fellowship this takes a few seconds — don&rsquo;t close the page.
+                </p>
+            )}
 
             <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
                 <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" aria-hidden="true" />

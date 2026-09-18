@@ -9,7 +9,10 @@ A comprehensive administrative interface for managing RCF fellowship tenures, or
 ```
 src/app/dashboard/tenure/
 ├── page.tsx                    # Main dashboard page (tab navigation)
+├── layout.tsx                  # Section title (keeps the title template for children)
 ├── actions.ts                  # Server actions for all operations
+├── handover/page.tsx           # Full-screen handover wizard
+├── backup/route.ts             # Backup download (SysAdmin / VP Admin)
 ├── ACTIONS_REFERENCE.md        # Detailed action documentation
 ├── README.md                   # This file
 └── components/
@@ -17,6 +20,9 @@ src/app/dashboard/tenure/
     ├── structure-tab.tsx       # Units/teams management
     ├── cabinet-tab.tsx         # Leadership appointments & positions
     ├── family-tab.tsx          # Entry year family naming
+    ├── transfers-tab.tsx       # Unit transfer queue (VP Admin decides)
+    ├── catalogue-panel.tsx     # Read-only hierarchy + catalogue sync
+    ├── handover-wizard.tsx     # The six-step handover
     └── manage-unit-modal.tsx   # Unit-specific leader management
 ```
 
@@ -70,6 +76,69 @@ only the VP Admin can change what the positions **are**.
 4. Checks user email against whitelist
 5. Returns admin client with service role permissions
 6. If unauthorized, shows "Access Denied" message
+
+---
+
+## 🏛 The leadership catalogue
+
+The org chart — President → VPs → Executives → Level Coordinators — lives in
+`src/config/leadership-positions.ts` and is seeded by migration 0011. It is **frozen in
+the sense that it is the same every tenure**: handing over swaps the people in
+`leadership`, never the positions. The VP Admin can still edit it when the fellowship
+genuinely restructures (`requireVpAdmin()` gates every catalogue action); a protected
+position can be deactivated but never deleted, enforced by a DB trigger, because
+appointments and `module_access` reference these rows by id.
+
+Executive positions are generated one per unit, so creating a unit mints its Exco
+position automatically. Level Coordinators are generated one per level — and the
+**500-Level coordinator holds `LEVEL:all` rather than `LEVEL:500`**, which is how
+finalist coordinators get authority over every level. That rule lives in data, not in an
+`if` branch, because `canManageLevel()` already reads an `all` scope as
+"every generation".
+
+---
+
+## 🔄 Handover
+
+A handover advances the session, and **that alone re-levels the whole fellowship** — a
+member's level is computed from their generation's entry year against the active
+tenure's session (`rcf_compute_level` / `computeLevel`), never stored. So the wizard
+*previews* the progression rather than migrating anything.
+
+It runs as a **full-screen wizard** at `/dashboard/tenure/handover`, one step per
+screen: back up (required — the action refuses without a recorded backup for *this*
+tenure), name the incoming tenure, read the progression, appoint the VP Admin + ICT
+Coordinator, decide whether to carry unit membership forward and whether to revoke
+outgoing logins, then type the incoming session to confirm. It deliberately covers the
+dashboard chrome — there is nothing else to click and no backdrop to dismiss by accident.
+
+---
+
+## 💾 Backups
+
+`/dashboard/tenure/backup` (System Admin or VP Admin only). Driven by
+`src/components/dashboard/backup-picker.tsx`, which is shared — the handover wizard
+embeds it, and it stands alone anywhere else a backup is offered.
+
+- **Per tenure.** Tables with a `tenure_id` are filtered to the selected tenure; shared
+  tables (profiles, units, generations) come whole.
+- **Required vs optional.** Identity and structure tables are always included — a bundle
+  without them can't restore. Audit, invite and activity tables are opt-in. The registry
+  is `src/lib/backup-tables.ts`, shared by the picker and validated by the server.
+- **Two formats.** JSON restores; CSV downloads as a ZIP of one spreadsheet per table
+  for reading (CSV loses types and relationships, so it can't be restored from). The ZIP
+  is written by `src/lib/zip.ts` — store-only, no new dependency.
+- **Encrypted** with AES-256-GCM, key derived by scrypt. The default passphrase is the
+  tenure president's name, slugged: `Ada Obi`, `ADA  OBI` and `ada-obi` all unlock it. A
+  custom passphrase is offered and is stronger — a name is guessable by anyone who knows
+  the fellowship, so it guards against casual disclosure, not a determined attacker.
+  Locked files carry the `.rcfvault` extension; the filename includes the tenure name,
+  its theme and the session.
+- **Secrets never enter the file**: no password hashes, no session tokens, invite tokens
+  redacted. After a restore, leaders set a new password on first login.
+
+Restore with `node scripts/restore-backup.mjs <file> --password "<passphrase>"` —
+dry-run by default, `--commit` to write.
 
 ---
 

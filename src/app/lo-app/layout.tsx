@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
+import { sectionTitle } from "@/lib/metadata";
 
 export const metadata: Metadata = {
-    title: {
-        absolute: "Lo! App | RCF FUTA",
-        default: "Lo! App | RCF FUTA"
-    },
+    // `absolute` would pin this title for every nested page too, so a shared
+    // testimony would have rendered as "Lo! App" instead of its own headline.
+    title: sectionTitle("Lo! App"),
     description: "Behold! Ask questions, discover events, and engage with the RCF FUTA community.",
     openGraph: {
         title: "Lo! App | RCF FUTA",

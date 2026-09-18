@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sectionTitle } from "@/lib/metadata";
 
 /**
  * Title-only layout.
@@ -7,7 +8,7 @@ import type { Metadata } from "next";
  * `metadata` — so the title lives here instead. Renders nothing of its own.
  */
 export const metadata: Metadata = {
-    title: "Tenure Manager",
+    title: sectionTitle("Tenure Manager"),
     description: "Tenure configuration, structure, cabinet and generations.",
 };
 

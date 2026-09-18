@@ -7,7 +7,7 @@
  * Usage:
  *   node scripts/restore-backup.mjs <file>                       # dry run (default)
  *   node scripts/restore-backup.mjs <file> --commit              # actually write
- *   node scripts/restore-backup.mjs <file> --password "Ada Obi"  # unlock a .rcfbak
+ *   node scripts/restore-backup.mjs <file> --password "Ada Obi"  # unlock a .rcfvault
  *   node scripts/restore-backup.mjs <file> --commit --only profiles,leadership
  *
  * DRY RUN IS THE DEFAULT, deliberately. This writes to every core table, and a restore
@@ -41,7 +41,7 @@ const SUPPORTED_FORMAT = 2;
 const SUPPORTED_ENVELOPE = 1;
 
 /**
- * Decrypt a .rcfbak envelope. Mirrors src/lib/backup-crypto.ts exactly — same
+ * Decrypt a .rcfvault envelope. Mirrors src/lib/backup-crypto.ts exactly — same
  * AES-256-GCM, same scrypt derivation, same passphrase normalisation, so a file
  * produced by the portal opens here and nowhere else without the passphrase.
  */

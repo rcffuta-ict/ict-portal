@@ -145,11 +145,22 @@ export async function decryptBackup(
 }
 
 /**
- * Normalise a passphrase so a president's name unlocks the file regardless of how it
- * is typed years later — case, extra spaces and surrounding whitespace all collapse.
- * Applied identically on encrypt and decrypt, so it never weakens a strong passphrase
- * beyond case-insensitivity.
+ * Normalise a passphrase to its SLUG form: "Ada  OBI", "ada obi" and "ada-obi" all
+ * derive the same key.
+ *
+ * The default passphrase is a president's name, and a name typed back a year later
+ * will not match character-for-character — the case will differ, someone will use a
+ * hyphen, someone else two spaces. Slugging both sides removes every one of those
+ * failure modes, and an archive that cannot be opened is worth nothing.
+ *
+ * Applied identically on encrypt and decrypt. It does cost a custom passphrase its
+ * case and punctuation, so length is what carries strength here — which the picker
+ * says out loud.
  */
 export function normalizePassphrase(raw: string): string {
-    return raw.trim().replace(/\s+/g, " ").toLowerCase();
+    return raw
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 }
