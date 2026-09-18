@@ -127,8 +127,9 @@ export function TenureTab({ data, onSuccess }: any) {
                             <div>
                                 <h4 className="font-bold text-amber-900">Handover & Close Tenure</h4>
                                 <p className="text-sm text-amber-700/80">
-                                    Archives this session and opens the next, appointing the incoming
-                                    VP Admin and ICT Coordinator.
+                                    Archives this session and opens the next. Every handover is
+                                    recorded, so you can pause and resume — and successors can
+                                    see what was done.
                                 </p>
                             </div>
                         </div>
@@ -136,7 +137,7 @@ export function TenureTab({ data, onSuccess }: any) {
                             href="/dashboard/tenure/handover"
                             className="shrink-0 rounded-lg bg-amber-600 px-6 py-2.5 text-center text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700"
                         >
-                            Begin Handover
+                            Handing Over
                         </Link>
                     </div>
                 </>

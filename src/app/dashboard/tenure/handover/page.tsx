@@ -1,49 +1,46 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShieldAlert } from "lucide-react";
-import { requireModuleWrite } from "@/lib/access-control";
-import { ictAdmin } from "@/lib/ict";
-import { HandoverWizard } from "../components/handover-wizard";
+import { ShieldAlert, ChevronLeft } from "lucide-react";
+import { requireVpAdmin } from "@/lib/access-control";
+import { listHandoverIntentsAction } from "../actions";
+import { HandoverIndex } from "../components/handover-index";
 
 export const metadata: Metadata = {
     title: "Handing Over",
-    description:
-        "Close the current tenure, advance every generation, and open the next.",
+    description: "Every handover of the fellowship — past, in progress, and abandoned.",
 };
 
 /**
- * The handover — a full-screen wizard, one procedure per screen.
+ * The handover ledger — what you see before the wizard.
  *
- * This closes one tenure and opens the next: every generation is re-levelled, the
- * finalists become alumni, and the outgoing cabinet loses its access. It is the single
- * most consequential and least reversible thing anyone can do in this portal, and it
- * happens once a year.
+ * Two jobs, and the second is the reason this page exists at all:
  *
- * So it takes over the whole screen. The sidebar, the dashboard chrome and every other
- * navigation affordance are painted over deliberately — there is nothing else to click,
- * nothing to half-do while distracted, and no backdrop to dismiss by accident the way a
- * modal invites. One step fills the viewport at a time, and you cannot reach the commit
- * without passing through each one.
+ *   1. Start or RESUME a handover. The wizard is six deliberate steps and the person
+ *      running it will be interrupted; an open intent is picked up exactly where it was
+ *      left rather than begun again.
  *
- * It sits at z-150: above the dashboard chrome (z-40/50), but below the preview banner
- * (z-200), so a preview deployment still says so even mid-handover — running this
- * against the wrong environment is precisely the mistake worth preventing.
+ *   2. Show every handover that has ever been attempted. The people most affected by a
+ *      handover — the incoming cabinet — arrive after it has happened. This is the
+ *      record they inherit: who handed over, when, what they decided, and what they
+ *      walked away from.
+ *
+ * VP Admin and System Admin only.
  */
-export default async function HandoverPage() {
+export default async function HandoverIndexPage() {
     let authorized = true;
     try {
-        await requireModuleWrite("tenure");
+        await requireVpAdmin();
     } catch {
         authorized = false;
     }
 
     if (!authorized) {
         return (
-            <Curtain>
+            <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-8 text-center">
                 <ShieldAlert className="h-10 w-10 text-amber-500" aria-hidden="true" />
                 <h1 className="text-lg font-bold text-rcf-navy">Restricted</h1>
-                <p className="max-w-sm text-sm text-gray-600">
-                    Only someone with write access to the Tenure module can run a handover.
+                <p className="text-sm text-gray-600">
+                    Only the VP Admin and the System Admin can see or run a handover.
                 </p>
                 <Link
                     href="/dashboard/tenure"
@@ -51,73 +48,40 @@ export default async function HandoverPage() {
                 >
                     Back to Tenure Manager
                 </Link>
-            </Curtain>
+            </div>
         );
     }
 
-    const { data: active } = await ictAdmin.supabase
-        .from("tenures")
-        .select("id, name, session, start_date")
-        .eq("is_active", true)
-        .maybeSingle();
-
-    if (!active) {
-        return (
-            <Curtain>
-                <h1 className="text-lg font-bold text-rcf-navy">No active tenure</h1>
-                <p className="max-w-sm text-sm text-gray-600">
-                    There is nothing to hand over from. Create and activate a tenure first.
-                </p>
-                <Link
-                    href="/dashboard/tenure"
-                    className="text-sm font-semibold text-rcf-navy underline underline-offset-2"
-                >
-                    Back to Tenure Manager
-                </Link>
-            </Curtain>
-        );
-    }
+    const res = await listHandoverIntentsAction();
 
     return (
-        <Curtain align="stretch">
-            <HandoverWizard
-                currentTenure={{
-                    id: active.id,
-                    name: active.name,
-                    session: active.session,
-                }}
+        <div className="mx-auto max-w-3xl space-y-6 pb-20">
+            <Link
+                href="/dashboard/tenure"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 transition-colors hover:text-rcf-navy focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+            >
+                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                Back to Tenure Manager
+            </Link>
+
+            <header className="space-y-1 border-b border-slate-200 pb-5">
+                <h1 className="text-2xl font-bold tracking-tight text-rcf-navy sm:text-3xl">
+                    Handing Over
+                </h1>
+                <p className="max-w-2xl text-sm leading-relaxed text-slate-500">
+                    Every handover of the fellowship, in order. Each one records who ran it,
+                    what they decided and how far they got — so whoever comes next can see
+                    exactly what their predecessors did.
+                </p>
+            </header>
+
+            <HandoverIndex
+                intents={res.success ? res.data : []}
+                loadError={res.success ? null : res.error}
             />
-        </Curtain>
-    );
-}
-
-/**
- * The full-screen curtain.
- *
- * `fixed inset-0` rather than a tall page, so the dashboard sidebar and header are
- * genuinely covered instead of merely scrolled past. globals.css already offsets
- * `.fixed.inset-0` when the preview banner is showing, so this doesn't tuck underneath
- * it on a preview build.
- */
-function Curtain({
-    children,
-    align = "center",
-}: {
-    children: React.ReactNode;
-    align?: "center" | "stretch";
-}) {
-    return (
-        <div className="fixed inset-0 z-[150] overflow-y-auto overscroll-contain bg-slate-50">
-            {align === "center" ? (
-                <div className="flex min-h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                    {children}
-                </div>
-            ) : (
-                <div className="flex min-h-full flex-col">{children}</div>
-            )}
         </div>
     );
 }
 
-// Reads live tenure state; a cached copy would be a dangerous thing to act on.
+// Reads live handover state; a cached copy would be a dangerous thing to act on.
 export const dynamic = "force-dynamic";

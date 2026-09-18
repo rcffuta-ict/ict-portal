@@ -11,7 +11,8 @@ src/app/dashboard/tenure/
 ├── page.tsx                    # Main dashboard page (tab navigation)
 ├── layout.tsx                  # Section title (keeps the title template for children)
 ├── actions.ts                  # Server actions for all operations
-├── handover/page.tsx           # Full-screen handover wizard
+├── handover/page.tsx           # Handover ledger (history + start/resume)
+├── handover/[intentId]/page.tsx # The wizard, or a finished handover's record
 ├── backup/route.ts             # Backup download (SysAdmin / VP Admin)
 ├── ACTIONS_REFERENCE.md        # Detailed action documentation
 ├── README.md                   # This file
@@ -22,6 +23,8 @@ src/app/dashboard/tenure/
     ├── family-tab.tsx          # Entry year family naming
     ├── transfers-tab.tsx       # Unit transfer queue (VP Admin decides)
     ├── catalogue-panel.tsx     # Read-only hierarchy + catalogue sync
+    ├── handover-index.tsx      # Ledger: open intent + history
+    ├── handover-record.tsx     # Read-only record of a finished handover
     ├── handover-wizard.tsx     # The six-step handover
     └── manage-unit-modal.tsx   # Unit-specific leader management
 ```
@@ -105,12 +108,35 @@ member's level is computed from their generation's entry year against the active
 tenure's session (`rcf_compute_level` / `computeLevel`), never stored. So the wizard
 *previews* the progression rather than migrating anything.
 
-It runs as a **full-screen wizard** at `/dashboard/tenure/handover`, one step per
-screen: back up (required — the action refuses without a recorded backup for *this*
-tenure), name the incoming tenure, read the progression, appoint the VP Admin + ICT
-Coordinator, decide whether to carry unit membership forward and whether to revoke
-outgoing logins, then type the incoming session to confirm. It deliberately covers the
-dashboard chrome — there is nothing else to click and no backdrop to dismiss by accident.
+**VP Admin and System Admin only** (`requireVpAdmin`) — narrower than the rest of the
+module, which the wider tenure-write group can use.
+
+### The ledger — `/dashboard/tenure/handover`
+
+Not the wizard. An index of every handover ever attempted, backed by
+`handover_intents` (migration 0012). It does two things:
+
+- **Start or resume.** An open intent is pulled to the top with a progress bar and a
+  "Resume" button. The wizard saves after every step, so closing the tab loses nothing.
+  A partial unique index allows only one open intent per outgoing tenure, and starting
+  a second time *joins* the existing one rather than racing it.
+- **Show the history.** The people most affected by a handover — the incoming cabinet —
+  arrive after it happened. Each row links to a read-only record: who ran it, what they
+  decided at each step, and how it ended. `handover_events` is the append-only
+  proceedings log behind that timeline; nothing in the app updates or deletes those rows.
+
+### The wizard — `/dashboard/tenure/handover/[intentId]`
+
+A **full-screen** six-step walk-through: back up (required — the action refuses without
+a recorded backup for *this* tenure), name the incoming tenure, read the progression,
+appoint the VP Admin + ICT Coordinator, decide whether to carry unit membership forward
+and whether to revoke outgoing logins, then type the incoming session to confirm. It
+deliberately covers the dashboard chrome — there is nothing else to click and no
+backdrop to dismiss by accident. A completed or abandoned intent renders at the same URL
+as a record instead of a form.
+
+`payload` on the intent is wizard DRAFT state and is never trusted: the commit action
+re-reads and re-validates everything from the database regardless of what the draft holds.
 
 ---
 
@@ -125,6 +151,10 @@ embeds it, and it stands alone anywhere else a backup is offered.
 - **Required vs optional.** Identity and structure tables are always included — a bundle
   without them can't restore. Audit, invite and activity tables are opt-in. The registry
   is `src/lib/backup-tables.ts`, shared by the picker and validated by the server.
+- **Handover history travels with it.** `handover_intents` and `handover_events` are
+  included by default and, unlike every other audit table, are *not* tenure-scoped: a
+  backup taken mid-handover that held only the handover in progress would lose exactly
+  the chain of custody it exists to preserve.
 - **Two formats.** JSON restores; CSV downloads as a ZIP of one spreadsheet per table
   for reading (CSV loses types and relationships, so it can't be restored from). The ZIP
   is written by `src/lib/zip.ts` — store-only, no new dependency.

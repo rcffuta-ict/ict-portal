@@ -564,3 +564,38 @@ CREATE TABLE public.unit_transfer_requests ( -- migration 0011
   CONSTRAINT unit_transfer_requests_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.profiles(id),
   CONSTRAINT unit_transfer_requests_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.handover_intents ( -- migration 0012
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  from_tenure_id uuid,
+  from_tenure_name text,
+  from_tenure_session text,
+  to_tenure_id uuid,
+  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'in_progress'::text, 'completed'::text, 'abandoned'::text])),
+  step smallint NOT NULL DEFAULT 0,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  initiated_by uuid,
+  initiated_by_name text,
+  completed_by uuid,
+  completed_by_name text,
+  completed_at timestamp with time zone,
+  abandoned_reason text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT handover_intents_pkey PRIMARY KEY (id),
+  CONSTRAINT handover_intents_from_tenure_id_fkey FOREIGN KEY (from_tenure_id) REFERENCES public.tenures(id),
+  CONSTRAINT handover_intents_to_tenure_id_fkey FOREIGN KEY (to_tenure_id) REFERENCES public.tenures(id),
+  CONSTRAINT handover_intents_initiated_by_fkey FOREIGN KEY (initiated_by) REFERENCES public.profiles(id),
+  CONSTRAINT handover_intents_completed_by_fkey FOREIGN KEY (completed_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.handover_events ( -- migration 0012
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  intent_id uuid NOT NULL,
+  action text NOT NULL,
+  detail text,
+  actor_id uuid,
+  actor_name text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT handover_events_pkey PRIMARY KEY (id),
+  CONSTRAINT handover_events_intent_id_fkey FOREIGN KEY (intent_id) REFERENCES public.handover_intents(id),
+  CONSTRAINT handover_events_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.profiles(id)
+);

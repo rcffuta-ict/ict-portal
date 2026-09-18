@@ -4,6 +4,7 @@
 import { requireModuleRead, requireModuleWrite, requireVpAdmin } from "@/lib/access-control";
 import { ictAdmin } from "@/lib/ict";
 import { getTenurePresidentName } from "@/lib/backup";
+import type { ProfileContext } from "@/lib/auth/profile-context";
 import { computeLevel, LEVELS } from "@/lib/levels";
 import { validatePrivilegeSet, deriveCategory } from "@/lib/privileges";
 import { ensureLoginProvisioned, deprovisionLoginIfUnappointed } from "@/lib/auth/provision";
@@ -386,7 +387,8 @@ export async function getHandoverPreviewAction(incomingSession: string) {
  * neither is obviously right for every fellowship.
  */
 export async function handoverTenureAction(formData: FormData) {
-    const ctx = await requireModuleWrite("tenure");
+    // A handover is the write-bypass tier's alone — not the wider tenure-write group.
+    const ctx = await requireVpAdmin();
     const rcf = ictAdmin;
     try {
         const name = ((formData.get("name") as string) || "").trim();
@@ -397,6 +399,7 @@ export async function handoverTenureAction(formData: FormData) {
         const ictCoordProfileId = formData.get("ictCoordProfileId") as string;
         const carryMembership = formData.get("carryMembership") !== "false";
         const revokeOutgoing = formData.get("revokeOutgoing") !== "false";
+        const intentId = (formData.get("intentId") as string) || null;
 
         if (!name || !session || !startDate) {
             return { success: false, error: "New tenure name, session and start date are required." };
@@ -496,7 +499,32 @@ export async function handoverTenureAction(formData: FormData) {
             }
         }
 
+        // Close out the intent: this is the row a successor reads to see what happened.
+        if (intentId) {
+            const actor = actorOf(ctx);
+            const { error: intentError } = await rcf.supabase
+                .from("handover_intents")
+                .update({
+                    status: "completed",
+                    to_tenure_id: newTenure.id,
+                    completed_by: actor.id,
+                    completed_by_name: actor.name,
+                    completed_at: new Date().toISOString(),
+                    step: 6,
+                })
+                .eq("id", intentId);
+            if (intentError) console.error("handover intent completion failed:", intentError.message);
+
+            await logHandoverEvent(
+                intentId,
+                ctx,
+                "completed",
+                `Opened ${name} (${session}). ${carried} membership${carried === 1 ? "" : "s"} carried forward, ${revoked} outgoing login${revoked === 1 ? "" : "s"} revoked.`,
+            );
+        }
+
         revalidatePath('/dashboard/tenure');
+        revalidatePath('/dashboard/tenure/handover');
         return { success: true, tenureId: newTenure.id, carried, revoked };
     } catch (e: any) {
         return { success: false, error: e.message };
@@ -1394,6 +1422,311 @@ export async function declineTransferAction(requestId: string, reason?: string) 
         if (error) return { success: false as const, error: error.message };
 
         revalidatePath("/dashboard/tenure");
+        return { success: true as const };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+// ============================================================================
+// HANDOVER INTENTS
+// ============================================================================
+//
+// A handover is long, deliberate and once a year, so it is recorded as an INTENT:
+// resumable draft state while it runs, and a permanent record of what was decided once
+// it lands. Successors read these to see what their predecessors actually did.
+//
+// Access is the write-bypass tier only — VP Admin and System Admin (requireVpAdmin).
+// A handover is not something the wider tenure-write group should be able to start.
+
+/** Snapshot of the acting person, so the trail survives their profile changing. */
+function actorOf(ctx: ProfileContext) {
+    return {
+        id: ctx.profile.id,
+        name: [ctx.profile.firstName, ctx.profile.lastName].filter(Boolean).join(" ") || null,
+    };
+}
+
+/** Append one line to an intent's proceedings log. Never fails the caller. */
+async function logHandoverEvent(
+    intentId: string,
+    ctx: ProfileContext,
+    action: string,
+    detail?: string | null,
+) {
+    const actor = actorOf(ctx);
+    const { error } = await ictAdmin.supabase.from("handover_events").insert({
+        intent_id: intentId,
+        action,
+        detail: detail ?? null,
+        actor_id: actor.id,
+        actor_name: actor.name,
+    });
+    // A lost log line is bad; a handover that fails because logging failed is worse.
+    if (error) console.error("handover_events insert failed:", error.message);
+}
+
+/**
+ * Every handover attempt, newest first — the index page's whole content.
+ *
+ * Deliberately NOT filtered to the active tenure: the point is that an incoming
+ * cabinet can read what previous ones did.
+ */
+export async function listHandoverIntentsAction() {
+    try {
+        await requireVpAdmin();
+
+        const { data, error } = await ictAdmin.supabase
+            .from("handover_intents")
+            .select(`
+                id, status, step, from_tenure_id, from_tenure_name, from_tenure_session,
+                to_tenure_id, initiated_by_name, completed_by_name, completed_at,
+                abandoned_reason, created_at, updated_at, payload,
+                to_tenure:tenures!handover_intents_to_tenure_id_fkey(name, session)
+            `)
+            .order("created_at", { ascending: false })
+            .limit(50);
+
+        if (error) {
+            // Migration 0012 not applied yet — say so plainly rather than crashing the page.
+            return {
+                success: false as const,
+                error: "Handover history unavailable. Apply db/migrations/0012_handover_intents.sql.",
+                data: [],
+            };
+        }
+
+        const one = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+        return {
+            success: true as const,
+            data: (data ?? []).map((r: any) => {
+                const to = one(r.to_tenure) as { name?: string; session?: string } | null;
+                return {
+                    id: r.id,
+                    status: r.status as "draft" | "in_progress" | "completed" | "abandoned",
+                    step: r.step,
+                    fromTenure: {
+                        id: r.from_tenure_id,
+                        name: r.from_tenure_name,
+                        session: r.from_tenure_session,
+                    },
+                    toTenure: r.to_tenure_id
+                        ? { id: r.to_tenure_id, name: to?.name ?? null, session: to?.session ?? null }
+                        : null,
+                    // The incoming tenure a draft is HEADING for, before it exists.
+                    plannedName: (r.payload?.name as string) || null,
+                    plannedSession: (r.payload?.session as string) || null,
+                    initiatedBy: r.initiated_by_name,
+                    completedBy: r.completed_by_name,
+                    completedAt: r.completed_at,
+                    abandonedReason: r.abandoned_reason,
+                    createdAt: r.created_at,
+                    updatedAt: r.updated_at,
+                };
+            }),
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message, data: [] };
+    }
+}
+
+/** One intent plus its proceedings, for resuming the wizard and for the detail view. */
+export async function getHandoverIntentAction(intentId: string) {
+    try {
+        await requireVpAdmin();
+
+        const { data: intent, error } = await ictAdmin.supabase
+            .from("handover_intents")
+            .select("*")
+            .eq("id", intentId)
+            .maybeSingle();
+
+        if (error || !intent) {
+            return { success: false as const, error: "That handover record doesn't exist." };
+        }
+
+        const { data: events } = await ictAdmin.supabase
+            .from("handover_events")
+            .select("id, action, detail, actor_name, created_at")
+            .eq("intent_id", intentId)
+            .order("created_at", { ascending: true });
+
+        return {
+            success: true as const,
+            intent: {
+                id: intent.id,
+                status: intent.status,
+                step: intent.step ?? 0,
+                payload: (intent.payload ?? {}) as Record<string, unknown>,
+                fromTenure: {
+                    id: intent.from_tenure_id,
+                    name: intent.from_tenure_name,
+                    session: intent.from_tenure_session,
+                },
+                toTenureId: intent.to_tenure_id,
+                initiatedBy: intent.initiated_by_name,
+                completedBy: intent.completed_by_name,
+                completedAt: intent.completed_at,
+                abandonedReason: intent.abandoned_reason,
+                createdAt: intent.created_at,
+                updatedAt: intent.updated_at,
+            },
+            events: (events ?? []).map((e: any) => ({
+                id: e.id,
+                action: e.action,
+                detail: e.detail,
+                actorName: e.actor_name,
+                createdAt: e.created_at,
+            })),
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+/**
+ * Start a handover, or join the one already open.
+ *
+ * Returns the EXISTING open intent rather than erroring when someone else has already
+ * started one for this tenure: two people running rival handovers of the same tenure is
+ * the failure this prevents, and "you're now both on the same one" is far more useful
+ * than "somebody else is doing this".
+ */
+export async function createHandoverIntentAction() {
+    try {
+        const ctx = await requireVpAdmin();
+
+        const { data: tenure } = await ictAdmin.supabase
+            .from("tenures")
+            .select("id, name, session")
+            .eq("is_active", true)
+            .maybeSingle();
+
+        if (!tenure) {
+            return { success: false as const, error: "There is no active tenure to hand over." };
+        }
+
+        const { data: open } = await ictAdmin.supabase
+            .from("handover_intents")
+            .select("id")
+            .eq("from_tenure_id", tenure.id)
+            .in("status", ["draft", "in_progress"])
+            .maybeSingle();
+
+        if (open) {
+            return { success: true as const, intentId: open.id, joined: true };
+        }
+
+        const actor = actorOf(ctx);
+        const { data: created, error } = await ictAdmin.supabase
+            .from("handover_intents")
+            .insert({
+                from_tenure_id: tenure.id,
+                from_tenure_name: tenure.name,
+                from_tenure_session: tenure.session,
+                status: "draft",
+                initiated_by: actor.id,
+                initiated_by_name: actor.name,
+            })
+            .select("id")
+            .single();
+
+        if (error || !created) {
+            return { success: false as const, error: error?.message || "Could not start the handover." };
+        }
+
+        await logHandoverEvent(
+            intentIdOf(created),
+            ctx,
+            "started",
+            `Began handing over ${tenure.name} (${tenure.session}).`,
+        );
+
+        revalidatePath("/dashboard/tenure/handover");
+        return { success: true as const, intentId: created.id, joined: false };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+function intentIdOf(row: { id: string }): string {
+    return row.id;
+}
+
+/**
+ * Save wizard progress so the handover survives a closed tab.
+ *
+ * Draft state ONLY — nothing here is trusted when the handover finally commits; that
+ * action re-reads and re-validates everything from the database.
+ */
+export async function saveHandoverProgressAction(
+    intentId: string,
+    progress: { step: number; payload: Record<string, unknown>; note?: string },
+) {
+    try {
+        const ctx = await requireVpAdmin();
+
+        const { data: intent } = await ictAdmin.supabase
+            .from("handover_intents")
+            .select("status, step")
+            .eq("id", intentId)
+            .maybeSingle();
+
+        if (!intent) return { success: false as const, error: "That handover record doesn't exist." };
+        if (intent.status === "completed" || intent.status === "abandoned") {
+            return { success: false as const, error: `This handover is already ${intent.status}.` };
+        }
+
+        const { error } = await ictAdmin.supabase
+            .from("handover_intents")
+            .update({
+                step: Math.max(0, Math.min(progress.step, 10)),
+                payload: progress.payload ?? {},
+                status: "in_progress",
+            })
+            .eq("id", intentId);
+
+        if (error) return { success: false as const, error: error.message };
+
+        // Only log a step the wizard actually ADVANCED to. Autosaves on every keystroke
+        // would bury the interesting lines in noise.
+        if (progress.note && progress.step > (intent.step ?? 0)) {
+            await logHandoverEvent(intentId, ctx, "step_completed", progress.note);
+        }
+
+        return { success: true as const };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+/** Walk away from a handover without completing it, on the record. */
+export async function abandonHandoverIntentAction(intentId: string, reason?: string) {
+    try {
+        const ctx = await requireVpAdmin();
+        const actor = actorOf(ctx);
+
+        const { error } = await ictAdmin.supabase
+            .from("handover_intents")
+            .update({
+                status: "abandoned",
+                abandoned_reason: reason?.trim() || null,
+                completed_by: actor.id,
+                completed_by_name: actor.name,
+            })
+            .eq("id", intentId)
+            .in("status", ["draft", "in_progress"]);
+
+        if (error) return { success: false as const, error: error.message };
+
+        await logHandoverEvent(
+            intentId,
+            ctx,
+            "abandoned",
+            reason?.trim() || "No reason given.",
+        );
+
+        revalidatePath("/dashboard/tenure/handover");
         return { success: true as const };
     } catch (e: any) {
         return { success: false as const, error: e.message };
