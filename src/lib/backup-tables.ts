@@ -152,6 +152,26 @@ export const BACKUP_TABLES: TableSpec[] = [
         tenureColumn: "tenure_id",
     },
     {
+        name: "handover_intents",
+        label: "Handover history",
+        description:
+            "Every handover ever attempted: who ran it, what they decided, how it ended. This is what a successor inherits.",
+        group: "audit",
+        required: false,
+        // Deliberately NOT tenure-scoped. Every other audit table is filtered to the
+        // tenure being backed up, but the whole point of this one is the chain across
+        // tenures — a backup taken mid-handover that contained only the handover
+        // currently in progress would lose exactly the history it exists to preserve.
+    },
+    {
+        name: "handover_events",
+        label: "Handover proceedings",
+        description:
+            "The step-by-step log behind each handover record. Append-only; also spans every tenure.",
+        group: "audit",
+        required: false,
+    },
+    {
         name: "registration_invites",
         label: "Registration invites",
         description: "Level tokens and their metadata. Raw tokens are redacted — rotate after restoring.",
@@ -211,6 +231,8 @@ export const DEFAULT_TABLE_SELECTION = [
     ...REQUIRED_TABLES,
     "admin_audit_log",
     "unit_transfer_requests",
+    "handover_intents",
+    "handover_events",
     "registration_invites",
     "invite_events",
 ];

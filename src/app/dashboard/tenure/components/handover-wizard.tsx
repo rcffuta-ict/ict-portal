@@ -20,7 +20,12 @@ import {
     Settings2,
     Flag,
 } from "lucide-react";
-import { getHandoverPreviewAction, handoverTenureAction, searchMemberAction } from "../actions";
+import {
+    getHandoverPreviewAction,
+    handoverTenureAction,
+    searchMemberAction,
+    saveHandoverProgressAction,
+} from "../actions";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 import FormInput from "@/components/ui/FormInput";
 import { BackupPicker } from "@/components/dashboard/backup-picker";
@@ -46,6 +51,15 @@ import { BackupPicker } from "@/components/dashboard/backup-picker";
  * is exactly why the preview can be trusted as literal.
  */
 
+/** Only the fields the wizard displays and submits are persisted to the intent. */
+interface PickedMember {
+    id: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+    level?: string | null;
+}
+
 const STEPS = [
     { id: "backup", label: "Back up", icon: Archive },
     { id: "tenure", label: "New tenure", icon: CalendarDays },
@@ -55,30 +69,82 @@ const STEPS = [
     { id: "commit", label: "Hand over", icon: Flag },
 ] as const;
 
+/**
+ * What each step writes into the intent's proceedings log when it is completed.
+ *
+ * Phrased as the decision that was made, not "step 3 done" — the log is read a year
+ * later by someone reconstructing what their predecessor chose.
+ */
+const STEP_NOTES: Record<
+    number,
+    (s: {
+        form: { name: string; session: string; startDate: string; theme: string };
+        vpAdmin: PickedMember | null;
+        ictCoord: PickedMember | null;
+        carryMembership: boolean;
+        revokeOutgoing: boolean;
+    }) => string
+> = {
+    0: () => "Backup confirmed.",
+    1: ({ form }) => `Incoming tenure set: ${form.name || "unnamed"} (${form.session}).`,
+    2: ({ form }) => `Generation progression reviewed and accepted for ${form.session}.`,
+    3: ({ vpAdmin, ictCoord }) =>
+        `Appointed ${name(vpAdmin)} as VP Admin and ${name(ictCoord)} as ICT Coordinator.`,
+    4: ({ carryMembership, revokeOutgoing }) =>
+        `Membership ${carryMembership ? "carried forward" : "not carried forward"}; outgoing logins ${revokeOutgoing ? "revoked" : "left in place"}.`,
+};
+
+function name(m: PickedMember | null): string {
+    return [m?.first_name, m?.last_name].filter(Boolean).join(" ") || "someone";
+}
+
 export function HandoverWizard({
+    intentId,
+    initialStep,
+    initialPayload,
     currentTenure,
 }: {
+    /** The handover_intents row this wizard is filling in. */
+    intentId: string;
+    initialStep: number;
+    initialPayload: Record<string, unknown>;
     currentTenure: { id: string; name: string; session: string };
 }) {
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
 
-    const [step, setStep] = useState(0);
+    // Resume exactly where this intent was left. A handover spans interruptions —
+    // a meeting, a flat battery, a question someone had to go and ask — and starting
+    // over each time is how a six-step procedure gets rushed.
+    const saved = (initialPayload ?? {}) as Partial<{
+        name: string;
+        session: string;
+        startDate: string;
+        theme: string;
+        vpAdmin: PickedMember;
+        ictCoord: PickedMember;
+        carryMembership: boolean;
+        revokeOutgoing: boolean;
+        acknowledged: boolean;
+    }>;
+
+    const [step, setStep] = useState(Math.min(initialStep ?? 0, STEPS.length - 1));
     const [form, setForm] = useState({
-        name: "",
-        session: suggestNextSession(currentTenure.session),
-        startDate: new Date().toISOString().slice(0, 10),
-        theme: "",
+        name: saved.name ?? "",
+        session: saved.session ?? suggestNextSession(currentTenure.session),
+        startDate: saved.startDate ?? new Date().toISOString().slice(0, 10),
+        theme: saved.theme ?? "",
     });
 
     const [preview, setPreview] = useState<any>(null);
     const [previewLoading, setPreviewLoading] = useState(true);
     const [previewKey, setPreviewKey] = useState(0);
 
-    const [vpAdmin, setVpAdmin] = useState<any>(null);
-    const [ictCoord, setIctCoord] = useState<any>(null);
-    const [carryMembership, setCarryMembership] = useState(true);
-    const [revokeOutgoing, setRevokeOutgoing] = useState(true);
-    const [acknowledged, setAcknowledged] = useState(false);
+    const [vpAdmin, setVpAdmin] = useState<PickedMember | null>(saved.vpAdmin ?? null);
+    const [ictCoord, setIctCoord] = useState<PickedMember | null>(saved.ictCoord ?? null);
+    const [carryMembership, setCarryMembership] = useState(saved.carryMembership ?? true);
+    const [revokeOutgoing, setRevokeOutgoing] = useState(saved.revokeOutgoing ?? true);
+    const [acknowledged, setAcknowledged] = useState(saved.acknowledged ?? false);
+    const [saving, setSaving] = useState(false);
     const [confirmText, setConfirmText] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [done, setDone] = useState<null | { carried: number; revoked: number }>(null);
@@ -125,9 +191,52 @@ export function HandoverWizard({
         [hasBackup, form.name, session, form.startDate, acknowledged, preview, vpAdmin, ictCoord, confirmText],
     );
 
+    /** Everything worth resuming from. */
+    const payload = () => ({
+        name: form.name,
+        session: form.session,
+        startDate: form.startDate,
+        theme: form.theme,
+        vpAdmin,
+        ictCoord,
+        carryMembership,
+        revokeOutgoing,
+        acknowledged,
+    });
+
+    /**
+     * Persist progress, then move.
+     *
+     * The save is awaited rather than fired and forgotten: the whole point is that
+     * closing the tab loses nothing, and a save still in flight when the page goes away
+     * would quietly break that promise.
+     */
+    const goTo = async (next: number, note?: string) => {
+        setSaving(true);
+        await saveHandoverProgressAction(intentId, {
+            step: next,
+            payload: payload(),
+            note,
+        });
+        setSaving(false);
+        setStep(next);
+    };
+
     const submit = async () => {
+        // Step 4's gate already requires both, but the types don't know that and the
+        // server would reject a blank id with a worse message than this.
+        if (!vpAdmin || !ictCoord) {
+            showAlert({
+                type: "error",
+                title: "Missing appointments",
+                message: "Go back and choose the incoming VP Admin and ICT Coordinator.",
+            });
+            return;
+        }
+
         setSubmitting(true);
         const fd = new FormData();
+        fd.append("intentId", intentId);
         fd.append("name", form.name.trim());
         fd.append("session", session);
         fd.append("startDate", form.startDate);
@@ -184,7 +293,7 @@ export function HandoverWizard({
                 </div>
 
                 <div className="mx-auto max-w-3xl px-4 pb-3">
-                    <StepRail step={step} complete={stepComplete} onJump={setStep} />
+                    <StepRail step={step} complete={stepComplete} onJump={(n) => goTo(n)} />
                 </div>
             </header>
 
@@ -228,11 +337,19 @@ export function HandoverWizard({
                                     tenureId={currentTenure.id}
                                     tenureName={currentTenure.name}
                                     presidentName={preview?.presidentName ?? null}
-                                    // The download is a navigation, so we can't await it —
-                                    // re-check shortly after for the recorded audit row.
-                                    onDownloaded={() => setTimeout(refreshPreview, 2500)}
+                                    // The download is fetched, so this fires once it lands —
+                                    // give the audit row a moment, then re-check the gate.
+                                    onDownloaded={() => setTimeout(refreshPreview, 1200)}
                                 />
                             </div>
+
+                            <p className="mt-4 text-xs leading-relaxed text-slate-500">
+                                Included by default: <strong>every previous handover record</strong>,
+                                not just this one — so the chain of who handed over to whom, and what
+                                they decided, survives a restore. Passwords and live sessions are
+                                deliberately left out; leaders set a new password on first login
+                                afterwards.
+                            </p>
 
                         </StepBody>
                     )}
@@ -467,8 +584,8 @@ export function HandoverWizard({
                 <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
                     <button
                         type="button"
-                        onClick={() => setStep((n) => Math.max(0, n - 1))}
-                        disabled={step === 0}
+                        onClick={() => goTo(Math.max(0, step - 1))}
+                        disabled={step === 0 || saving}
                         className="inline-flex h-12 items-center gap-1.5 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy disabled:opacity-40"
                     >
                         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -478,12 +595,20 @@ export function HandoverWizard({
                     {step < STEPS.length - 1 ? (
                         <button
                             type="button"
-                            onClick={() => setStep((n) => Math.min(STEPS.length - 1, n + 1))}
-                            disabled={!stepComplete[step]}
+                            onClick={() =>
+                                goTo(Math.min(STEPS.length - 1, step + 1), STEP_NOTES[step]?.(
+                                    { form, vpAdmin, ictCoord, carryMembership, revokeOutgoing },
+                                ))
+                            }
+                            disabled={!stepComplete[step] || saving}
                             className="inline-flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl bg-rcf-navy px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
                         >
-                            Continue
-                            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                            {saving ? "Saving…" : "Continue"}
+                            {saving ? (
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                            ) : (
+                                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                            )}
                         </button>
                     ) : (
                         <p className="text-right text-xs text-slate-400">
