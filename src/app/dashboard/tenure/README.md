@@ -49,12 +49,19 @@ Three sub-features:
 
 ## 🔐 Security & Access Control
 
-### Admin Email Whitelist
-Access is restricted via the `ADMIN_EMAILS` environment variable:
+> **The `ADMIN_EMAILS` whitelist described in earlier versions of this file no longer
+> exists.** Access is derived from leadership positions and their privilege tags.
 
-```env
-ADMIN_EMAILS="admin1@rcffuta.com,admin2@rcffuta.com"
-```
+Three gates, narrowest last:
+
+| Gate | Who passes | Guards |
+|---|---|---|
+| `requireModuleRead("tenure")` | whoever the `module_access` config grants (default CENTRAL), plus admins | reading the console |
+| `requireModuleWrite("tenure")` | the configured write tags, plus SysAdmin/VP Admin | appointing people, creating units, the handover |
+| `requireVpAdmin()` | VP Admin + System Admin only | the leadership catalogue, unit transfer decisions |
+
+The distinction that matters: tenure-write lets you put people **into** positions;
+only the VP Admin can change what the positions **are**.
 
 ### Authorization Flow
 1. User navigates to `/dashboard/tenure`
@@ -188,9 +195,9 @@ const handleSubmit = async (formData: FormData) => {
 
 ### Data Not Loading
 - Check browser console for errors
-- Verify `ADMIN_EMAILS` environment variable
 - Check Network tab for failed requests
-- Ensure user email matches whitelist
+- Confirm the signed-in profile holds a position whose privilege tags satisfy the
+  `tenure` module's read config (Settings → Module Access), or is an admin
 
 ### Changes Not Reflecting
 - Check if `revalidatePath` is called in action

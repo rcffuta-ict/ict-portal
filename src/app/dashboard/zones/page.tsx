@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import { MapPin } from "lucide-react";
 import { ComingSoon } from "@/components/dashboard/coming-soon";
+
+export const metadata: Metadata = {
+    title: "Zones",
+    description:
+        "Residential zones, their coordinators and members.",
+};
 
 /**
  * Zone module — parked as "coming soon" during the foundation pass. The zone

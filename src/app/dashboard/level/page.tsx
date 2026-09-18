@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import { ShieldAlert, GraduationCap } from "lucide-react";
 import { getLevelModuleData } from "./actions";
 import { LevelGrid } from "./components/level-grid";
+
+export const metadata: Metadata = {
+    title: "Levels",
+    description:
+        "Level rosters and coordinator tools for each generation in the fellowship.",
+};
 
 /**
  * Level module — level (generation) member management. Read-gated by the

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { ShieldAlert } from "lucide-react";
 import {
     getGenerationAction,
@@ -15,6 +16,23 @@ import { Breadcrumb } from "../components/breadcrumb";
  * client components mount already populated instead of firing their own round-trips, so
  * the page is usable the moment it lands rather than after a spinner on mobile data.
  */
+/** Names the generation, so open tabs for several levels stay distinguishable. */
+export async function generateMetadata({
+    params,
+}: {
+    params: Promise<{ classSetId: string }>;
+}): Promise<Metadata> {
+    const { classSetId } = await params;
+    const res = await getGenerationAction(classSetId);
+    const gen = res.authorized ? res.generation : null;
+    const name = gen?.familyName || gen?.level || null;
+
+    return {
+        title: name ? `${name} — Levels` : "Generation — Levels",
+        description: "Members, tokens and activity for one generation.",
+    };
+}
+
 export default async function GenerationPage({
     params,
 }: {

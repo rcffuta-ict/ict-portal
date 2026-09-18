@@ -7,6 +7,7 @@ import { getActiveTenure } from "@/utils/action";
 import {
     requireContext,
     requireAccess,
+    requireVpAdmin,
     canManageUnit,
     canManageLevel,
 } from "@/lib/access-control";
@@ -90,7 +91,19 @@ export async function getUnitDetailsAction(unitId: string) {
     return ictAdmin.unit.getUnitMembers(unitId, tenure.id);
 }
 
-/** Add a member (by email) to a unit/team. Enforces authz + the one-unit DB rule. */
+/**
+ * Add an existing member to a unit or team.
+ *
+ * Executives do this themselves — no invite token, no approval — because leading a unit
+ * IS the authority to decide who is in it. The one exception is a tug-of-war:
+ *
+ *   * TEAMS are multi-membership by design, so a team add always goes straight through.
+ *   * UNITS are exclusive (one per member per tenure, enforced by the DB trigger
+ *     `enforce_single_unit_membership`). When the member already belongs to another
+ *     unit, this does NOT move them and does NOT fail — it queues a transfer request
+ *     for the VP Admin. The member stays exactly where they are until that is approved,
+ *     so nobody's roster changes behind their leader's back.
+ */
 export async function addWorkerAction(formData: FormData) {
     try {
         const ctx = await requireContext();
@@ -102,10 +115,77 @@ export async function addWorkerAction(formData: FormData) {
             return { success: false, error: "You don't lead this unit/team." };
         }
 
-        // The DB trigger `enforce_single_unit_membership` rejects a second UNIT.
-        await ictAdmin.unit.addWorker(tenureId, email, unitId);
+        const { data: target } = await ictAdmin.supabase
+            .from("units")
+            .select("id, name, type")
+            .eq("id", unitId)
+            .maybeSingle();
+        if (!target) return { success: false, error: "That unit no longer exists." };
+
+        // Teams are unconstrained — there is nothing to arbitrate.
+        if (target.type === "TEAM") {
+            await ictAdmin.unit.addWorker(tenureId, email, unitId);
+            revalidatePath("/dashboard/units");
+            return { success: true };
+        }
+
+        const { data: profile } = await ictAdmin.supabase
+            .from("profiles")
+            .select("id, first_name, last_name")
+            .eq("email", (email || "").toLowerCase().trim())
+            .maybeSingle();
+        if (!profile) {
+            return { success: false, error: "No member with that email address." };
+        }
+
+        // Does this member already hold a UNIT this tenure?
+        const { data: existing } = await ictAdmin.supabase
+            .from("membership_units")
+            .select("id, unit:units(id, name, type)")
+            .eq("profile_id", profile.id)
+            .eq("tenure_id", tenureId);
+
+        const currentUnit = (existing ?? [])
+            .map((m: any) => (Array.isArray(m.unit) ? m.unit[0] : m.unit))
+            .find((u: any) => u?.type === "UNIT");
+
+        if (!currentUnit) {
+            await ictAdmin.unit.addWorker(tenureId, email, unitId);
+            revalidatePath("/dashboard/units");
+            return { success: true };
+        }
+
+        if (currentUnit.id === unitId) {
+            return { success: false, error: "They are already in this unit." };
+        }
+
+        // Contested. Queue it for the VP Admin rather than moving anyone.
+        const { error } = await ictAdmin.supabase.from("unit_transfer_requests").insert({
+            profile_id: profile.id,
+            tenure_id: tenureId,
+            from_unit_id: currentUnit.id,
+            to_unit_id: unitId,
+            requested_by: ctx.profile.id,
+        });
+
+        if (error) {
+            // The partial unique index allows only one open request per member.
+            if ((error as any).code === "23505") {
+                return {
+                    success: false,
+                    error: `${profile.first_name} already has a transfer waiting for VP Admin approval.`,
+                };
+            }
+            return { success: false, error: error.message };
+        }
+
         revalidatePath("/dashboard/units");
-        return { success: true };
+        revalidatePath("/dashboard/tenure");
+        return {
+            success: true,
+            pendingTransfer: true,
+            message: `${profile.first_name} is currently in ${currentUnit.name}. A transfer to ${target.name} has been sent to the VP Admin for approval.`,
+        };
     } catch (e: any) {
         return { success: false, error: e.message };
     }
@@ -200,7 +280,8 @@ export async function createRoleAction(input: {
     description?: string;
 }) {
     try {
-        await requireAccess("ADMIN");
+        // Catalogue changes belong to the VP Admin, not to every ADMIN-tier role.
+        await requireVpAdmin();
         if (!input.title?.trim()) return { success: false, error: "Title is required." };
         const { error } = await ictAdmin.supabase.from("leadership_positions").insert({
             title: input.title.trim(),
@@ -221,7 +302,8 @@ export async function createRoleAction(input: {
 /** Enable/disable a role. Default roles (VP Admin / ICT Coord) cannot be disabled. */
 export async function setRoleActiveAction(positionId: string, isActive: boolean) {
     try {
-        await requireAccess("ADMIN");
+        // Catalogue changes belong to the VP Admin, not to every ADMIN-tier role.
+        await requireVpAdmin();
         const { data: pos } = await ictAdmin.supabase
             .from("leadership_positions")
             .select("is_default")

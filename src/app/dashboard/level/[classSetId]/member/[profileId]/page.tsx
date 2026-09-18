@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { ShieldAlert } from "lucide-react";
 import { getMemberDetailAction, getActiveLevelTokenAction } from "../../../actions";
 import { MemberDetailView } from "../../../components/member-detail-view";
@@ -7,6 +8,23 @@ import { MemberUpdateLink } from "../../../components/member-update-link";
 /**
  * Full detail for one member — its own page, breadcrumbed back to its generation.
  */
+/** Names the member being viewed. */
+export async function generateMetadata({
+    params,
+}: {
+    params: Promise<{ profileId: string }>;
+}): Promise<Metadata> {
+    const { profileId } = await params;
+    const res = await getMemberDetailAction(profileId);
+    const p = res.success ? res.data.profile : null;
+    const name = [p?.firstName, p?.lastName].filter(Boolean).join(" ");
+
+    return {
+        title: name ? `${name} — Levels` : "Member — Levels",
+        description: "Full member detail for a level coordinator.",
+    };
+}
+
 export default async function MemberPage({
     params,
 }: {

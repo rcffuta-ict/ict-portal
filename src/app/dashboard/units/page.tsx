@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import { SquaresUnite } from "lucide-react";
 import { ComingSoon } from "@/components/dashboard/coming-soon";
+
+export const metadata: Metadata = {
+    title: "Workforce",
+    description:
+        "Manage the members of your unit or team.",
+};
 
 /**
  * Workforce (units/teams) module — parked as "coming soon" during the foundation

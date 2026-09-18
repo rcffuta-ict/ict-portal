@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ShieldAlert, ChevronLeft, Eye } from "lucide-react";
 import { getMemberRecord, getOracleRefData } from "../actions";
@@ -11,6 +12,28 @@ import { AuditTrail } from "../components/audit-trail";
  * `updateMemberAction` re-derives it with `requireSysAdmin()` on every save, so a
  * President (who can read this page) cannot write by tampering with the client.
  */
+/**
+ * The tab title names the member, so several open records stay distinguishable.
+ * Falls back to a generic title rather than leaking "not found" into browser history.
+ */
+export async function generateMetadata({
+    params,
+}: {
+    params: Promise<{ profileId: string }>;
+}): Promise<Metadata> {
+    const { profileId } = await params;
+    const record = await getMemberRecord(profileId);
+    const row = record.success ? (record.row as Record<string, unknown>) : null;
+    const name = row
+        ? [row.first_name, row.last_name].filter(Boolean).join(" ")
+        : null;
+
+    return {
+        title: name ? `${name} — Oracle` : "Member — Oracle",
+        description: "Full member record, editable by the System Admin.",
+    };
+}
+
 export default async function OracleMemberPage({
     params,
 }: {

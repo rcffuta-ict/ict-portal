@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import { ShieldAlert, Settings as SettingsIcon } from "lucide-react";
 import { getSettingsData } from "./actions";
 import { ModuleAccessEditor } from "./components/module-access-editor";
+
+export const metadata: Metadata = {
+    title: "App Settings",
+    description:
+        "Configure which leadership positions can read and write each module.",
+};
 
 /**
  * App Settings — the System Admin configures who can read/write each Tool module, app-wide,

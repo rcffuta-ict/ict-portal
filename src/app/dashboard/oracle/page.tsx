@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import { ShieldAlert, Database } from "lucide-react";
 import { runOracleQuery, getOracleRefData } from "./actions";
 import { DEFAULT_COLUMNS } from "./fields";
 import { OracleClient } from "./components/oracle-client";
+
+export const metadata: Metadata = {
+    title: "Oracle",
+    description:
+        "Search every member of the fellowship and correct their records.",
+};
 
 /**
  * Oracle — the System Admin's view of everybody in the fellowship.

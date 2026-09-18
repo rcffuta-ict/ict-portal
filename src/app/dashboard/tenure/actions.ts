@@ -1,11 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { requireModuleRead, requireModuleWrite } from "@/lib/access-control";
+import { requireModuleRead, requireModuleWrite, requireVpAdmin } from "@/lib/access-control";
 import { ictAdmin } from "@/lib/ict";
+import { getTenurePresidentName } from "@/lib/backup";
 import { computeLevel, LEVELS } from "@/lib/levels";
 import { validatePrivilegeSet, deriveCategory } from "@/lib/privileges";
-import { ensureLoginProvisioned } from "@/lib/auth/provision";
+import { ensureLoginProvisioned, deprovisionLoginIfUnappointed } from "@/lib/auth/provision";
+import {
+    buildCatalogue,
+    TIER_ORDER,
+    type PositionTier,
+} from "@/config/leadership-positions";
 import type { Privilege } from "@/lib/modules";
 import { RcfIctClient } from "@rcffuta/ict-lib/server";
 import { revalidatePath } from "next/cache";
@@ -22,7 +28,7 @@ export async function getAdminData() {
     try {
         // READ is gated by the tenure module's access config (default: CENTRAL);
         // the mutations below require WRITE access (default: vp-admin; admins bypass).
-        await requireModuleRead("tenure");
+        const ctx = await requireModuleRead("tenure");
         const rcf = ictAdmin;
 
         // 1. Get Active Tenure
@@ -144,6 +150,9 @@ export async function getAdminData() {
             leadership: leaders,
             sessionStats,
             authorized: true,
+            // Drives UI affordances only — every catalogue mutation re-checks
+            // requireVpAdmin() server-side.
+            canEditCatalogue: ctx.isVpAdmin === true || ctx.isSysAdmin === true,
         };
 
     } catch (e) {
@@ -213,6 +222,169 @@ export async function updateTenureAction(formData: FormData) {
  * auto-appointing the incoming VP Admin and ICT Coordinator into the new tenure.
  * This is the sanctioned way to end a tenure (see the Tenure Profile tab).
  */
+/**
+ * The most recent backup taken during a tenure, or null.
+ *
+ * Scoped by the tenure's own start date because `admin_audit_log` has no tenure column
+ * and, more to the point, a backup taken before this tenure began doesn't contain this
+ * tenure's appointments, memberships or transfers — so it isn't an undo for closing it.
+ */
+async function findBackupForTenure(
+    tenureId: string | null,
+): Promise<{ takenAt: string; takenBy: string | null } | { unavailable: true } | null> {
+    if (!tenureId) return null;
+
+    const { data: tenure } = await ictAdmin.supabase
+        .from("tenures")
+        .select("start_date, created_at")
+        .eq("id", tenureId)
+        .maybeSingle();
+    if (!tenure) return null;
+
+    // `created_at` is when the row actually appeared; `start_date` can be backdated to
+    // the real start of the session, so take whichever is earlier as the window.
+    const candidates = [tenure.start_date, tenure.created_at]
+        .filter(Boolean)
+        .map((d: string) => new Date(d).getTime())
+        .filter((t: number) => Number.isFinite(t));
+    if (!candidates.length) return null;
+    const since = new Date(Math.min(...candidates)).toISOString();
+
+    const { data, error } = await ictAdmin.supabase
+        .from("admin_audit_log")
+        .select("created_at, actor_name")
+        .eq("action", "backup.download")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+    // A missing table (migration 0010 not applied) is NOT the same as "no backup taken".
+    // Reporting it as the latter would block the handover with an error the VP Admin
+    // could never clear by downloading another backup.
+    if (error) return { unavailable: true };
+    if (!data?.length) return null;
+    return { takenAt: data[0].created_at, takenBy: data[0].actor_name };
+}
+
+/**
+ * Preview a handover before anything is committed.
+ *
+ * The most important thing this returns is the GENERATION PROGRESSION — and the reason
+ * it is a preview rather than a migration is worth stating plainly: a member's level is
+ * not stored anywhere. It is computed from their generation's entry year against the
+ * ACTIVE TENURE'S SESSION (`rcf_compute_level` in SQL, `computeLevel` in
+ * src/lib/levels.ts). Advancing the session from 2026/2027 to 2027/2028 therefore moves
+ * every generation forward and retires the finalists to Alumni on its own — no rows are
+ * rewritten, and there is nothing to get half-done.
+ *
+ * So this screen exists to show the VP Admin the consequence of the session string they
+ * are about to type, plus who loses access and whether a backup exists.
+ */
+export async function getHandoverPreviewAction(incomingSession: string) {
+    try {
+        await requireModuleWrite("tenure");
+
+        const { data: tenure } = await ictAdmin.supabase
+            .from("tenures").select("id, name, session").eq("is_active", true).maybeSingle();
+
+        const { data: sets } = await ictAdmin.supabase
+            .from("class_sets")
+            .select("id, family_name, entry_year, is_foundation, level_override")
+            .order("entry_year", { ascending: false });
+
+        const current = tenure?.session ?? null;
+        const generations = (sets ?? []).map((s: any) => {
+            const from = s.level_override || computeLevel(s.entry_year, s.is_foundation, current);
+            // A pinned level_override does NOT advance — that is the point of pinning.
+            const to = s.level_override
+                || computeLevel(s.entry_year, s.is_foundation, incomingSession);
+            return {
+                classSetId: s.id,
+                familyName: s.family_name,
+                entryYear: s.entry_year,
+                from,
+                to,
+                becomesAlumni: to === "Alumni" && from !== "Alumni",
+                pinned: !!s.level_override,
+            };
+        });
+
+        // Everyone appointed in the outgoing tenure. None of them carry over
+        // automatically, so all of them lose portal access unless reappointed.
+        const { data: outgoing } = tenure
+            ? await ictAdmin.supabase
+                .from("leadership")
+                .select("profile_id, profile:profiles(first_name, last_name, email), position:leadership_positions(title)")
+                .eq("tenure_id", tenure.id)
+            : { data: [] };
+
+        const one = (v: any) => (Array.isArray(v) ? v[0] : v);
+        const seen = new Set<string>();
+        const losingAccess: any[] = [];
+        for (const l of (outgoing ?? []) as any[]) {
+            if (seen.has(l.profile_id)) continue;
+            seen.add(l.profile_id);
+            const p = one(l.profile);
+            losingAccess.push({
+                profileId: l.profile_id,
+                name: [p?.first_name, p?.last_name].filter(Boolean).join(" ") || "Unknown",
+                email: p?.email ?? null,
+                position: one(l.position)?.title ?? null,
+            });
+        }
+
+        // Has a backup been taken SINCE THIS TENURE OPENED? Recorded by the backup route
+        // handler, so this is evidence rather than a checkbox the admin ticks — and
+        // scoped to the tenure, because last year's backup is not an undo for this year.
+        const backupResult = await findBackupForTenure(tenure?.id ?? null);
+        const backupTrackingUnavailable =
+            !!backupResult && "unavailable" in backupResult;
+        const backup = backupTrackingUnavailable ? null : (backupResult as
+            | { takenAt: string; takenBy: string | null }
+            | null);
+
+        // The backup's default passphrase is the president's name, so the picker has to
+        // be able to show whose name to type.
+        const presidentName = await getTenurePresidentName(tenure?.id ?? null);
+
+        const { count: membershipCount } = tenure
+            ? await ictAdmin.supabase
+                .from("membership_units")
+                .select("id", { count: "exact", head: true })
+                .eq("tenure_id", tenure.id)
+            : { count: 0 };
+
+        return {
+            success: true as const,
+            currentTenure: tenure ?? null,
+            incomingSession,
+            generations,
+            losingAccess,
+            backup,
+            backupTrackingUnavailable,
+            presidentName,
+            membershipCount: membershipCount ?? 0,
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+/**
+ * Hand over to a new tenure.
+ *
+ * The sequence, in order, and why:
+ *   1. Refuse without a backup. A handover cannot be undone from inside the app.
+ *   2. Close the outgoing tenure, open the incoming one. THIS is what advances every
+ *      generation — see getHandoverPreviewAction.
+ *   3. Appoint the incoming VP Admin and ICT Coordinator, so the new tenure is never
+ *      left unadministrable.
+ *   4. Carry unit/team membership forward for everyone who has not graduated.
+ *   5. Revoke portal access for outgoing leaders who were not carried over.
+ *
+ * Steps 4 and 5 are opt-out flags rather than assumptions, because both are large and
+ * neither is obviously right for every fellowship.
+ */
 export async function handoverTenureAction(formData: FormData) {
     const ctx = await requireModuleWrite("tenure");
     const rcf = ictAdmin;
@@ -223,6 +395,8 @@ export async function handoverTenureAction(formData: FormData) {
         const theme = ((formData.get("theme") as string) || "").trim();
         const vpAdminProfileId = formData.get("vpAdminProfileId") as string;
         const ictCoordProfileId = formData.get("ictCoordProfileId") as string;
+        const carryMembership = formData.get("carryMembership") !== "false";
+        const revokeOutgoing = formData.get("revokeOutgoing") !== "false";
 
         if (!name || !session || !startDate) {
             return { success: false, error: "New tenure name, session and start date are required." };
@@ -231,7 +405,26 @@ export async function handoverTenureAction(formData: FormData) {
             return { success: false, error: "You must appoint the incoming VP Admin and ICT Coordinator." };
         }
 
-        // Look up the two protected default positions.
+        const { data: outgoingForBackup } = await rcf.supabase
+            .from('tenures').select('id').eq('is_active', true).maybeSingle();
+
+        // 1. A backup is the only undo for this. Refuse without one taken during the
+        //    tenure being closed — an older bundle wouldn't restore what is about to be
+        //    changed.
+        const backupCheck = await findBackupForTenure(outgoingForBackup?.id ?? null);
+        if (backupCheck && "unavailable" in backupCheck) {
+            return {
+                success: false,
+                error: "Backup downloads aren't being recorded, so this can't be verified. Apply db/migrations/0010_admin_audit_log.sql first.",
+            };
+        }
+        if (!backupCheck) {
+            return {
+                success: false,
+                error: "Download a backup of THIS tenure before handing over — it cannot be undone from inside the app.",
+            };
+        }
+
         const { data: positions } = await rcf.supabase
             .from('leadership_positions')
             .select('id, title')
@@ -239,15 +432,23 @@ export async function handoverTenureAction(formData: FormData) {
         const vpPos = positions?.find((p) => p.title === 'Vice President Administration');
         const ictPos = positions?.find((p) => p.title === 'ICT Coordinator');
         if (!vpPos || !ictPos) {
-            return { success: false, error: "Default VP Admin / ICT Coordinator positions are missing." };
+            return { success: false, error: "Default VP Admin / ICT Coordinator positions are missing. Run the catalogue sync first." };
         }
 
-        // Close the current tenure.
+        const { data: outgoingTenure } = await rcf.supabase
+            .from('tenures').select('id').eq('is_active', true).maybeSingle();
+
+        // Who held a position on the way out — captured before anything changes.
+        const { data: outgoingLeaders } = outgoingTenure
+            ? await rcf.supabase.from('leadership').select('profile_id').eq('tenure_id', outgoingTenure.id)
+            : { data: [] };
+        const outgoingIds = Array.from(new Set((outgoingLeaders ?? []).map((l: any) => l.profile_id)));
+
+        // 2. Close the current tenure and open the new one.
         await rcf.supabase.from('tenures')
             .update({ is_active: false, end_date: new Date().toISOString() })
             .eq('is_active', true);
 
-        // Open the new tenure.
         const { data: newTenure, error: tErr } = await rcf.supabase.from('tenures')
             .insert({
                 name,
@@ -260,15 +461,13 @@ export async function handoverTenureAction(formData: FormData) {
             .single();
         if (tErr || !newTenure) return { success: false, error: tErr?.message || "Could not create the new tenure." };
 
-        // Auto-appoint the incoming defaults into the new tenure.
+        // 3. Incoming defaults.
         const { error: lErr } = await rcf.supabase.from('leadership').insert([
             { tenure_id: newTenure.id, profile_id: vpAdminProfileId, position_id: vpPos.id, is_lead: true },
             { tenure_id: newTenure.id, profile_id: ictCoordProfileId, position_id: ictPos.id, is_lead: true },
         ]);
         if (lErr) return { success: false, error: `Tenure created, but appointing leaders failed: ${lErr.message}` };
 
-        // The incoming VP Admin / ICT Coordinator must be able to sign in, or the new
-        // tenure starts with nobody able to administer it.
         for (const id of [vpAdminProfileId, ictCoordProfileId]) {
             try {
                 await ensureLoginProvisioned(id, ctx.profile.id);
@@ -277,11 +476,98 @@ export async function handoverTenureAction(formData: FormData) {
             }
         }
 
+        // 4. Carry membership forward, minus the graduating generation.
+        let carried = 0;
+        if (carryMembership && outgoingTenure) {
+            carried = await carryMembershipForward(outgoingTenure.id, newTenure.id, session);
+        }
+
+        // 5. Revoke access for outgoing leaders who weren't carried over. Runs against
+        //    the NEW tenure, so anyone reappointed in step 3 keeps their login.
+        let revoked = 0;
+        if (revokeOutgoing) {
+            for (const profileId of outgoingIds) {
+                try {
+                    const { removed } = await deprovisionLoginIfUnappointed(profileId);
+                    if (removed) revoked += 1;
+                } catch (e: any) {
+                    console.error(`handover: could not revoke ${profileId}:`, e.message);
+                }
+            }
+        }
+
         revalidatePath('/dashboard/tenure');
-        return { success: true };
+        return { success: true, tenureId: newTenure.id, carried, revoked };
     } catch (e: any) {
         return { success: false, error: e.message };
     }
+}
+
+/**
+ * Copy unit/team membership into the new tenure, skipping anyone who has graduated.
+ *
+ * Without this every unit and team starts the session completely empty, and each
+ * executive re-adds their whole roster by hand — membership rows are tenure-scoped, so
+ * a new tenure genuinely has none. Members whose generation computes to "Alumni" under
+ * the INCOMING session are left behind, which is how graduation actually takes effect
+ * on the workforce.
+ */
+async function carryMembershipForward(
+    fromTenureId: string,
+    toTenureId: string,
+    incomingSession: string,
+): Promise<number> {
+    const { data: sets } = await ictAdmin.supabase
+        .from("class_sets")
+        .select("id, entry_year, is_foundation, level_override");
+
+    const graduated = new Set(
+        (sets ?? [])
+            .filter((s: any) => {
+                const level = s.level_override
+                    || computeLevel(s.entry_year, s.is_foundation, incomingSession);
+                return level === "Alumni";
+            })
+            .map((s: any) => s.id),
+    );
+
+    const { data: profiles } = await ictAdmin.supabase
+        .from("profiles").select("id, class_set_id");
+    const alumniProfileIds = new Set(
+        (profiles ?? [])
+            .filter((p: any) => p.class_set_id && graduated.has(p.class_set_id))
+            .map((p: any) => p.id),
+    );
+
+    const { data: memberships } = await ictAdmin.supabase
+        .from("membership_units")
+        .select("profile_id, unit_id, role")
+        .eq("tenure_id", fromTenureId);
+
+    const rows = (memberships ?? [])
+        .filter((m: any) => !alumniProfileIds.has(m.profile_id))
+        .map((m: any) => ({
+            profile_id: m.profile_id,
+            unit_id: m.unit_id,
+            tenure_id: toTenureId,
+            role: m.role ?? "Member",
+        }));
+
+    if (!rows.length) return 0;
+
+    // Chunked: a fellowship-sized insert in one request is a good way to hit a
+    // statement or payload limit at the worst possible moment.
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += 500) {
+        const chunk = rows.slice(i, i + 500);
+        const { error } = await ictAdmin.supabase.from("membership_units").insert(chunk);
+        if (error) {
+            console.error("carryMembershipForward chunk failed:", error.message);
+            continue;
+        }
+        inserted += chunk.length;
+    }
+    return inserted;
 }
 
 /**
@@ -335,6 +621,11 @@ export async function createUnitAction(formData: FormData) {
             if (error.code === '23505') return { success: false, error: "A unit/team with that name or slug already exists." };
             return { success: false, error: error.message };
         }
+
+        // Every unit needs its Executive position, scoped to the unit's slug. Minting it
+        // here is what keeps the catalogue COMPLETE without anyone maintaining it by
+        // hand — a unit with no Exco position can never be given a leader.
+        await syncCatalogue();
 
         revalidatePath('/dashboard/tenure');
         return { success: true };
@@ -547,7 +838,9 @@ async function assertPrivilegesAssignable(
  * `category`/`is_central` columns are auto-derived from the privileges for DB compat.
  */
 export async function createPositionAction(formData: FormData) {
-    await requireModuleWrite("tenure");
+    // The CATALOGUE is the VP Admin's alone. Tenure-write lets you appoint people
+    // INTO positions; changing what the positions ARE is a narrower right.
+    await requireVpAdmin();
     const rcf = ictAdmin;
     try {
         const title = ((formData.get("title") as string) || "").trim();
@@ -609,7 +902,9 @@ export async function createPositionAction(formData: FormData) {
  * the full set (incl. President single/unique) and refreshes the legacy category/is_central.
  */
 export async function setPositionPrivilegesAction(positionId: string, privilegesInput: Privilege[]) {
-    await requireModuleWrite("tenure");
+    // The CATALOGUE is the VP Admin's alone. Tenure-write lets you appoint people
+    // INTO positions; changing what the positions ARE is a narrower right.
+    await requireVpAdmin();
     const rcf = ictAdmin;
     try {
         const { data: pos } = await rcf.supabase
@@ -651,7 +946,9 @@ export async function setPositionPrivilegesAction(positionId: string, privileges
  * Toggles a position's active status
  */
 export async function togglePositionAction(id: string, currentStatus: boolean, data: any) {
-    await requireModuleWrite("tenure");
+    // The CATALOGUE is the VP Admin's alone. Tenure-write lets you appoint people
+    // INTO positions; changing what the positions ARE is a narrower right.
+    await requireVpAdmin();
     const rcf = ictAdmin;
     try {
         // The two seeded defaults (VP Admin / ICT Coordinator) may never be disabled.
@@ -821,12 +1118,284 @@ export async function removeUnitLeaderAction(id: string) {
     await requireModuleWrite("tenure");
     const rcf = ictAdmin;
     try {
+        // Read the occupant BEFORE deleting — afterwards there is no row to ask.
+        const { data: row } = await rcf.supabase
+            .from('leadership')
+            .select('profile_id')
+            .eq('id', id)
+            .maybeSingle();
+
         await rcf.supabase.from('leadership').delete().eq('id', id);
-        
+
+        // Appointment grants portal access (assignLeaderAction), so removal revokes it.
+        // Only when this was their LAST position — someone leading two units and
+        // stepping down from one still needs to sign in.
+        let loginRemoved = false;
+        if (row?.profile_id) {
+            try {
+                ({ removed: loginRemoved } = await deprovisionLoginIfUnappointed(row.profile_id));
+            } catch (e: any) {
+                // The removal itself succeeded; say so, and flag the access problem
+                // rather than pretending the whole action failed.
+                revalidatePath('/dashboard/tenure');
+                return {
+                    success: true,
+                    loginRemoved: false,
+                    warning: `Removed, but their portal login could not be revoked: ${e.message}`,
+                };
+            }
+        }
+
         revalidatePath('/dashboard/tenure');
-        return { success: true };
+        return { success: true, loginRemoved };
     } catch (e: any) {
         return { success: false, error: e.message };
     }
 }
 
+
+// ============================================================================
+// LEADERSHIP CATALOGUE
+// ============================================================================
+//
+// The catalogue (src/config/leadership-positions.ts) is the fellowship's org chart:
+// President → VPs → Executives → Level Coordinators. It is FROZEN in the sense that
+// matters — it stays the same from one tenure to the next, and a handover swaps the
+// PEOPLE in `leadership` rather than redefining the positions. It is not immutable:
+// when the fellowship genuinely restructures, the VP Admin makes that change.
+
+/**
+ * Bring the database in line with the code catalogue: upsert the fixed offices, one
+ * Executive per unit/team, one Coordinator per level.
+ *
+ * Additive only — it never deletes or deactivates a position, because doing so would
+ * silently strip authority from whoever currently holds it. Removing a position is a
+ * deliberate act performed through togglePositionAction.
+ *
+ * Called after creating a unit, and available to the VP Admin as an explicit repair.
+ */
+async function syncCatalogue(): Promise<{ created: number }> {
+    const { data: units } = await ictAdmin.supabase
+        .from("units")
+        .select("slug, name, type");
+
+    const specs = buildCatalogue(
+        (units ?? []).map((u: any) => ({ slug: u.slug, name: u.name, type: u.type })),
+    );
+
+    const { data: existing } = await ictAdmin.supabase
+        .from("leadership_positions")
+        .select("id, slug, title");
+    const bySlug = new Map((existing ?? []).map((p: any) => [p.slug, p]));
+    const byTitle = new Map((existing ?? []).map((p: any) => [p.title, p]));
+
+    let created = 0;
+
+    for (const spec of specs) {
+        // `title` carries the UNIQUE constraint, so match on either handle before
+        // inserting — a row seeded by the migration under a different slug must not
+        // be duplicated.
+        if (bySlug.has(spec.slug) || byTitle.has(spec.title)) continue;
+
+        const { data: inserted, error } = await ictAdmin.supabase
+            .from("leadership_positions")
+            .insert({
+                slug: spec.slug,
+                title: spec.title,
+                alias: spec.alias,
+                category: spec.category,
+                description: spec.description,
+                is_active: true,
+                is_default: spec.isDefault ?? false,
+                is_central: spec.isCentral ?? false,
+                tier: spec.tier,
+                is_protected: true,
+            })
+            .select("id")
+            .single();
+
+        if (error || !inserted) {
+            console.error(`Catalogue sync: could not create "${spec.title}":`, error?.message);
+            continue;
+        }
+
+        const { error: privError } = await ictAdmin.supabase
+            .from("position_privileges")
+            .insert(
+                spec.privileges.map((p) => ({
+                    position_id: inserted.id,
+                    privilege: p.tag,
+                    scope: p.scope,
+                })),
+            );
+        if (privError) {
+            console.error(`Catalogue sync: privileges for "${spec.title}":`, privError.message);
+        }
+        created += 1;
+    }
+
+    return { created };
+}
+
+/** VP Admin: re-run the catalogue sync by hand (e.g. after editing the code catalogue). */
+export async function syncCatalogueAction() {
+    try {
+        await requireVpAdmin();
+        const { created } = await syncCatalogue();
+        revalidatePath("/dashboard/tenure");
+        return {
+            success: true as const,
+            created,
+            message: created
+                ? `Added ${created} missing position${created === 1 ? "" : "s"}.`
+                : "The catalogue is already complete.",
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+/** The catalogue as stored, grouped by tier, for the read-only hierarchy view. */
+export async function getCatalogueAction() {
+    try {
+        await requireModuleRead("tenure");
+
+        const { data: positions } = await ictAdmin.supabase
+            .from("leadership_positions")
+            .select("id, slug, title, alias, description, tier, is_active, is_protected, is_default")
+            .order("title");
+
+        const { data: privileges } = await ictAdmin.supabase
+            .from("position_privileges")
+            .select("position_id, privilege, scope");
+
+        const byPosition = new Map<string, { tag: string; scope: string | null }[]>();
+        for (const p of privileges ?? []) {
+            byPosition.set(p.position_id, [
+                ...(byPosition.get(p.position_id) ?? []),
+                { tag: p.privilege, scope: p.scope },
+            ]);
+        }
+
+        const rows = (positions ?? []).map((p: any) => ({
+            ...p,
+            tier: (p.tier as PositionTier | null) ?? "EXECUTIVE",
+            privileges: byPosition.get(p.id) ?? [],
+        }));
+
+        rows.sort((a, b) => {
+            const tierDiff = TIER_ORDER[a.tier as PositionTier] - TIER_ORDER[b.tier as PositionTier];
+            return tierDiff !== 0 ? tierDiff : a.title.localeCompare(b.title);
+        });
+
+        return { success: true as const, positions: rows };
+    } catch (e: any) {
+        return { success: false as const, error: e.message, positions: [] };
+    }
+}
+
+// ============================================================================
+// UNIT TRANSFERS (VP Admin)
+// ============================================================================
+//
+// A member belongs to exactly one unit per tenure. When a second executive claims
+// someone, the app queues a request rather than moving them (see addWorkerAction in
+// the units module) and the VP Admin arbitrates. Until then the member does not move.
+
+/** Pending (and recently decided) transfer requests for the active tenure. */
+export async function listTransferRequestsAction(includeDecided = false) {
+    try {
+        await requireModuleRead("tenure");
+        const { data: tenure } = await ictAdmin.supabase
+            .from("tenures").select("id").eq("is_active", true).maybeSingle();
+        if (!tenure) return { success: true as const, data: [] };
+
+        let q = ictAdmin.supabase
+            .from("unit_transfer_requests")
+            .select(`
+                id, status, requested_at, decided_at, decline_reason,
+                member:profiles!unit_transfer_requests_profile_id_fkey(id, first_name, last_name, email),
+                requester:profiles!unit_transfer_requests_requested_by_fkey(first_name, last_name),
+                from_unit:units!unit_transfer_requests_from_unit_id_fkey(id, name),
+                to_unit:units!unit_transfer_requests_to_unit_id_fkey(id, name)
+            `)
+            .eq("tenure_id", tenure.id)
+            .order("requested_at", { ascending: false });
+
+        if (!includeDecided) q = q.eq("status", "pending");
+
+        const { data, error } = await q.limit(100);
+        if (error) {
+            // Migration 0011 not applied yet — an empty queue is a better failure than
+            // a broken tab.
+            return { success: false as const, error: "Transfer requests unavailable.", data: [] };
+        }
+
+        const one = (v: any) => (Array.isArray(v) ? v[0] : v);
+        return {
+            success: true as const,
+            data: (data ?? []).map((r: any) => ({
+                id: r.id,
+                status: r.status,
+                requestedAt: r.requested_at,
+                decidedAt: r.decided_at,
+                declineReason: r.decline_reason,
+                member: one(r.member),
+                requesterName: [one(r.requester)?.first_name, one(r.requester)?.last_name]
+                    .filter(Boolean).join(" ") || "Unknown",
+                fromUnit: one(r.from_unit),
+                toUnit: one(r.to_unit),
+            })),
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message, data: [] };
+    }
+}
+
+/**
+ * Approve a transfer — the member moves.
+ *
+ * Delegated to `rcf_approve_unit_transfer` so the delete-then-insert is ATOMIC.
+ * Doing it as two calls from here would risk a member ending up in two units (or
+ * none) if the second call failed, which is exactly what the single-unit rule exists
+ * to prevent.
+ */
+export async function approveTransferAction(requestId: string) {
+    try {
+        const ctx = await requireVpAdmin();
+        const { error } = await ictAdmin.supabase.rpc("rcf_approve_unit_transfer", {
+            p_request_id: requestId,
+            p_decided_by: ctx.profile.id,
+        });
+        if (error) return { success: false as const, error: error.message };
+
+        revalidatePath("/dashboard/tenure");
+        revalidatePath("/dashboard/units");
+        return { success: true as const };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+/** Decline a transfer — the member stays where they are. */
+export async function declineTransferAction(requestId: string, reason?: string) {
+    try {
+        const ctx = await requireVpAdmin();
+        const { error } = await ictAdmin.supabase
+            .from("unit_transfer_requests")
+            .update({
+                status: "declined",
+                decided_by: ctx.profile.id,
+                decided_at: new Date().toISOString(),
+                decline_reason: reason?.trim() || null,
+            })
+            .eq("id", requestId)
+            .eq("status", "pending");
+        if (error) return { success: false as const, error: error.message };
+
+        revalidatePath("/dashboard/tenure");
+        return { success: true as const };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}

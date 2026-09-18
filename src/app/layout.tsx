@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 
     title: {
         default: "RCF FUTA ICT Portal",
-        template: "%s | RCF FUTA ICT",
+        template: "%s | ICT Portal, RCFFUTA",
     },
 
     description:
