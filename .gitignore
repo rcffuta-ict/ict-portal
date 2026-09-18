@@ -44,3 +44,6 @@ next-env.d.ts
 
 # Plans
 .plan
+
+# temporary files
+.tmp
