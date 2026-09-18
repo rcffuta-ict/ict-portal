@@ -40,7 +40,7 @@ export async function getAdminData() {
             .single();
 
         // 2. Fetch Master Data. We fetch positions directly (not via the SDK) so we
-        //    control the columns we need (slug, alias, is_default, is_central).
+        //    control the columns we need (slug, alias, tier, is_default).
         const [unitsRes, familiesRes, positionsRes, leadershipRes, profilesRes, membershipRes] = await Promise.all([
             rcf.supabase.from('units').select('*').order('name'),
             rcf.supabase.from('class_sets').select('*').order('entry_year', { ascending: false }),
@@ -53,7 +53,7 @@ export async function getAdminData() {
                     .select(`
                         id, is_lead, unit_id, units(name, type, is_workforce),
                         class_set_id, class_sets(family_name, entry_year),
-                        position:leadership_positions(title, category, is_central, slug, position_privileges(privilege, scope)),
+                        position:leadership_positions(title, category, tier, slug, position_privileges(privilege, scope)),
                         profile:profiles(id, first_name, last_name, avatar_url, department, phone_number, gender)
                     `)
                     .eq('tenure_id', activeTenure.id)
@@ -863,7 +863,7 @@ async function assertPrivilegesAssignable(
  * Creates a new leadership position (role) with a stable, unique slug and its privilege
  * tags (+ scopes). The ict-lib PositionSchema has no alias/slug/privileges, so we insert
  * directly. Slug is set ONCE here and never changed on update (immutable). The legacy
- * `category`/`is_central` columns are auto-derived from the privileges for DB compat.
+ * The legacy `category` column is auto-derived from the privileges for DB compat.
  */
 export async function createPositionAction(formData: FormData) {
     // The CATALOGUE is the VP Admin's alone. Tenure-write lets you appoint people
@@ -893,7 +893,6 @@ export async function createPositionAction(formData: FormData) {
                 slug,
                 category: deriveCategory(privileges),
                 description: description || null,
-                is_central: privileges.some((p) => p.tag === "CENTRAL"),
                 is_active: true,
             })
             .select("id")
@@ -927,7 +926,7 @@ export async function createPositionAction(formData: FormData) {
 /**
  * Replace a position's privilege tags (+ scopes) atomically — the row editor's save.
  * The ICT Coordinator's SYSADMIN privilege is immutable (not editable here). Validates
- * the full set (incl. President single/unique) and refreshes the legacy category/is_central.
+ * the full set (incl. President single/unique) and refreshes the legacy category column.
  */
 export async function setPositionPrivilegesAction(positionId: string, privilegesInput: Privilege[]) {
     // The CATALOGUE is the VP Admin's alone. Tenure-write lets you appoint people
@@ -960,7 +959,6 @@ export async function setPositionPrivilegesAction(positionId: string, privileges
 
         await rcf.supabase.from("leadership_positions").update({
             category: deriveCategory(privileges),
-            is_central: privileges.some((p) => p.tag === "CENTRAL"),
         }).eq("id", positionId);
 
         revalidatePath('/dashboard/tenure');
@@ -1235,7 +1233,6 @@ async function syncCatalogue(): Promise<{ created: number }> {
                 description: spec.description,
                 is_active: true,
                 is_default: spec.isDefault ?? false,
-                is_central: spec.isCentral ?? false,
                 tier: spec.tier,
                 is_protected: true,
             })
