@@ -244,7 +244,12 @@ the token's visible projects before attempting to link. Read that step's output:
 - **The project is not in the list, and it is a scoped token.** It was not granted
   that project. Scoped tokens need the project explicitly selected, plus Migrations
   (Read-write), API Keys (Read), Project Settings (Read) and Database (Read).
-- **The list itself fails.** The token is invalid, expired or revoked.
+- **The list itself fails** with *"Your account does not have the necessary
+  privileges to access this endpoint"*. The token is valid but not permitted to
+  enumerate the organisation. On a scoped token that can mean it was simply not given
+  Organizations (Read) — but in practice, if both `projects list` and `link` refuse,
+  stop tuning permissions and use a classic token. Scoped tokens are public alpha.
+- **The list itself fails** some other way. The token is invalid, expired or revoked.
 - **The list looks right but `link` still 403s on API keys.** Known Supabase bug with
   scoped tokens — `supabase link` reveals project API keys and scoped tokens are
   refused, even on the Full access preset
@@ -255,6 +260,11 @@ Check locally before touching the repository settings again:
 ```bash
 SUPABASE_ACCESS_TOKEN=sbp_xxx supabase projects list
 ```
+
+Do not keep the access token in `.env.local`. Nothing in this codebase reads it —
+it is a CLI credential, and `supabase login` stores it in the CLI's own credential
+store where it will not be picked up and loaded into `process.env` by every script
+that calls `chooseEnvironment()`.
 
 ## What is not automated
 

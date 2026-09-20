@@ -65,20 +65,43 @@ jobs:
                       exit 1
                   fi
 
-                  if ! supabase projects list > projects.txt 2>&1; then
+                  # Listing is DIAGNOSTIC, never the verdict. A scoped token can be
+                  # granted one project without being allowed to enumerate the
+                  # organisation, so a failure here does not mean the token is bad --
+                  # only `link` can decide that.
+                  if supabase projects list > projects.txt 2>&1; then
                       cat projects.txt
-                      echo "::error::The access token is invalid, expired, or revoked."
-                      exit 1
-                  fi
-                  cat projects.txt
-
-                  if ! grep -q "$SUPABASE_PROJECT_ID" projects.txt; then
-                      echo "::error::Token is valid but cannot see $SUPABASE_PROJECT_ID. Either it belongs to a different Supabase account, or it is a scoped token that was not granted this project."
-                      exit 1
+                      if ! grep -q "$SUPABASE_PROJECT_ID" projects.txt; then
+                          echo "::error::Token is valid but $SUPABASE_PROJECT_ID is not among the projects it can see. Either the token belongs to a different Supabase account, or it is a scoped token that was not granted this project."
+                          exit 1
+                      fi
+                      echo "Token can see $SUPABASE_PROJECT_ID."
+                  else
+                      cat projects.txt
+                      echo "::notice::Could not list projects. That is not conclusive -- a scoped token may be allowed to use one project without listing the organisation. Continuing to link."
                   fi
 
             - name: Link to the staging project
               run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+            - name: Explain a link failure
+              if: failure()
+              run: |
+                  {
+                      echo "### Link failed"
+                      echo
+                      echo "\`supabase link\` reports every authorisation problem with the same sentence."
+                      echo "Check, in this order:"
+                      echo
+                      echo "1. Does the token belong to the account that owns \`$SUPABASE_PROJECT_ID\`?"
+                      echo "   Right after consolidating accounts, a token from the old one looks valid but sees nothing."
+                      echo "2. Is it a SCOPED token? Scoped tokens are in public alpha and are known to fail"
+                      echo "   \`link\`, even on the Full access preset, because link reveals project API keys:"
+                      echo "   https://github.com/supabase/supabase/issues/50244  -- use a classic token."
+                      echo "3. Is the token expired or revoked?"
+                      echo
+                      echo "Locally: \`SUPABASE_ACCESS_TOKEN=sbp_xxx supabase projects list\`"
+                  } >> "$GITHUB_STEP_SUMMARY"
 
             # Written to the job summary as well as the log, so the outcome is readable
             # from the Actions tab without opening a single step.
