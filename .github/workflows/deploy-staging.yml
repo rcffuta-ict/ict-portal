@@ -1,18 +1,20 @@
 name: Deploy migrations — staging
 
-# Staging and development share one Supabase project, because the Free plan allows
-# two active projects per organisation and production holds the other one. So a push
-# to `stage` and a push to any `dev/*` branch both land in the same database.
+# `stage` is the ONLY branch that writes to the staging project.
 #
-# That is a real limitation, not a design choice: a staging rehearsal here runs against
-# test-seeded data, so it proves a migration APPLIES but not how it behaves on the
-# production dataset. Read docs/DATABASE-CICD.md before trusting a green run.
+# dev/** deliberately does not deploy. A dev branch is where a migration is still
+# being written, and half-finished SQL applied to a shared database is worse than no
+# automation at all -- migrations are forward-only here, so an accidental apply cannot
+# be taken back, it can only be patched over. Dev branches still get checked: ci.yml
+# rebuilds the whole schema from zero on every push to dev/**, against a throwaway
+# Postgres that nobody else can see.
+#
+# So the path for a migration is: write it on dev/**, let CI prove it applies from
+# scratch, merge to `stage` to put it on the real staging database, then to `main`.
 on:
     push:
         branches:
             - stage
-            - dev
-            - "dev/**"
         paths:
             - "supabase/migrations/**"
             - ".github/workflows/deploy-staging.yml"
@@ -45,8 +47,26 @@ jobs:
             - name: Link to the staging project
               run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
-            - name: Show what is about to be applied
-              run: supabase migration list
+            # Written to the job summary as well as the log, so the outcome is readable
+            # from the Actions tab without opening a single step.
+            - name: Show what is pending
+              run: |
+                  {
+                      echo "## Staging — \`$SUPABASE_PROJECT_ID\`"
+                      echo
+                      echo '```'
+                      supabase migration list
+                      echo '```'
+                  } >> "$GITHUB_STEP_SUMMARY"
 
             - name: Apply pending migrations
-              run: supabase db push
+              # pipefail matters here: without it the pipeline reports tee's exit code,
+              # so a migration that FAILED would show as a green deploy.
+              run: |
+                  set -o pipefail
+                  {
+                      echo "### Result"
+                      echo '```'
+                      supabase db push 2>&1 | tee /dev/stderr
+                      echo '```'
+                  } >> "$GITHUB_STEP_SUMMARY"

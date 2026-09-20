@@ -5,10 +5,21 @@ recorded that they had run. This document replaces that.
 
 ## The map
 
-| git branch | Supabase project | Applied by |
+| git branch | Supabase project | What happens on push |
 |---|---|---|
-| `main` | production `izofyqiaazidryoejsot` | `.github/workflows/deploy-production.yml` |
-| `stage`, `dev`, `dev/**` | staging (the new project) | `.github/workflows/deploy-staging.yml` |
+| `main` | production | migrations applied, behind an approval gate |
+| `stage` | staging | migrations applied |
+| `dev`, `dev/**` | *none* | schema rebuilt from zero in CI; **nothing is deployed** |
+
+`dev/**` deliberately does not deploy. A dev branch is where a migration is still being
+written, and migrations here are forward-only — an accidental apply cannot be taken
+back, only patched over. Dev branches are not unchecked, though: `ci.yml` replays every
+migration from zero against a throwaway Postgres inside the runner, which never touches
+a real project.
+
+So a migration travels: written on `dev/**` → CI proves it builds a schema from scratch
+→ merged to `stage` and applied to the staging database → merged to `main` and applied
+to production after you approve.
 
 Both projects live in **one Supabase account** — the one that holds production. Staging
 used to be a project in a separate account, which meant two logins, two access tokens
@@ -52,6 +63,20 @@ Repository → Settings → Secrets and variables → Actions:
 | `STAGING_DB_PASSWORD` | as above, on the new project |
 
 One access token covers both, now that both projects are in the same account.
+
+With the GitHub CLI installed (`gh auth login`) that is five commands instead of five
+form submissions:
+
+```bash
+gh secret set SUPABASE_ACCESS_TOKEN
+gh secret set PRODUCTION_PROJECT_ID   --body izofyqiaazidryoejsot
+gh secret set PRODUCTION_DB_PASSWORD
+gh secret set STAGING_PROJECT_ID      --body "<new project ref>"
+gh secret set STAGING_DB_PASSWORD
+```
+
+Omitting `--body` makes `gh` read the value from a prompt rather than your shell
+history, which is what you want for the two passwords and the token.
 
 The database password is not the service-role key and is not in any `.env` file. If
 nobody knows it, reset it in the dashboard — that is safe, the portal connects over
@@ -140,15 +165,25 @@ production project.
 ## Writing a migration, from now on
 
 ```bash
+git checkout -b dev/transfer-notes
 supabase migration new add_transfer_notes     # creates the correctly-named file
 $EDITOR supabase/migrations/2026…_add_transfer_notes.sql
-git checkout -b dev/transfer-notes && git commit && git push
+git commit && git push -u origin dev/transfer-notes
 ```
 
-Pushing to `dev/**` applies it to staging. Open a PR — `ci.yml` rebuilds the whole
-schema from zero and replays it twice, which is the check that would have caught the
-`question_flags` dependency failure before it reached a SQL editor. Merge to `main`,
-approve the production job, done.
+That push deploys nothing. It runs `ci.yml`, which rebuilds the whole schema from zero,
+replays it a second time, and applies the bootstrap seed on top — the check that would
+have caught the `question_flags` dependency failure before it reached a SQL editor.
+
+To try it against a real database, merge to `stage`. To ship it, merge to `main` and
+approve the production job. You should not need the SQL editor again.
+
+Want to try it locally first, without pushing at all:
+
+```bash
+supabase start        # local Postgres, builds from supabase/migrations/
+supabase db reset     # replay everything from scratch
+```
 
 **Never rename or edit a migration after it has been applied anywhere.** The remote
 ledger stores the timestamp; changing it makes the CLI report remote migrations that no

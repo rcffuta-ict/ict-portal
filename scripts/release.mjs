@@ -131,8 +131,8 @@ function main() {
         L.push("### Database");
         L.push("");
         L.push("**This release moves the database.** CI applies it on merge -- staging on a");
-        L.push("push to `stage` or `dev/*`, production on a push to `main`. The Free plan has");
-        L.push("no automatic backups, so take a full system backup first (Settings -> System");
+        L.push("push to `stage`, production on a push to `main`. The Free plan has no");
+        L.push("automatic backups, so take a full system backup first (Settings -> System");
         L.push("insurance). Migrations in this release:");
         L.push("");
         for (const f of migrations.sort()) L.push("- `" + f + "`");
