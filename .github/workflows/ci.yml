@@ -2,6 +2,10 @@ name: CI
 
 # Runs on every PR, and on direct pushes to the long-lived branches.
 #
+# SQL only. Linting and building the app is Vercel's job -- it already does both on
+# every push, and duplicating them here meant two places to read a failure from and
+# two places to keep the Node version in step.
+#
 # dev/** is included deliberately: those branches never deploy, so this replay is the
 # only feedback a migration gets before it reaches `stage`. It builds the schema in a
 # throwaway Postgres inside the runner and never connects to a real project.
@@ -19,46 +23,6 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
-    app:
-        name: Lint and build
-        runs-on: ubuntu-latest
-
-        steps:
-            - uses: actions/checkout@v4
-
-            # No `version:` here on purpose — the action reads `packageManager`
-            # from package.json, so the pnpm that CI uses and the pnpm you use
-            # locally are pinned by one line in one file. Setting it here as well
-            # would create a second place for them to disagree.
-            - uses: pnpm/action-setup@v4
-
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: 22
-                  cache: pnpm
-
-            # No GITHUB_TOKEN needed: the @rcffuta private registry was removed from
-            # .npmrc when the ict-lib SDK was dropped, and the lockfile has no
-            # reference to it.
-            - name: Install
-              run: pnpm install --frozen-lockfile
-
-            # Non-blocking on purpose. The repo carries ~6.5k pre-existing lint
-            # problems (4237 of them auto-fixable), so a gating lint job would fail
-            # every PR from day one and be ignored within a week. It runs so the
-            # output is visible on each PR and the backlog can be burnt down.
-            #
-            # Once `pnpm lint` exits 0 on main, DELETE the continue-on-error line.
-            # That is the whole point of leaving it here.
-            - name: Lint
-              run: pnpm lint
-              continue-on-error: true
-
-            # This is the real check. Most App Router and server-action mistakes in
-            # this project only surface at build time, not in the editor.
-            - name: Build
-              run: pnpm build
-
     migrations:
         name: Replay migrations from zero
         runs-on: ubuntu-latest
@@ -98,11 +62,23 @@ jobs:
             - name: Replay a second time
               run: supabase db reset
 
-            # The bootstrap seed is 291 lines of INSERTs that must still fit the
-            # schema. Applying it here means a migration that breaks it fails the PR
-            # rather than the next time someone builds an environment.
+            # The bootstrap seed is a few hundred lines of INSERTs that must still
+            # fit the schema. Applying it here means a migration that breaks it fails
+            # the PR rather than the next time someone builds an environment.
+            #
+            # psql, not `supabase db query -f`: that sends the whole file as a single
+            # prepared statement, and a prepared statement carries exactly one command,
+            # so any multi-statement file fails with "cannot insert multiple commands
+            # into a prepared statement" before a single row is written.
+            #
+            # ON_ERROR_STOP=1 is what makes this a check at all -- psql's default is to
+            # report a failed statement and carry on to the next, exiting 0, which would
+            # turn a broken seed into a green run.
             - name: Apply the bootstrap seed
-              run: supabase db query --local -f db/seed/default.sql
+              run: >
+                  psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+                  -v ON_ERROR_STOP=1
+                  -f db/seed/default.sql
 
             - name: Lint the resulting schema
               run: supabase db lint --local --level warning --fail-on error
