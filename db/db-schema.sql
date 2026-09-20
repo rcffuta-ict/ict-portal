@@ -221,6 +221,23 @@ CREATE TABLE public.unit_positions (
   CONSTRAINT unit_positions_unit_id_fkey FOREIGN KEY (unit_id) REFERENCES public.units(id),
   CONSTRAINT unit_positions_position_id_fkey FOREIGN KEY (position_id) REFERENCES public.leadership_positions(id)
 );
+CREATE TABLE public.question_flags ( -- KEPT: event_questions_with_details depends on it
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  question_id uuid NOT NULL,
+  reason USER-DEFINED NOT NULL,
+  description text,
+  flagged_by_profile_id uuid,
+  flagged_by_name text,
+  resolved_by_profile_id uuid,
+  resolved_at timestamp with time zone,
+  resolution_note text,
+  created_at timestamp with time zone DEFAULT now(),
+  is_resolved boolean DEFAULT false,
+  CONSTRAINT question_flags_pkey PRIMARY KEY (id),
+  CONSTRAINT question_flags_question_id_fkey FOREIGN KEY (question_id) REFERENCES public.event_questions(id),
+  CONSTRAINT question_flags_flagged_by_profile_id_fkey FOREIGN KEY (flagged_by_profile_id) REFERENCES public.profiles(id),
+  CONSTRAINT question_flags_resolved_by_profile_id_fkey FOREIGN KEY (resolved_by_profile_id) REFERENCES public.profiles(id)
+);
 CREATE TABLE public.question_stars (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   question_id uuid NOT NULL,
