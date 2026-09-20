@@ -1,0 +1,84 @@
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches:
+            - main
+            - stage
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    app:
+        name: Lint and build
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: pnpm
+
+            # No GITHUB_TOKEN needed: the @rcffuta private registry was removed from
+            # .npmrc when the ict-lib SDK was dropped, and the lockfile has no
+            # reference to it.
+            - name: Install
+              run: pnpm install --frozen-lockfile
+
+            # Non-blocking on purpose. The repo carries ~6.5k pre-existing lint
+            # problems (4237 of them auto-fixable), so a gating lint job would fail
+            # every PR from day one and be ignored within a week. It runs so the
+            # output is visible on each PR and the backlog can be burnt down.
+            #
+            # Once `pnpm lint` exits 0 on main, DELETE the continue-on-error line.
+            # That is the whole point of leaving it here.
+            - name: Lint
+              run: pnpm lint
+              continue-on-error: true
+
+            # This is the real check. Most App Router and server-action mistakes in
+            # this project only surface at build time, not in the editor.
+            - name: Build
+              run: pnpm build
+
+    migrations:
+        name: Replay migrations from zero
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: supabase/setup-cli@v1
+              with:
+                  version: latest
+
+            # Starts the local Postgres only -- everything else is excluded, because
+            # this job tests SQL, not the API gateway or Studio. `supabase start`
+            # applies every file in supabase/migrations/ in order against an empty
+            # database, so it fails on exactly the class of error that cost us a
+            # rolled-back production apply before: a DROP whose dependent view is
+            # invisible to a TypeScript grep.
+            - name: Build the schema from scratch
+              run: >
+                  supabase start
+                  -x studio,imgproxy,inbucket,edge-runtime,functions,realtime,storage,analytics,vector,kong,rest,meta
+
+            # `db reset` re-runs the whole series a second time on a fresh database.
+            # A migration that passes once but breaks on replay is a migration that
+            # will break the next time anyone rebuilds an environment.
+            - name: Replay a second time
+              run: supabase db reset
+
+            - name: Lint the resulting schema
+              run: supabase db lint --local --level warning --fail-on error
+
+            - name: Stop
+              if: always()
+              run: supabase stop --no-backup

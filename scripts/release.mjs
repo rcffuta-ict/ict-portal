@@ -51,11 +51,20 @@ function commitsSince(from) {
     });
 }
 
-/** Migration files ADDED since `from`. This is what decides MINOR. */
+/**
+ * Migration files ADDED since `from`. This is what decides MINOR.
+ *
+ * Only `supabase/migrations/` counts. `db/migrations/` is the archived 0001-0013
+ * series and is never applied again -- see db/migrations/README.md. A file added
+ * there would be documentation, not a database change, and must not bump MINOR.
+ *
+ * The `.sql` filter matters: this directory also holds a README, and a docs edit
+ * is a PATCH.
+ */
 function migrationsSince(from) {
     const range = from ? from + "..HEAD" : "HEAD";
-    const out = git("diff", "--name-only", "--diff-filter=A", range, "--", "db/migrations/");
-    return out ? out.split("\n").filter(Boolean) : [];
+    const out = git("diff", "--name-only", "--diff-filter=A", range, "--", "supabase/migrations/");
+    return out ? out.split("\n").filter((f) => f.endsWith(".sql")) : [];
 }
 
 /** Conventional-commit grouping. This repo already uses these prefixes consistently. */
@@ -121,8 +130,10 @@ function main() {
     if (migrations.length > 0) {
         L.push("### Database");
         L.push("");
-        L.push("**This release requires SQL to be applied.** Take a full system backup first");
-        L.push("(Settings -> System insurance), then apply in order:");
+        L.push("**This release moves the database.** CI applies it on merge -- staging on a");
+        L.push("push to `stage` or `dev/*`, production on a push to `main`. The Free plan has");
+        L.push("no automatic backups, so take a full system backup first (Settings -> System");
+        L.push("insurance). Migrations in this release:");
         L.push("");
         for (const f of migrations.sort()) L.push("- `" + f + "`");
         L.push("");
