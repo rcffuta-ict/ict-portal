@@ -1,11 +1,16 @@
 /**
  * Provisioning of leader logins (`profile_login`). Server-only.
  *
- * When a VP Admin appoints a member to a leadership position, we auto-create a
- * `profile_login` row so the person *can* log in — but with an unusable placeholder
- * hash until they set a real password through an admin-issued 'reset' invite. This
- * keeps "who may log in" == "who has been appointed", while never inventing a
- * password on the member's behalf.
+ * Appointing someone to an office that GRANTS ACCESS creates a `profile_login` row so
+ * the person *can* sign in — with no password, which they set on first login; we never
+ * invent one on their behalf.
+ *
+ * "That grants access" is the part worth reading twice. Most of the fellowship's
+ * offices are in the catalogue as a record of service, not as a reason to sign in, and
+ * `leadership_positions.grants_login` is what separates the two. So the invariant this
+ * file maintains is not "who may log in == who has been appointed" but "who may log in
+ * == who holds an office that needs the portal", which is the VP Admin's decision,
+ * per office, on the cabinet screen.
  */
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
@@ -114,9 +119,9 @@ export async function setLoginActive(profileId: string, isActive: boolean): Prom
  * has to be the revocation — otherwise "who may log in" drifts away from "who has been
  * appointed" one departure at a time, and last tenure's cabinet keeps its keys.
  *
- * The test is "holds NO position in the active tenure", not "lost a position": someone
- * who leads two units and steps down from one still needs to sign in. When they do hold
- * nothing, every session is revoked first (so an open tab dies immediately rather than
+ * The test is "holds no ACCESS-GRANTING position in the active tenure", not "lost a
+ * position": someone who leads two units and steps down from one still needs to sign in.
+ * When they hold nothing that grants access, every session is revoked first (so an open tab dies immediately rather than
  * lasting until its cookie expires) and the `profile_login` row is deleted.
  *
  * `login_events` is untouched — it references `profiles`, not `profile_login`, so the
@@ -139,15 +144,22 @@ export async function deprovisionLoginIfUnappointed(
     // Leave access alone rather than locking everyone out on a half-finished handover.
     if (!tenure?.id) return { removed: false, reason: "no active tenure" };
 
+    // "Still appointed" means "still holds an office that GRANTS ACCESS" — not merely
+    // "still holds an office". Most of the fellowship's offices are on record without
+    // carrying a login (see leadership_positions.grants_login), so someone who steps
+    // down as Choir Coordinator and stays on as Transport Secretary has genuinely lost
+    // their reason to sign in, and keeping the account open would be the drift this
+    // function exists to prevent.
     const { data: stillHeld } = await db
         .from("leadership")
-        .select("id")
+        .select("id, position:leadership_positions!inner(grants_login)")
         .eq("profile_id", profileId)
         .eq("tenure_id", tenure.id)
+        .eq("position.grants_login", true)
         .limit(1);
 
     if (stillHeld && stillHeld.length > 0) {
-        return { removed: false, reason: "still holds a position" };
+        return { removed: false, reason: "still holds a position that grants access" };
     }
 
     await revokeAllSessions(profileId, "leadership_removed");
@@ -179,4 +191,55 @@ export async function revokeAllSessions(
         .select("id");
     if (error) throw new Error(`Failed to revoke sessions: ${error.message}`);
     return data?.length ?? 0;
+}
+
+/**
+ * Apply an office's access setting to everyone currently holding it.
+ *
+ * Toggling `grants_login` has to be retroactive to mean anything: a VP Admin who
+ * switches an office off expects its holders to stop being able to sign in, not for
+ * the change to apply only to the next person appointed. So this runs over the active
+ * tenure's holders and provisions or de-provisions each one.
+ *
+ * De-provisioning still goes through {@link deprovisionLoginIfUnappointed}, so a
+ * holder who also leads a unit keeps their access — losing one office is not losing
+ * every reason to sign in.
+ *
+ * @returns how many logins were created and removed. Reported rather than silent: on
+ *          the cabinet screen "3 leaders lost portal access" is the consequence the
+ *          VP Admin most needs to see.
+ */
+export async function applyPositionLoginPolicy(
+    positionId: string,
+    grantsLogin: boolean,
+    actorId: string,
+): Promise<{ provisioned: number; revoked: number }> {
+    const { data: tenure } = await db
+        .from("tenures")
+        .select("id")
+        .eq("is_active", true)
+        .maybeSingle();
+
+    if (!tenure?.id) return { provisioned: 0, revoked: 0 };
+
+    const { data: holders } = await db
+        .from("leadership")
+        .select("profile_id")
+        .eq("position_id", positionId)
+        .eq("tenure_id", tenure.id);
+
+    let provisioned = 0;
+    let revoked = 0;
+
+    for (const { profile_id } of holders ?? []) {
+        if (grantsLogin) {
+            const { created } = await ensureLoginProvisioned(profile_id, actorId);
+            if (created) provisioned += 1;
+        } else {
+            const { removed } = await deprovisionLoginIfUnappointed(profile_id);
+            if (removed) revoked += 1;
+        }
+    }
+
+    return { provisioned, revoked };
 }

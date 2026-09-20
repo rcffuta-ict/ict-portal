@@ -78,7 +78,13 @@ function readFixedPositions() {
             }
             privileges.push({ tag: p[1], scope });
         }
-        out.push({ slug, title, alias, tier, description: desc.replace(/\\"/g, '"'), privileges });
+        // Mirrors defaultGrantsLogin(): an explicit `grantsLogin` wins, otherwise an
+        // office with at least one privilege tag has something to administer and gets
+        // a login. Offices with no tags are on record only.
+        const explicit = /grantsLogin:\s*(true|false)/.exec(chunk)?.[1];
+        const grantsLogin = explicit ? explicit === "true" : privileges.length > 0;
+
+        out.push({ slug, title, alias, tier, description: desc.replace(/\\"/g, '"'), privileges, grantsLogin });
     }
     if (out.length === 0) throw new Error("Parsed zero fixed positions — the config format changed.");
     return out;
@@ -110,6 +116,7 @@ function levelCoordinators() {
                 ? "Coordinates the finalists, and holds coordinator authority over EVERY level in the fellowship."
                 : `Coordinates ${level}. Authority is limited to that generation.`,
             privileges: [{ tag: "LEVEL", scope: token }],
+            grantsLogin: true,
         };
     });
 }
@@ -133,6 +140,7 @@ function render() {
             tier: "EXECUTIVE",
             description: `Leads ${u.name}. Adds and removes its members directly.`,
             privileges: [{ tag: "EXCO", scope: u.slug }],
+            grantsLogin: true,
         }));
 
     const positions = [...fixed, ...excos, ...levelCoordinators()];
@@ -162,7 +170,8 @@ function render() {
     L.push("-- privilege, `exco-choir` the position, `choir` the unit. Titles and aliases are");
     L.push("-- free to change; changing a slug moves permissions and is never done here.");
     L.push("--");
-    L.push("-- Depends on migrations 0001-0013. Apply those first.");
+    L.push("-- Depends on supabase/migrations being applied first — in particular the");
+    L.push("-- grants_login column from 20260920162209_tighten_office_catalogue.sql.");
     L.push("-- ============================================================================");
     L.push("");
     L.push("BEGIN;");
@@ -197,12 +206,18 @@ function render() {
     L.push("--");
     L.push("-- is_protected = true marks these as catalogue rows, which the");
     L.push("-- enforce_frozen_position_catalogue trigger (0011) refuses to DELETE.");
+    L.push("--");
+    L.push("-- grants_login says whether appointment to the office comes with a PORTAL");
+    L.push("-- LOGIN. Most of the fellowship's offices are here as a record of service and");
+    L.push("-- administer nothing in the portal, so they grant none. It is set on INSERT");
+    L.push("-- only: once the row exists the column belongs to the VP Admin, and re-running");
+    L.push("-- this seed must not overrule an access decision they made deliberately.");
     L.push("-- ----------------------------------------------------------------------------");
     L.push("INSERT INTO public.leadership_positions");
-    L.push("    (slug, title, alias, description, tier, is_active, is_protected)");
+    L.push("    (slug, title, alias, description, tier, is_active, is_protected, grants_login)");
     L.push("VALUES");
     L.push(positions.map((p) =>
-        `    (${q(p.slug)}, ${q(p.title)}, ${q(p.alias)},\n     ${q(p.description)},\n     ${q(p.tier)}, true, true)`).join(",\n"));
+        `    (${q(p.slug)}, ${q(p.title)}, ${q(p.alias)},\n     ${q(p.description)},\n     ${q(p.tier)}, true, true, ${p.grantsLogin ? "true" : "false"})`).join(",\n"));
     L.push("ON CONFLICT (slug) DO UPDATE");
     L.push("    SET title        = EXCLUDED.title,");
     L.push("        alias        = EXCLUDED.alias,");

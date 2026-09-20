@@ -109,6 +109,8 @@ CREATE TABLE public.leadership (
   position_id uuid NOT NULL,
   residential_zone_id uuid,
   is_lead boolean NOT NULL DEFAULT true,
+  -- One lead per office per tenure; assistants (is_lead = false) are unlimited.
+  -- Enforced by the partial unique index leadership_one_lead_per_position.
   CONSTRAINT leadership_pkey PRIMARY KEY (id),
   CONSTRAINT leadership_tenure_id_fkey FOREIGN KEY (tenure_id) REFERENCES public.tenures(id),
   CONSTRAINT leadership_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id),
@@ -163,6 +165,9 @@ CREATE TABLE public.leadership_positions (
   slug text NOT NULL,
   tier text CHECK (tier IS NULL OR (tier = ANY (ARRAY['PRESIDENT'::text, 'VP'::text, 'EXECUTIVE'::text, 'COORDINATOR'::text]))),
   is_protected boolean NOT NULL DEFAULT false,
+  -- Whether appointment to this office comes with a portal login. Holding an office is
+  -- a record of service; this is access, and the VP Admin owns it per office.
+  grants_login boolean NOT NULL DEFAULT false,
   CONSTRAINT leadership_positions_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.membership_units (

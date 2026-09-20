@@ -27,13 +27,15 @@ export interface CataloguePosition {
     is_active: boolean;
     tier: "PRESIDENT" | "VP" | "EXECUTIVE" | "COORDINATOR" | null;
     is_protected: boolean;
+    /** Whether appointment to this office comes with a portal login. */
+    grants_login: boolean;
     privileges: Privilege[];
     /** Derived from `privileges` — see derivePositionKind. Never read from the DB. */
     category: PositionKind;
 }
 
 const SELECT =
-    "id, slug, title, alias, description, is_active, tier, is_protected, " +
+    "id, slug, title, alias, description, is_active, tier, is_protected, grants_login, " +
     "position_privileges(privilege, scope)";
 
 /**
@@ -50,6 +52,7 @@ interface PositionRow {
     is_active: boolean;
     tier: CataloguePosition["tier"];
     is_protected: boolean;
+    grants_login: boolean;
     position_privileges: { privilege: string; scope: string | null }[] | null;
 }
 
@@ -94,6 +97,7 @@ export async function listPositions(
             is_active: p.is_active,
             tier: p.tier,
             is_protected: p.is_protected,
+            grants_login: p.grants_login,
             privileges,
             category: derivePositionKind(privileges, isTeamSlug),
         };
@@ -114,4 +118,25 @@ export async function positionPrivileges(positionId: string): Promise<Privilege[
 export async function isPresidentPosition(positionId: string): Promise<boolean> {
     const privileges = await positionPrivileges(positionId);
     return privileges.some((p) => p.tag === "PRESIDENT");
+}
+
+/**
+ * Whether appointment to this office should come with a portal login.
+ *
+ * Read from the database rather than from the code catalogue, because this is the one
+ * catalogue field the VP Admin owns at runtime — the code value is only the default
+ * used when the office is first created.
+ *
+ * Defaults to FALSE when the row or column cannot be read. An office that silently
+ * grants an account is a worse failure than one that silently does not: the second is
+ * visible to the person who cannot sign in, the first is visible to nobody.
+ */
+export async function positionGrantsLogin(positionId: string): Promise<boolean> {
+    const { data, error } = await db
+        .from("leadership_positions")
+        .select("grants_login")
+        .eq("id", positionId)
+        .maybeSingle();
+    if (error || !data) return false;
+    return Boolean(data.grants_login);
 }

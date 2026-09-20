@@ -117,7 +117,7 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
         slug: "prayer",
         name: "Prayer Unit",
         type: "UNIT",
-        positionAlias: "Prayer Coord",
+        positionAlias: "Prayer Secretary",
         description: "Carries the fellowship's prayer life and intercession.",
     },
     {
@@ -135,19 +135,24 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
         description: "Ministers through drama and stage presentation.",
     },
     {
-        slug: "sport",
-        name: "Sport Unit",
-        type: "UNIT",
-        positionAlias: "Sports Coord",
-        description: "Organises the fellowship's sporting life and fixtures.",
-    },
-    {
         slug: "welfare",
         name: "Welfare Unit",
         type: "UNIT",
         positionAlias: "Welfare Coord",
         description: "Sees to the practical needs and wellbeing of members.",
     },
+    {
+        // A TEAM, not a unit, and that is the fellowship's own classification (see the
+        // TEAMS block in the office list). It matters mechanically: as a unit it
+        // consumed a member's single unit slot, so nobody could play for the fellowship
+        // AND serve in Choir. As a team it sits alongside whatever unit they belong to.
+        slug: "sport",
+        name: "Sports Team",
+        type: "TEAM",
+        positionAlias: "Director of Sports",
+        description: "Organises the fellowship's sporting life and fixtures.",
+    },
+
     {
         slug: "sisters",
         name: "Sisters' Unit",
@@ -159,7 +164,7 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
         slug: "bible-study",
         name: "Bible Study Unit",
         type: "UNIT",
-        positionAlias: "Bible Study Coord",
+        positionAlias: "Bible Study Secretary",
         description: "Plans and leads the fellowship's study of the scriptures.",
     },
     {
@@ -177,13 +182,48 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
         description: "Leads outreach and soul-winning on and off campus.",
     },
     {
+        slug: "brothers",
+        name: "Brothers' Unit",
+        type: "UNIT",
+        positionAlias: "Brothers' Coord",
+        description: "Ministers to the brothers of the fellowship.",
+    },
+    {
+        slug: "commerce",
+        name: "Commerce Team",
+        type: "TEAM",
+        positionAlias: "Director of Commerce",
+        description: "Runs the fellowship's trade, sales and commercial ventures.",
+    },
+    {
+        slug: "secretariat",
+        name: "Secretariat",
+        type: "TEAM",
+        positionAlias: "Secretariat Keeper",
+        description: "Keeps the fellowship's office, its records and its correspondence.",
+    },
+    {
+        slug: "protocol",
+        name: "Protocol Team",
+        type: "TEAM",
+        positionAlias: "Protocol Officer",
+        description: "Receives and attends to guests, ministers and dignitaries.",
+    },
+    {
+        slug: "transport",
+        name: "Transport Team",
+        type: "TEAM",
+        positionAlias: "Transport Secretary",
+        description: "Arranges movement for fellowship programmes and outreaches.",
+    },
+    {
         // Led by `ict-coord`, a FIXED office — see ICT_UNIT_SLUG in
         // leadership-positions.ts. No `exco-ict` position is generated for it.
         slug: "ict",
-        name: "Information and Communications Unit",
-        type: "UNIT",
+        name: "Information and Communications Team",
+        type: "TEAM",
         positionAlias: "ICT Coord",
-        description: "Runs the portal, the fellowship's systems and its communications.",
+        description: "Runs the infrastructure, and manages the fellowship's systems and its communications.",
     },
 ];
 

@@ -7,10 +7,17 @@ import { getTenurePresidentName } from "@/lib/backup";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 import { computeLevel, LEVELS } from "@/lib/levels";
 import { validatePrivilegeSet, derivePositionKind, normalizePrivileges } from "@/lib/privileges";
-import { ensureLoginProvisioned, deprovisionLoginIfUnappointed } from "@/lib/auth/provision";
+import {
+    ensureLoginProvisioned,
+    deprovisionLoginIfUnappointed,
+    applyPositionLoginPolicy,
+} from "@/lib/auth/provision";
+import { positionGrantsLogin } from "@/lib/positions";
 import {
     buildCatalogue,
+    defaultGrantsLogin,
     isUndisableablePosition,
+    isUndisableableLogin,
     TIER_ORDER,
     type PositionTier,
 } from "@/config/leadership-positions";
@@ -1100,18 +1107,36 @@ export async function assignLeaderAction(formData: FormData) {
         });
         if (error) {
             if (error.code === '23505') {
+                // Two unique constraints land here. `leadership_one_lead_per_position`
+                // is the one-lead-per-office rule, which the check above usually
+                // catches — reaching it means another appointment landed in between,
+                // and the raw index name is not something to show a VP Admin.
+                if (error.message?.includes("leadership_one_lead_per_position")) {
+                    return {
+                        success: false,
+                        error: "Somebody else was just made lead of this office. Add this member as an assistant instead.",
+                    };
+                }
                 return { success: false, error: "This member is already assigned to this role context." };
             }
             return { success: false, error: error.message };
         }
 
-        // Appointment IS the grant of portal access — leads and assistants alike. The row
-        // is created with no password, so the appointee sets their own on first login;
-        // we never invent one for them. Idempotent, and never overwrites an existing
-        // password (someone already leading elsewhere keeps theirs).
+        // Appointment grants portal access only where the OFFICE does — leads and
+        // assistants alike. Most of the fellowship's offices are in the catalogue as a
+        // record of service and carry no login (see leadership_positions.grants_login),
+        // so appointing a Transport Secretary must not mint an account for someone with
+        // nothing to administer.
+        //
+        // Where it does grant access, the row is created with no password, so the
+        // appointee sets their own on first login; we never invent one for them.
+        // Idempotent, and never overwrites an existing password (someone already leading
+        // elsewhere keeps theirs).
         let loginCreated = false;
         try {
-            ({ created: loginCreated } = await ensureLoginProvisioned(profileId, ctx.profile.id));
+            if (await positionGrantsLogin(positionId)) {
+                ({ created: loginCreated } = await ensureLoginProvisioned(profileId, ctx.profile.id));
+            }
         } catch (e: any) {
             // The appointment itself succeeded — surface the login failure without
             // pretending the whole action failed, so the admin knows to retry access.
@@ -1245,6 +1270,10 @@ async function syncCatalogue(): Promise<{ created: number }> {
                 is_active: true,
                 tier: spec.tier,
                 is_protected: true,
+                // Only the DEFAULT — tags mean there is something to administer. Once
+                // the row exists this column belongs to the VP Admin, and the sync is
+                // additive, so a later run never overwrites their decision.
+                grants_login: defaultGrantsLogin(spec),
             })
             .select("id")
             .single();
@@ -1290,6 +1319,101 @@ export async function syncCatalogueAction() {
     }
 }
 
+/**
+ * VP Admin: decide whether an office comes with a portal login.
+ *
+ * HOLDING AN OFFICE AND HAVING ACCESS ARE TWO DIFFERENT THINGS. The catalogue carries
+ * every office in the fellowship so that a member's service is on record under their
+ * name — the Transport Secretary is a real office and reads as one on the cabinet
+ * screen — but most of those offices administer nothing in this portal, and an account
+ * nobody needs is an account nobody watches.
+ *
+ * The change is RETROACTIVE, which is the only way it means anything: switching an
+ * office off revokes its current holders' access rather than merely applying to the
+ * next appointee. De-provisioning still goes through deprovisionLoginIfUnappointed, so
+ * a holder who also leads a unit keeps their login — losing one office is not losing
+ * every reason to sign in.
+ *
+ * SECURITY: this grants and revokes portal authentication, so it is gated on
+ * requireVpAdmin (not the tenure module's write config, which excos can hold), and
+ * every change is written to admin_audit_log. vp-admin and ict-coord can never be
+ * switched off — refused here and again by the enforce_login_granting_offices trigger,
+ * because a VP Admin who revokes their own office's access locks the fellowship out of
+ * the screen that would restore it.
+ */
+export async function setPositionLoginAction(positionId: string, grantsLogin: boolean) {
+    try {
+        const ctx = await requireVpAdmin();
+
+        const { data: position, error } = await db
+            .from("leadership_positions")
+            .select("id, slug, title, grants_login")
+            .eq("id", positionId)
+            .maybeSingle();
+
+        if (error || !position) {
+            return { success: false as const, error: "That office is not in the catalogue." };
+        }
+
+        if (!grantsLogin && isUndisableableLogin(position.slug)) {
+            return {
+                success: false as const,
+                error: `${position.title} must always keep portal access — without it the fellowship cannot administer itself.`,
+            };
+        }
+
+        if (position.grants_login === grantsLogin) {
+            return {
+                success: true as const,
+                provisioned: 0,
+                revoked: 0,
+                message: `${position.title} already ${grantsLogin ? "grants" : "grants no"} portal access.`,
+            };
+        }
+
+        const { error: updateError } = await db
+            .from("leadership_positions")
+            .update({ grants_login: grantsLogin })
+            .eq("id", positionId);
+        if (updateError) return { success: false as const, error: updateError.message };
+
+        const { provisioned, revoked } = await applyPositionLoginPolicy(
+            positionId,
+            grantsLogin,
+            ctx.profile.id,
+        );
+
+        const actor = actorOf(ctx);
+        await db.from("admin_audit_log").insert({
+            actor_profile_id: actor.id,
+            actor_name: actor.name,
+            action: "position.grants_login",
+            field: position.slug ?? position.title,
+            old_value: String(position.grants_login),
+            new_value: String(grantsLogin),
+        });
+
+        revalidatePath("/dashboard/tenure");
+
+        const effect = grantsLogin
+            ? provisioned
+                ? ` ${provisioned} holder${provisioned === 1 ? "" : "s"} can now sign in.`
+                : ""
+            : revoked
+                ? ` ${revoked} holder${revoked === 1 ? "" : "s"} lost portal access.`
+                : "";
+
+        return {
+            success: true as const,
+            provisioned,
+            revoked,
+            message: `${position.title} ${grantsLogin ? "now grants" : "no longer grants"} portal access.${effect}`,
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
 /** The catalogue as stored, grouped by tier, for the read-only hierarchy view. */
 export async function getCatalogueAction() {
     try {
@@ -1297,7 +1421,7 @@ export async function getCatalogueAction() {
 
         const { data: positions } = await db
             .from("leadership_positions")
-            .select("id, slug, title, alias, description, tier, is_active, is_protected")
+            .select("id, slug, title, alias, description, tier, is_active, is_protected, grants_login")
             .order("title");
 
         const { data: privileges } = await db

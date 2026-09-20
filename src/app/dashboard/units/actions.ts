@@ -3,7 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { listPositions, isPresidentPosition } from "@/lib/positions";
+import { listPositions, isPresidentPosition, positionGrantsLogin } from "@/lib/positions";
 import {
     getAllUnitsOverview,
     getUnitMembers,
@@ -388,10 +388,24 @@ export async function appointLeaderAction(input: {
             class_set_id: input.classSetId || null,
             residential_zone_id: input.residentialZoneId || null,
         });
-        if (assignError) throw assignError;
+        if (assignError) {
+            // The one-lead-per-office index (see the tighten_office_catalogue
+            // migration). Assistants are unlimited; only the lead seat is exclusive.
+            if (assignError.message?.includes("leadership_one_lead_per_position")) {
+                throw new Error(
+                    "This office already has a lead for this tenure. Add the member as an assistant instead.",
+                );
+            }
+            throw assignError;
+        }
 
-        // Auto-create the login (unusable password until they set one).
-        const { created } = await ensureLoginProvisioned(input.profileId, admin.id);
+        // Auto-create the login (no password until they set one) — but only where the
+        // OFFICE grants access. Most of the fellowship's offices exist in the catalogue
+        // as a record of service and administer nothing here, so appointing to one must
+        // not mint an account. See leadership_positions.grants_login.
+        const created = (await positionGrantsLogin(input.positionId))
+            ? (await ensureLoginProvisioned(input.profileId, admin.id)).created
+            : false;
 
         revalidatePath("/dashboard/units");
         revalidatePath("/dashboard/tenure");
