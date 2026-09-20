@@ -10,7 +10,7 @@ import {
     Settings,
     Database,
 } from "lucide-react";
-import type { FullUserProfile } from "@rcffuta/ict-lib";
+import type { FullUserProfile } from "@/lib/types/portal";
 import type { ModuleId } from "@/lib/modules";
 import { isProfileAdmin } from "@/lib/auth-roles";
 import { LoLogo } from "@/components/lo-app/LoLogo";

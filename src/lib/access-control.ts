@@ -12,7 +12,7 @@ import { type AuthUser, createAuthUser } from "@/lib/auth-roles";
 import { getSessionProfileId } from "@/lib/auth/session";
 import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-context";
 import { canReadModule, canWriteModule, getModuleAccessConfig, type ModuleId } from "@/lib/module-access";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { computeLevel } from "@/lib/levels";
 
 /**
@@ -163,14 +163,14 @@ export async function canManageLevel(ctx: ProfileContext, classSetId: string): P
     // An un-scoped (or explicit 'all') LEVEL grants every generation.
     if (levelScopes.some((s) => s == null || s.toLowerCase() === "all")) return true;
 
-    const { data: cs } = await ictAdmin.supabase
+    const { data: cs } = await db
         .from("class_sets")
         .select("entry_year, is_foundation, level_override")
         .eq("id", classSetId)
         .maybeSingle();
     if (!cs) return false;
 
-    const { data: tenure } = await ictAdmin.supabase
+    const { data: tenure } = await db
         .from("tenures").select("session").eq("is_active", true).maybeSingle();
     const effective = cs.level_override
         || computeLevel(cs.entry_year, cs.is_foundation, tenure?.session ?? null);
@@ -192,7 +192,7 @@ export async function canManageUnit(ctx: ProfileContext, unitId: string): Promis
     if (excoScopes.length === 0) return false;
     if (excoScopes.some((s) => s == null || s.toLowerCase() === "all")) return true;
 
-    const { data: unit } = await ictAdmin.supabase
+    const { data: unit } = await db
         .from("units").select("slug").eq("id", unitId).maybeSingle();
     if (!unit?.slug) return false;
 

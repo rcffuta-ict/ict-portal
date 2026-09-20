@@ -3,26 +3,16 @@
  *
  * Supabase Auth is retired. Sessions are our own DB-backed opaque tokens
  * (`src/lib/auth/session.ts`). All authenticated DB access uses the service-role
- * client (`ictAdmin`), which bypasses RLS — authorization is enforced in the
- * server action layer, not by RLS.
+ * client (`db`), which bypasses RLS — authorization is enforced in the server action
+ * layer, not by RLS.
  */
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { getSessionProfileId } from "@/lib/auth/session";
 
 /** Minimal authenticated identity resolved from the session cookie. */
 export interface SessionUser {
     id: string;
     email: string;
-}
-
-/**
- * Return the service-role client if there is a valid session, else null.
- * (Kept for backwards compatibility with existing callers.)
- */
-export async function getAuthenticatedClient() {
-    const profileId = await getSessionProfileId();
-    if (!profileId) return null;
-    return ictAdmin;
 }
 
 /**
@@ -33,7 +23,7 @@ export async function validateSession(): Promise<{ valid: boolean; user: Session
     const profileId = await getSessionProfileId();
     if (!profileId) return { valid: false, user: null };
 
-    const { data, error } = await ictAdmin.supabase
+    const { data, error } = await db
         .from("profiles")
         .select("id, email")
         .eq("id", profileId)

@@ -2,7 +2,15 @@
 'use server'
 
 import { revalidatePath } from "next/cache";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
+import { listPositions, isPresidentPosition } from "@/lib/positions";
+import {
+    getAllUnitsOverview,
+    getUnitMembers,
+    addWorker,
+    removeWorker,
+} from "@/lib/fellowship";
+import { isUndisableablePosition } from "@/config/leadership-positions";
 import { getActiveTenure } from "@/utils/action";
 import {
     requireContext,
@@ -39,7 +47,7 @@ export async function getUnitModuleData() {
     let managedLevels: any[] = [];
     if (levelLeaderships.length > 0) {
         const ids = levelLeaderships.map((l) => l.classSetId);
-        const { data: sets } = await ictAdmin.supabase
+        const { data: sets } = await db
             .from("class_sets")
             .select("id, family_name, entry_year, is_foundation")
             .in("id", ids as string[]);
@@ -53,9 +61,9 @@ export async function getUnitModuleData() {
     }
 
     if (ctx.isAdmin) {
-        const units = await ictAdmin.unit.getAllUnitsOverview();
-        const positions = await ictAdmin.admin.getPositions(false);
-        const unitPositions = positions?.filter((p: any) => p.is_active && p.category === "UNIT");
+        const units = await getAllUnitsOverview();
+        const positions = await listPositions();
+        const unitPositions = positions.filter((p) => p.is_active && p.category === "UNIT");
         return {
             authorized: true,
             role: "ADMIN" as const,
@@ -88,7 +96,7 @@ export async function getUnitModuleData() {
 export async function getUnitDetailsAction(unitId: string) {
     const tenure = await getActiveTenure();
     if (!tenure) return [];
-    return ictAdmin.unit.getUnitMembers(unitId, tenure.id);
+    return getUnitMembers(unitId, tenure.id);
 }
 
 /**
@@ -115,7 +123,7 @@ export async function addWorkerAction(formData: FormData) {
             return { success: false, error: "You don't lead this unit/team." };
         }
 
-        const { data: target } = await ictAdmin.supabase
+        const { data: target } = await db
             .from("units")
             .select("id, name, type")
             .eq("id", unitId)
@@ -124,12 +132,12 @@ export async function addWorkerAction(formData: FormData) {
 
         // Teams are unconstrained — there is nothing to arbitrate.
         if (target.type === "TEAM") {
-            await ictAdmin.unit.addWorker(tenureId, email, unitId);
+            await addWorker(tenureId, email, unitId);
             revalidatePath("/dashboard/units");
             return { success: true };
         }
 
-        const { data: profile } = await ictAdmin.supabase
+        const { data: profile } = await db
             .from("profiles")
             .select("id, first_name, last_name")
             .eq("email", (email || "").toLowerCase().trim())
@@ -139,7 +147,7 @@ export async function addWorkerAction(formData: FormData) {
         }
 
         // Does this member already hold a UNIT this tenure?
-        const { data: existing } = await ictAdmin.supabase
+        const { data: existing } = await db
             .from("membership_units")
             .select("id, unit:units(id, name, type)")
             .eq("profile_id", profile.id)
@@ -150,7 +158,7 @@ export async function addWorkerAction(formData: FormData) {
             .find((u: any) => u?.type === "UNIT");
 
         if (!currentUnit) {
-            await ictAdmin.unit.addWorker(tenureId, email, unitId);
+            await addWorker(tenureId, email, unitId);
             revalidatePath("/dashboard/units");
             return { success: true };
         }
@@ -160,7 +168,7 @@ export async function addWorkerAction(formData: FormData) {
         }
 
         // Contested. Queue it for the VP Admin rather than moving anyone.
-        const { error } = await ictAdmin.supabase.from("unit_transfer_requests").insert({
+        const { error } = await db.from("unit_transfer_requests").insert({
             profile_id: profile.id,
             tenure_id: tenureId,
             from_unit_id: currentUnit.id,
@@ -194,7 +202,7 @@ export async function addWorkerAction(formData: FormData) {
 export async function removeWorkerAction(membershipId: string) {
     try {
         await requireContext(); // any leader/admin; membership ownership checked by UI scope
-        await ictAdmin.unit.removeWorker(membershipId);
+        await removeWorker(membershipId);
         revalidatePath("/dashboard/units");
         return { success: true };
     } catch (e: any) {
@@ -211,7 +219,7 @@ export async function getLevelMembersAction(classSetId: string) {
         if (!(await canManageLevel(ctx, classSetId))) {
             return { success: false, error: "You don't coordinate this level.", data: [] };
         }
-        const { data } = await ictAdmin.supabase
+        const { data } = await db
             .from("profiles")
             .select("id, first_name, last_name, email, phone_number, department, avatar_url, matric_number")
             .eq("class_set_id", classSetId)
@@ -231,8 +239,8 @@ export async function getAppointmentOptionsAction() {
     try {
         await requireAccess("ADMIN");
         const [{ data: units }, { data: classSets }] = await Promise.all([
-            ictAdmin.supabase.from("units").select("id, name, type").order("name"),
-            ictAdmin.supabase.from("class_sets").select("id, family_name, entry_year").order("entry_year", { ascending: false }),
+            db.from("units").select("id, name, type").order("name"),
+            db.from("class_sets").select("id, family_name, entry_year").order("entry_year", { ascending: false }),
         ]);
         return { success: true, units: units || [], classSets: classSets || [] };
     } catch (e: any) {
@@ -246,7 +254,7 @@ export async function searchMembersAction(query: string) {
         await requireAccess("ADMIN");
         const q = (query || "").trim();
         if (q.length < 2) return { success: true, data: [] };
-        const { data } = await ictAdmin.supabase
+        const { data } = await db
             .from("profiles")
             .select("id, first_name, last_name, email, phone_number, avatar_url")
             .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,matric_number.ilike.%${q}%`)
@@ -257,16 +265,20 @@ export async function searchMembersAction(query: string) {
     }
 }
 
-/** List all leadership roles (positions), including disabled, with alias/is_default. */
+/**
+ * List all leadership roles (positions), including disabled.
+ *
+ * `category` is DERIVED from each position's privilege tags (migration 0013 dropped the
+ * stored column), and `is_protected` replaces the old `is_default` flag.
+ */
 export async function listRolesAction() {
     try {
         await requireAccess("ADMIN");
-        const { data } = await ictAdmin.supabase
-            .from("leadership_positions")
-            .select("id, title, alias, category, description, is_active, is_default")
-            .order("category")
-            .order("title");
-        return { success: true, data: data || [] };
+        const positions = await listPositions();
+        const data = [...positions].sort(
+            (a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title),
+        );
+        return { success: true, data };
     } catch (e: any) {
         return { success: false, error: e.message, data: [] };
     }
@@ -276,20 +288,19 @@ export async function listRolesAction() {
 export async function createRoleAction(input: {
     title: string;
     alias?: string;
-    category: "PRESIDENT" | "CENTRAL" | "UNIT" | "TEAM" | "LEVEL" | "ZONE";
     description?: string;
 }) {
     try {
         // Catalogue changes belong to the VP Admin, not to every ADMIN-tier role.
         await requireVpAdmin();
         if (!input.title?.trim()) return { success: false, error: "Title is required." };
-        const { error } = await ictAdmin.supabase.from("leadership_positions").insert({
+        // No `category` — it is derived from the privilege tags now. A role created here
+        // has none yet, so it reads as 'UNIT' until the VP Admin assigns them.
+        const { error } = await db.from("leadership_positions").insert({
             title: input.title.trim(),
             alias: input.alias?.trim() || null,
-            category: input.category,
             description: input.description?.trim() || null,
             is_active: true,
-            is_default: false,
         });
         if (error) throw error;
         revalidatePath("/dashboard/units");
@@ -299,20 +310,26 @@ export async function createRoleAction(input: {
     }
 }
 
-/** Enable/disable a role. Default roles (VP Admin / ICT Coord) cannot be disabled. */
+/**
+ * Enable/disable a role. The VP Admin and ICT Coordinator can never be disabled — the
+ * fellowship would be left unable to administer itself.
+ *
+ * Identified by IMMUTABLE SLUG rather than the dropped `is_default` column, so renaming
+ * either office in the UI cannot quietly unprotect it.
+ */
 export async function setRoleActiveAction(positionId: string, isActive: boolean) {
     try {
         // Catalogue changes belong to the VP Admin, not to every ADMIN-tier role.
         await requireVpAdmin();
-        const { data: pos } = await ictAdmin.supabase
+        const { data: pos } = await db
             .from("leadership_positions")
-            .select("is_default")
+            .select("slug")
             .eq("id", positionId)
             .maybeSingle();
-        if (pos?.is_default && !isActive) {
+        if (isUndisableablePosition(pos?.slug) && !isActive) {
             return { success: false, error: "The VP Admin and ICT Coordinator roles cannot be disabled." };
         }
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("leadership_positions")
             .update({ is_active: isActive })
             .eq("id", positionId);
@@ -341,13 +358,37 @@ export async function appointLeaderAction(input: {
         const tenure = await getActiveTenure();
         if (!tenure) return { success: false, error: "No active tenure." };
 
-        await ictAdmin.admin.assignLeader({
-            tenureId: tenure.id,
-            profileId: input.profileId,
-            positionId: input.positionId,
-            unitId: input.unitId,
-            classSetId: input.classSetId,
-        } as any);
+        // Done directly rather than through `ictAdmin.admin.assignLeader()`: the SDK
+        // enforces the single-President rule by reading `leadership_positions.category`,
+        // which migration 0013 dropped. The rule itself is unchanged — it just reads the
+        // PRESIDENT privilege tag, which is where that fact actually lives.
+        if (await isPresidentPosition(input.positionId)) {
+            const { data: sitting, error: presErr } = await db
+                .from("leadership")
+                .select("id, position:leadership_positions!inner(position_privileges!inner(privilege))")
+                .eq("tenure_id", tenure.id)
+                .eq("position.position_privileges.privilege", "PRESIDENT")
+                .maybeSingle();
+            if (presErr) throw presErr;
+            if (sitting) {
+                return {
+                    success: false,
+                    error:
+                        "A President has already been appointed for this tenure. Remove the "
+                        + "current President before appointing a new one.",
+                };
+            }
+        }
+
+        const { error: assignError } = await db.from("leadership").insert({
+            tenure_id: tenure.id,
+            profile_id: input.profileId,
+            position_id: input.positionId,
+            unit_id: input.unitId || null,
+            class_set_id: input.classSetId || null,
+            residential_zone_id: input.residentialZoneId || null,
+        });
+        if (assignError) throw assignError;
 
         // Auto-create the login (unusable password until they set one).
         const { created } = await ensureLoginProvisioned(input.profileId, admin.id);
@@ -367,7 +408,7 @@ export async function appointLeaderAction(input: {
 export async function resetLeaderLoginAction(leaderProfileId: string) {
     try {
         await requireAccess("ADMIN");
-        const { data: login } = await ictAdmin.supabase
+        const { data: login } = await db
             .from("profile_login")
             .select("id")
             .eq("profile_id", leaderProfileId)
@@ -386,9 +427,9 @@ export async function resetLeaderLoginAction(leaderProfileId: string) {
 // ============================================================================
 export async function getUnitPositionsAction(unitId: string) {
     try {
-        const { data, error } = await ictAdmin.supabase
+        const { data, error } = await db
             .from("unit_positions")
-            .select(`id, role_type, position:leadership_positions(id, title, category, description)`)
+            .select(`id, role_type, position:leadership_positions(id, title, tier, description)`)
             .eq("unit_id", unitId)
             .order("role_type", { ascending: true });
         if (error) throw error;
@@ -409,7 +450,7 @@ export async function assignPositionToUnitAction(
 ) {
     try {
         await requireAccess("ADMIN");
-        const { data: existing } = await ictAdmin.supabase
+        const { data: existing } = await db
             .from("unit_positions")
             .select("id")
             .eq("unit_id", unitId)
@@ -418,7 +459,7 @@ export async function assignPositionToUnitAction(
         if (existing) throw new Error("This position is already assigned to this unit.");
 
         if (roleType === "leader") {
-            const { data: existingLeader } = await ictAdmin.supabase
+            const { data: existingLeader } = await db
                 .from("unit_positions")
                 .select("id")
                 .eq("unit_id", unitId)
@@ -427,7 +468,7 @@ export async function assignPositionToUnitAction(
             if (existingLeader) throw new Error("This unit already has a leader position assigned.");
         }
 
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("unit_positions")
             .insert({ unit_id: unitId, position_id: positionId, role_type: roleType });
         if (error) throw error;
@@ -443,7 +484,7 @@ export async function assignPositionToUnitAction(
 export async function removePositionFromUnitAction(unitPositionId: string) {
     try {
         await requireAccess("ADMIN");
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("unit_positions")
             .delete()
             .eq("id", unitPositionId);
@@ -458,15 +499,15 @@ export async function removePositionFromUnitAction(unitPositionId: string) {
 
 export async function getUnitLeadershipAction(unitId: string, tenureId: string) {
     try {
-        const { data: unitPositions, error: upError } = await ictAdmin.supabase
+        const { data: unitPositions, error: upError } = await db
             .from("unit_positions")
-            .select(`id, role_type, position_id, position:leadership_positions(id, title, category)`)
+            .select(`id, role_type, position_id, position:leadership_positions(id, title, tier)`)
             .eq("unit_id", unitId);
         if (upError) throw upError;
         if (!unitPositions || unitPositions.length === 0) return { success: true, data: [] };
 
         const positionIds = unitPositions.map((up: any) => up.position_id);
-        const { data: leadership, error: lError } = await ictAdmin.supabase
+        const { data: leadership, error: lError } = await db
             .from("leadership")
             .select(`id, position_id, profile:profiles(id, first_name, last_name, email, phone_number, avatar_url)`)
             .eq("tenure_id", tenureId)
@@ -494,8 +535,8 @@ export async function getUnitLeadershipAction(unitId: string, tenureId: string) 
 
 export async function getAvailablePositionsAction() {
     try {
-        const positions = await ictAdmin.admin.getPositions(false);
-        const unitPositions = positions?.filter((p: any) => p.is_active && p.category === "UNIT") || [];
+        const positions = await listPositions();
+        const unitPositions = positions.filter((p) => p.is_active && p.category === "UNIT");
         return { success: true, data: unitPositions };
     } catch (e: any) {
         return { success: false, error: e.message, data: [] };

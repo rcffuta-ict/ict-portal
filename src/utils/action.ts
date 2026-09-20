@@ -1,13 +1,13 @@
 "use server"
 
-import { Tenure } from "@rcffuta/ict-lib/server";
-import { ictAdmin } from "@/lib/ict";
+import type { Tenure } from "@/lib/types/portal";
+import { db } from "@/lib/db";
 import { requireAccess } from "@/lib/access-control";
 
 export async function getActiveTenure(): Promise<Tenure | null> {
     try {
         // Service-role client: RLS is default-deny, so anon reads no longer work.
-        const { data } = await ictAdmin.supabase
+        const { data } = await db
             .from("tenures")
             .select("*")
             .eq("is_active", true)
@@ -41,19 +41,26 @@ export async function getActiveTenureName() {
  */
 export const checkAdminAccess = async () => {
     await requireAccess("ADMIN"); // throws if not an admin
-    return ictAdmin;
+    return db;
 };
 
 /**
  * Position-based admin check by email (used where only an email is available).
- * Returns true if the profile with this email currently holds a default admin
- * position (VP Admin / ICT Coordinator) or a PRESIDENT-scope role.
+ *
+ * Reads the PRIVILEGE TAGS directly — the same source `rcf_profile_context` uses — so
+ * this can no longer disagree with the rest of the system. It previously tested the
+ * `is_default` / `category` columns, which migration 0013 dropped: both were
+ * hand-maintained duplicates of what the tags already say.
+ *
+ * SYSADMIN (ICT Coordinator), PRESIDENT and CENTRAL (the VPs) are the church-wide
+ * offices. Deliberately NOT scoped to the active tenure, matching the previous
+ * behaviour of this function.
  */
 export const checkIsAdminByEmail = async (email: string) => {
     if (!email) return false;
 
     try {
-        const { data: profile } = await ictAdmin.supabase
+        const { data: profile } = await db
             .from("profiles")
             .select("id")
             .eq("email", email)
@@ -61,14 +68,22 @@ export const checkIsAdminByEmail = async (email: string) => {
 
         if (!profile) return false;
 
-        const { data: rows } = await ictAdmin.supabase
+        const { data: rows, error } = await db
             .from("leadership")
-            .select("id, position:leadership_positions(is_default, category)")
+            .select("id, position:leadership_positions(position_privileges(privilege))")
             .eq("profile_id", profile.id);
 
-        return (rows || []).some((r) => {
+        if (error) {
+            console.error("checkIsAdminByEmail: leadership lookup failed:", error.message);
+            return false;
+        }
+
+        const ADMIN_TAGS = new Set(["SYSADMIN", "PRESIDENT", "CENTRAL"]);
+
+        return (rows ?? []).some((r) => {
             const pos = Array.isArray(r.position) ? r.position[0] : r.position;
-            return pos?.is_default === true || pos?.category === "PRESIDENT";
+            const privileges = (pos?.position_privileges ?? []) as { privilege: string }[];
+            return privileges.some((pp) => ADMIN_TAGS.has(pp.privilege));
         });
     } catch (error) {
         console.error("checkIsAdminByEmail failed:", error);

@@ -2,19 +2,20 @@
 'use server'
 
 import { requireModuleRead, requireModuleWrite, requireVpAdmin } from "@/lib/access-control";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { getTenurePresidentName } from "@/lib/backup";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 import { computeLevel, LEVELS } from "@/lib/levels";
-import { validatePrivilegeSet, deriveCategory } from "@/lib/privileges";
+import { validatePrivilegeSet, derivePositionKind, normalizePrivileges } from "@/lib/privileges";
 import { ensureLoginProvisioned, deprovisionLoginIfUnappointed } from "@/lib/auth/provision";
 import {
     buildCatalogue,
+    isUndisableablePosition,
     TIER_ORDER,
     type PositionTier,
 } from "@/config/leadership-positions";
 import type { Privilege } from "@/lib/modules";
-import { RcfIctClient } from "@rcffuta/ict-lib/server";
+import { setFamilyName } from "@/lib/fellowship";
 import { revalidatePath } from "next/cache";
 
 // ============================================================================
@@ -30,44 +31,51 @@ export async function getAdminData() {
         // READ is gated by the tenure module's access config (default: CENTRAL);
         // the mutations below require WRITE access (default: vp-admin; admins bypass).
         const ctx = await requireModuleRead("tenure");
-        const rcf = ictAdmin;
 
         // 1. Get Active Tenure
-        const { data: activeTenure } = await rcf.supabase
+        const { data: activeTenure } = await db
             .from('tenures')
             .select('*')
             .eq('is_active', true)
             .single();
 
         // 2. Fetch Master Data. We fetch positions directly (not via the SDK) so we
-        //    control the columns we need (slug, alias, tier, is_default).
+        //    control the columns we need (slug, alias, tier, is_protected).
         const [unitsRes, familiesRes, positionsRes, leadershipRes, profilesRes, membershipRes] = await Promise.all([
-            rcf.supabase.from('units').select('*').order('name'),
-            rcf.supabase.from('class_sets').select('*').order('entry_year', { ascending: false }),
-            rcf.supabase.from('leadership_positions')
+            db.from('units').select('*').order('name'),
+            db.from('class_sets').select('*').order('entry_year', { ascending: false }),
+            db.from('leadership_positions')
                 .select('*, position_privileges(id, privilege, scope)')
-                .order('category').order('title'),
+                .order('tier').order('title'),
             // Fetch ALL leadership for the active tenure
             activeTenure
-                ? rcf.supabase.from('leadership')
+                ? db.from('leadership')
                     .select(`
                         id, is_lead, unit_id, units(name, type, is_workforce),
                         class_set_id, class_sets(family_name, entry_year),
-                        position:leadership_positions(title, category, tier, slug, position_privileges(privilege, scope)),
+                        position:leadership_positions(title, tier, slug, position_privileges(privilege, scope)),
                         profile:profiles(id, first_name, last_name, avatar_url, department, phone_number, gender)
                     `)
                     .eq('tenure_id', activeTenure.id)
                     .order('created_at', { ascending: false })
                 : { data: [] },
             // All profiles (id/gender/class_set) — drives church-wide + generation stats.
-            rcf.supabase.from('profiles').select('id, gender, class_set_id'),
+            db.from('profiles').select('id, gender, class_set_id'),
             // Unit memberships for the active tenure — drives per-unit + workforce stats.
             activeTenure
-                ? rcf.supabase.from('membership_units').select('profile_id, unit_id').eq('tenure_id', activeTenure.id)
+                ? db.from('membership_units').select('profile_id, unit_id').eq('tenure_id', activeTenure.id)
                 : { data: [] },
         ]);
 
         // 3. Process Data
+        // Which unit slugs are TEAMs — needed to tell an EXCO position leading a team
+        // from one leading a unit, now that `category` is derived rather than stored.
+        const teamSlugs = new Set(
+            (unitsRes.data || [])
+                .filter((u: any) => u.type === "TEAM")
+                .map((u: any) => u.slug as string),
+        );
+
         const leaders = leadershipRes.data || [];
         const allProfiles = profilesRes.data || [];
         const memberships = membershipRes.data || [];
@@ -147,7 +155,16 @@ export async function getAdminData() {
             activeTenure,
             units,
             families,
-            positions: positionsRes.data || [],
+            // `category` is derived from each position's privilege tags — migration 0013
+            // dropped the stored column. Attached here so the tenure UI (which groups and
+            // filters by it) keeps working without every component re-deriving it.
+            positions: (positionsRes.data || []).map((p: any) => ({
+                ...p,
+                category: derivePositionKind(
+                    normalizePrivileges(p.position_privileges),
+                    (slug) => teamSlugs.has(slug),
+                ),
+            })),
             leadership: leaders,
             sessionStats,
             authorized: true,
@@ -171,15 +188,14 @@ export async function getAdminData() {
  */
 export async function createTenureAction(formData: FormData) {
     await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
     try {
         // Deactivate all existing tenures
-        await rcf.supabase.from('tenures').update({ is_active: false }).neq('id', '0');
+        await db.from('tenures').update({ is_active: false }).neq('id', '0');
 
         // Create new tenure (insert directly so we can persist the theme; the ict-lib
         // createTenure helper doesn't accept it).
         const theme = ((formData.get("theme") as string) || "").trim();
-        const { error } = await rcf.supabase.from('tenures').insert({
+        const { error } = await db.from('tenures').insert({
             name: formData.get("name") as string,
             session: formData.get("session") as string,
             start_date: new Date(formData.get("startDate") as string).toISOString(),
@@ -200,9 +216,8 @@ export async function createTenureAction(formData: FormData) {
  */
 export async function updateTenureAction(formData: FormData) {
     await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
     try {
-        await rcf.supabase
+        await db
             .from('tenures')
             .update({
                 name: formData.get("name"),
@@ -235,7 +250,7 @@ async function findBackupForTenure(
 ): Promise<{ takenAt: string; takenBy: string | null } | { unavailable: true } | null> {
     if (!tenureId) return null;
 
-    const { data: tenure } = await ictAdmin.supabase
+    const { data: tenure } = await db
         .from("tenures")
         .select("start_date, created_at")
         .eq("id", tenureId)
@@ -251,10 +266,14 @@ async function findBackupForTenure(
     if (!candidates.length) return null;
     const since = new Date(Math.min(...candidates)).toISOString();
 
-    const { data, error } = await ictAdmin.supabase
+    const { data, error } = await db
         .from("admin_audit_log")
         .select("created_at, actor_name")
-        .eq("action", "backup.download")
+        // Either kind of backup satisfies the gate. A full system backup is strictly
+        // MORE than a tenure one — every tenure, all history — so refusing to accept it
+        // here would force the VP Admin to take a second, weaker backup to get past a
+        // check that the stronger one already answers.
+        .in("action", ["backup.download", "backup.system"])
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(1);
@@ -285,10 +304,10 @@ export async function getHandoverPreviewAction(incomingSession: string) {
     try {
         await requireModuleWrite("tenure");
 
-        const { data: tenure } = await ictAdmin.supabase
+        const { data: tenure } = await db
             .from("tenures").select("id, name, session").eq("is_active", true).maybeSingle();
 
-        const { data: sets } = await ictAdmin.supabase
+        const { data: sets } = await db
             .from("class_sets")
             .select("id, family_name, entry_year, is_foundation, level_override")
             .order("entry_year", { ascending: false });
@@ -313,7 +332,7 @@ export async function getHandoverPreviewAction(incomingSession: string) {
         // Everyone appointed in the outgoing tenure. None of them carry over
         // automatically, so all of them lose portal access unless reappointed.
         const { data: outgoing } = tenure
-            ? await ictAdmin.supabase
+            ? await db
                 .from("leadership")
                 .select("profile_id, profile:profiles(first_name, last_name, email), position:leadership_positions(title)")
                 .eq("tenure_id", tenure.id)
@@ -349,7 +368,7 @@ export async function getHandoverPreviewAction(incomingSession: string) {
         const presidentName = await getTenurePresidentName(tenure?.id ?? null);
 
         const { count: membershipCount } = tenure
-            ? await ictAdmin.supabase
+            ? await db
                 .from("membership_units")
                 .select("id", { count: "exact", head: true })
                 .eq("tenure_id", tenure.id)
@@ -389,7 +408,6 @@ export async function getHandoverPreviewAction(incomingSession: string) {
 export async function handoverTenureAction(formData: FormData) {
     // A handover is the write-bypass tier's alone — not the wider tenure-write group.
     const ctx = await requireVpAdmin();
-    const rcf = ictAdmin;
     try {
         const name = ((formData.get("name") as string) || "").trim();
         const session = ((formData.get("session") as string) || "").trim();
@@ -408,7 +426,7 @@ export async function handoverTenureAction(formData: FormData) {
             return { success: false, error: "You must appoint the incoming VP Admin and ICT Coordinator." };
         }
 
-        const { data: outgoingForBackup } = await rcf.supabase
+        const { data: outgoingForBackup } = await db
             .from('tenures').select('id').eq('is_active', true).maybeSingle();
 
         // 1. A backup is the only undo for this. Refuse without one taken during the
@@ -428,7 +446,7 @@ export async function handoverTenureAction(formData: FormData) {
             };
         }
 
-        const { data: positions } = await rcf.supabase
+        const { data: positions } = await db
             .from('leadership_positions')
             .select('id, title')
             .in('title', ['Vice President Administration', 'ICT Coordinator']);
@@ -438,21 +456,21 @@ export async function handoverTenureAction(formData: FormData) {
             return { success: false, error: "Default VP Admin / ICT Coordinator positions are missing. Run the catalogue sync first." };
         }
 
-        const { data: outgoingTenure } = await rcf.supabase
+        const { data: outgoingTenure } = await db
             .from('tenures').select('id').eq('is_active', true).maybeSingle();
 
         // Who held a position on the way out — captured before anything changes.
         const { data: outgoingLeaders } = outgoingTenure
-            ? await rcf.supabase.from('leadership').select('profile_id').eq('tenure_id', outgoingTenure.id)
+            ? await db.from('leadership').select('profile_id').eq('tenure_id', outgoingTenure.id)
             : { data: [] };
         const outgoingIds = Array.from(new Set((outgoingLeaders ?? []).map((l: any) => l.profile_id)));
 
         // 2. Close the current tenure and open the new one.
-        await rcf.supabase.from('tenures')
+        await db.from('tenures')
             .update({ is_active: false, end_date: new Date().toISOString() })
             .eq('is_active', true);
 
-        const { data: newTenure, error: tErr } = await rcf.supabase.from('tenures')
+        const { data: newTenure, error: tErr } = await db.from('tenures')
             .insert({
                 name,
                 session,
@@ -465,7 +483,7 @@ export async function handoverTenureAction(formData: FormData) {
         if (tErr || !newTenure) return { success: false, error: tErr?.message || "Could not create the new tenure." };
 
         // 3. Incoming defaults.
-        const { error: lErr } = await rcf.supabase.from('leadership').insert([
+        const { error: lErr } = await db.from('leadership').insert([
             { tenure_id: newTenure.id, profile_id: vpAdminProfileId, position_id: vpPos.id, is_lead: true },
             { tenure_id: newTenure.id, profile_id: ictCoordProfileId, position_id: ictPos.id, is_lead: true },
         ]);
@@ -502,7 +520,7 @@ export async function handoverTenureAction(formData: FormData) {
         // Close out the intent: this is the row a successor reads to see what happened.
         if (intentId) {
             const actor = actorOf(ctx);
-            const { error: intentError } = await rcf.supabase
+            const { error: intentError } = await db
                 .from("handover_intents")
                 .update({
                     status: "completed",
@@ -545,7 +563,7 @@ async function carryMembershipForward(
     toTenureId: string,
     incomingSession: string,
 ): Promise<number> {
-    const { data: sets } = await ictAdmin.supabase
+    const { data: sets } = await db
         .from("class_sets")
         .select("id, entry_year, is_foundation, level_override");
 
@@ -559,7 +577,7 @@ async function carryMembershipForward(
             .map((s: any) => s.id),
     );
 
-    const { data: profiles } = await ictAdmin.supabase
+    const { data: profiles } = await db
         .from("profiles").select("id, class_set_id");
     const alumniProfileIds = new Set(
         (profiles ?? [])
@@ -567,7 +585,7 @@ async function carryMembershipForward(
             .map((p: any) => p.id),
     );
 
-    const { data: memberships } = await ictAdmin.supabase
+    const { data: memberships } = await db
         .from("membership_units")
         .select("profile_id, unit_id, role")
         .eq("tenure_id", fromTenureId);
@@ -588,7 +606,7 @@ async function carryMembershipForward(
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 500) {
         const chunk = rows.slice(i, i + 500);
-        const { error } = await ictAdmin.supabase.from("membership_units").insert(chunk);
+        const { error } = await db.from("membership_units").insert(chunk);
         if (error) {
             console.error("carryMembershipForward chunk failed:", error.message);
             continue;
@@ -603,9 +621,8 @@ async function carryMembershipForward(
  */
 export async function closeTenureAction(tenureId: string) {
     await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
     try {
-        await rcf.supabase.from('tenures')
+        await db.from('tenures')
             .update({ is_active: false, end_date: new Date() })
             .eq('id', tenureId);
         
@@ -625,7 +642,6 @@ export async function closeTenureAction(tenureId: string) {
  */
 export async function createUnitAction(formData: FormData) {
     await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
     try {
         const type = formData.get("type") as string;
         const name = ((formData.get("name") as string) || "").trim();
@@ -639,7 +655,7 @@ export async function createUnitAction(formData: FormData) {
         const slug = slugify(((formData.get("slug") as string) || "").trim() || name);
         if (!slug) return { success: false, error: "A valid name (letters/numbers) is required." };
 
-        const { error } = await rcf.supabase.from('units').insert({
+        const { error } = await db.from('units').insert({
             name,
             type,
             is_workforce: isWorkforce,
@@ -667,12 +683,11 @@ export async function createUnitAction(formData: FormData) {
  */
 export async function nameFamilyAction(formData: FormData) {
     await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
     try {
-        await rcf.admin.setFamilyName({
-            entryYear: parseInt(formData.get("entryYear") as string),
-            familyName: formData.get("familyName") as string
-        });
+        await setFamilyName(
+            parseInt(formData.get("entryYear") as string, 10),
+            formData.get("familyName") as string,
+        );
 
         revalidatePath('/dashboard/tenure');
         return { success: true };
@@ -687,7 +702,6 @@ export async function nameFamilyAction(formData: FormData) {
  */
 export async function createGenerationAction(formData: FormData) {
     await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
     try {
         const entryYear = parseInt(formData.get("entryYear") as string);
         if (!entryYear || Number.isNaN(entryYear)) {
@@ -696,7 +710,7 @@ export async function createGenerationAction(formData: FormData) {
         const familyName = ((formData.get("familyName") as string) || "").trim();
         const isFoundation = formData.get("isFoundation") === "true";
 
-        const { error } = await rcf.supabase
+        const { error } = await db
             .from('class_sets')
             .upsert(
                 { entry_year: entryYear, family_name: familyName || null, is_foundation: isFoundation },
@@ -719,13 +733,12 @@ export async function createGenerationAction(formData: FormData) {
  */
 export async function setLevelOverrideAction(classSetId: string, level: string | null) {
     await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
     try {
         const target = (level || "").trim();
 
         // Clearing: just null it out.
         if (!target) {
-            const { error } = await rcf.supabase
+            const { error } = await db
                 .from('class_sets').update({ level_override: null }).eq('id', classSetId);
             if (error) return { success: false, error: error.message };
             revalidatePath('/dashboard/tenure');
@@ -737,11 +750,11 @@ export async function setLevelOverrideAction(classSetId: string, level: string |
         }
 
         // Resolve the active session + all generations to check for a level clash.
-        const { data: active } = await rcf.supabase
+        const { data: active } = await db
             .from('tenures').select('session').eq('is_active', true).single();
         const session = active?.session ?? null;
 
-        const { data: sets } = await rcf.supabase
+        const { data: sets } = await db
             .from('class_sets').select('id, entry_year, is_foundation, level_override');
 
         const clash = (sets || []).some((s: any) => {
@@ -754,7 +767,7 @@ export async function setLevelOverrideAction(classSetId: string, level: string |
             return { success: false, error: `Another generation is already at ${target}.` };
         }
 
-        const { error } = await rcf.supabase
+        const { error } = await db
             .from('class_sets').update({ level_override: target }).eq('id', classSetId);
         if (error) {
             if (error.code === '23505') return { success: false, error: `Another generation is already at ${target}.` };
@@ -772,10 +785,9 @@ export async function setLevelOverrideAction(classSetId: string, level: string |
  */
 export async function getUnitDetails(unitId: string) {
     await requireModuleRead("tenure");
-    const rcf = ictAdmin;
 
     // Get active tenure ID
-    const { data: active } = await rcf.supabase
+    const { data: active } = await db
         .from('tenures')
         .select('id')
         .eq('is_active', true)
@@ -784,11 +796,11 @@ export async function getUnitDetails(unitId: string) {
     if (!active) return { leaders: [] };
 
     // Fetch leaders for this unit in the active tenure
-    const { data: leaders } = await rcf.supabase
+    const { data: leaders } = await db
         .from('leadership')
         .select(`
             id,
-            position:leadership_positions(title, category),
+            position:leadership_positions(title, tier),
             profile:profiles(id, first_name, last_name, avatar_url, phone_number)
         `)
         .eq('unit_id', unitId)
@@ -846,7 +858,7 @@ async function assertPrivilegesAssignable(
     if (local) return local;
 
     if (privs.some((p) => p.tag === "PRESIDENT")) {
-        let q = ictAdmin.supabase
+        let q = db
             .from("position_privileges")
             .select("position_id")
             .eq("privilege", "PRESIDENT");
@@ -862,14 +874,12 @@ async function assertPrivilegesAssignable(
 /**
  * Creates a new leadership position (role) with a stable, unique slug and its privilege
  * tags (+ scopes). The ict-lib PositionSchema has no alias/slug/privileges, so we insert
- * directly. Slug is set ONCE here and never changed on update (immutable). The legacy
- * The legacy `category` column is auto-derived from the privileges for DB compat.
+ * directly. Slug is set ONCE here and never changed on update (immutable).
  */
 export async function createPositionAction(formData: FormData) {
     // The CATALOGUE is the VP Admin's alone. Tenure-write lets you appoint people
     // INTO positions; changing what the positions ARE is a narrower right.
     await requireVpAdmin();
-    const rcf = ictAdmin;
     try {
         const title = ((formData.get("title") as string) || "").trim();
         const alias = ((formData.get("alias") as string) || "").trim();
@@ -885,13 +895,12 @@ export async function createPositionAction(formData: FormData) {
         const privError = await assertPrivilegesAssignable(privileges);
         if (privError) return { success: false, error: privError };
 
-        const { data: position, error } = await rcf.supabase
+        const { data: position, error } = await db
             .from("leadership_positions")
             .insert({
                 title,
                 alias: alias || null,
                 slug,
-                category: deriveCategory(privileges),
                 description: description || null,
                 is_active: true,
             })
@@ -906,12 +915,12 @@ export async function createPositionAction(formData: FormData) {
         }
 
         if (privileges.length > 0) {
-            const { error: pErr } = await rcf.supabase.from("position_privileges").insert(
+            const { error: pErr } = await db.from("position_privileges").insert(
                 privileges.map((p) => ({ position_id: position.id, privilege: p.tag, scope: p.scope })),
             );
             if (pErr) {
                 // Roll back the orphaned position so a failed privilege insert isn't left half-done.
-                await rcf.supabase.from("leadership_positions").delete().eq("id", position.id);
+                await db.from("leadership_positions").delete().eq("id", position.id);
                 return { success: false, error: pErr.message };
             }
         }
@@ -926,15 +935,16 @@ export async function createPositionAction(formData: FormData) {
 /**
  * Replace a position's privilege tags (+ scopes) atomically — the row editor's save.
  * The ICT Coordinator's SYSADMIN privilege is immutable (not editable here). Validates
- * the full set (incl. President single/unique) and refreshes the legacy category column.
+ * the full set (incl. President single/unique). The position's KIND is derived from
+ * these tags at read time (derivePositionKind / rcf_position_kind) — there is no longer
+ * a denormalised column to keep in step.
  */
 export async function setPositionPrivilegesAction(positionId: string, privilegesInput: Privilege[]) {
     // The CATALOGUE is the VP Admin's alone. Tenure-write lets you appoint people
     // INTO positions; changing what the positions ARE is a narrower right.
     await requireVpAdmin();
-    const rcf = ictAdmin;
     try {
-        const { data: pos } = await rcf.supabase
+        const { data: pos } = await db
             .from("leadership_positions").select("slug").eq("id", positionId).single();
         if (!pos) return { success: false, error: "Role not found." };
         if (pos.slug === "ict-coord") {
@@ -946,20 +956,16 @@ export async function setPositionPrivilegesAction(positionId: string, privileges
         if (privError) return { success: false, error: privError };
 
         // Replace: clear then re-insert. The DB trigger still backstops each insert.
-        const { error: delErr } = await rcf.supabase
+        const { error: delErr } = await db
             .from("position_privileges").delete().eq("position_id", positionId);
         if (delErr) return { success: false, error: delErr.message };
 
         if (privileges.length > 0) {
-            const { error: insErr } = await rcf.supabase.from("position_privileges").insert(
+            const { error: insErr } = await db.from("position_privileges").insert(
                 privileges.map((p) => ({ position_id: positionId, privilege: p.tag, scope: p.scope })),
             );
             if (insErr) return { success: false, error: insErr.message };
         }
-
-        await rcf.supabase.from("leadership_positions").update({
-            category: deriveCategory(privileges),
-        }).eq("id", positionId);
 
         revalidatePath('/dashboard/tenure');
         return { success: true };
@@ -975,18 +981,28 @@ export async function togglePositionAction(id: string, currentStatus: boolean, d
     // The CATALOGUE is the VP Admin's alone. Tenure-write lets you appoint people
     // INTO positions; changing what the positions ARE is a narrower right.
     await requireVpAdmin();
-    const rcf = ictAdmin;
     try {
-        // The two seeded defaults (VP Admin / ICT Coordinator) may never be disabled.
-        if (currentStatus && data?.is_default) {
-            return { success: false, error: "This is a protected default role and cannot be disabled." };
+        // The VP Admin and ICT Coordinator may never be disabled — identified by their
+        // immutable slug, not by the dropped `is_default` column.
+        if (currentStatus && isUndisableablePosition(data?.slug)) {
+            return {
+                success: false,
+                error: "The VP Admin and ICT Coordinator roles cannot be disabled.",
+            };
         }
 
-        // Never send slug/id — slug is immutable; PositionSchema strips unknown keys,
-        // but we drop them explicitly for clarity.
-        const { slug: _slug, id: _id, is_default: _def, ...rest } = data ?? {};
-        void _slug; void _id; void _def;
-        await rcf.admin.updatePosition(id, { ...rest, isActive: !currentStatus });
+        // Only the display fields are updatable here — slug is immutable, and
+        // privileges are changed through setPositionPrivilegesAction.
+        const { error } = await db
+            .from("leadership_positions")
+            .update({
+                title: data?.title,
+                alias: data?.alias ?? null,
+                description: data?.description ?? null,
+                is_active: !currentStatus,
+            })
+            .eq("id", id);
+        if (error) return { success: false, error: error.message };
 
         revalidatePath('/dashboard/tenure');
         return { success: true };
@@ -1000,9 +1016,8 @@ export async function togglePositionAction(id: string, currentStatus: boolean, d
  * Returns formatted results with unit/team memberships
  */
 export async function searchMemberAction(query: string) {
-    const rcf = RcfIctClient.asAdmin(); 
 
-    const { data, error } = await rcf.supabase
+    const { data, error } = await db
         .rpc('search_members_detailed', { 
             query_text: query.trim() 
         });
@@ -1030,7 +1045,6 @@ export async function searchMemberAction(query: string) {
  * Assigns a member to a leadership position
  */
 export async function assignLeaderAction(formData: FormData) {
-    const rcf = RcfIctClient.asAdmin();
     const ctx = await requireModuleWrite("tenure");
 
     const tenureId = formData.get("tenureId") as string;
@@ -1043,7 +1057,7 @@ export async function assignLeaderAction(formData: FormData) {
         // Scope now lives on the position's privileges, not the assignment — so a
         // President is single & unique: if the target position holds the PRESIDENT
         // privilege, block when any President is already appointed this tenure.
-        const { data: presidentPriv } = await rcf.supabase
+        const { data: presidentPriv } = await db
             .from("position_privileges")
             .select("id")
             .eq("position_id", positionId)
@@ -1051,7 +1065,7 @@ export async function assignLeaderAction(formData: FormData) {
             .maybeSingle();
 
         if (presidentPriv) {
-            const { data: existingPresident } = await rcf.supabase
+            const { data: existingPresident } = await db
                 .from("leadership")
                 .select("id, position:leadership_positions!inner(position_privileges!inner(privilege))")
                 .eq("tenure_id", tenureId)
@@ -1064,7 +1078,7 @@ export async function assignLeaderAction(formData: FormData) {
 
         // A position may have only ONE lead per tenure; assistants are unlimited.
         if (isLead) {
-            const { data: existingLead } = await rcf.supabase
+            const { data: existingLead } = await db
                 .from("leadership")
                 .select("id")
                 .eq("tenure_id", tenureId)
@@ -1076,7 +1090,7 @@ export async function assignLeaderAction(formData: FormData) {
             }
         }
 
-        const { error } = await rcf.supabase.from("leadership").insert({
+        const { error } = await db.from("leadership").insert({
             tenure_id: tenureId,
             profile_id: profileId,
             position_id: positionId,
@@ -1119,10 +1133,9 @@ export async function assignLeaderAction(formData: FormData) {
  */
 export async function addUnitLeaderAction(formData: FormData) {
     await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
     
     // Get active tenure
-    const { data: tenure } = await rcf.supabase
+    const { data: tenure } = await db
         .from('tenures')
         .select('id')
         .eq('is_active', true)
@@ -1142,16 +1155,15 @@ export async function addUnitLeaderAction(formData: FormData) {
  */
 export async function removeUnitLeaderAction(id: string) {
     await requireModuleWrite("tenure");
-    const rcf = ictAdmin;
     try {
         // Read the occupant BEFORE deleting — afterwards there is no row to ask.
-        const { data: row } = await rcf.supabase
+        const { data: row } = await db
             .from('leadership')
             .select('profile_id')
             .eq('id', id)
             .maybeSingle();
 
-        await rcf.supabase.from('leadership').delete().eq('id', id);
+        await db.from('leadership').delete().eq('id', id);
 
         // Appointment grants portal access (assignLeaderAction), so removal revokes it.
         // Only when this was their LAST position — someone leading two units and
@@ -1201,7 +1213,7 @@ export async function removeUnitLeaderAction(id: string) {
  * Called after creating a unit, and available to the VP Admin as an explicit repair.
  */
 async function syncCatalogue(): Promise<{ created: number }> {
-    const { data: units } = await ictAdmin.supabase
+    const { data: units } = await db
         .from("units")
         .select("slug, name, type");
 
@@ -1209,7 +1221,7 @@ async function syncCatalogue(): Promise<{ created: number }> {
         (units ?? []).map((u: any) => ({ slug: u.slug, name: u.name, type: u.type })),
     );
 
-    const { data: existing } = await ictAdmin.supabase
+    const { data: existing } = await db
         .from("leadership_positions")
         .select("id, slug, title");
     const bySlug = new Map((existing ?? []).map((p: any) => [p.slug, p]));
@@ -1223,16 +1235,14 @@ async function syncCatalogue(): Promise<{ created: number }> {
         // be duplicated.
         if (bySlug.has(spec.slug) || byTitle.has(spec.title)) continue;
 
-        const { data: inserted, error } = await ictAdmin.supabase
+        const { data: inserted, error } = await db
             .from("leadership_positions")
             .insert({
                 slug: spec.slug,
                 title: spec.title,
                 alias: spec.alias,
-                category: spec.category,
                 description: spec.description,
                 is_active: true,
-                is_default: spec.isDefault ?? false,
                 tier: spec.tier,
                 is_protected: true,
             })
@@ -1244,7 +1254,7 @@ async function syncCatalogue(): Promise<{ created: number }> {
             continue;
         }
 
-        const { error: privError } = await ictAdmin.supabase
+        const { error: privError } = await db
             .from("position_privileges")
             .insert(
                 spec.privileges.map((p) => ({
@@ -1285,12 +1295,12 @@ export async function getCatalogueAction() {
     try {
         await requireModuleRead("tenure");
 
-        const { data: positions } = await ictAdmin.supabase
+        const { data: positions } = await db
             .from("leadership_positions")
-            .select("id, slug, title, alias, description, tier, is_active, is_protected, is_default")
+            .select("id, slug, title, alias, description, tier, is_active, is_protected")
             .order("title");
 
-        const { data: privileges } = await ictAdmin.supabase
+        const { data: privileges } = await db
             .from("position_privileges")
             .select("position_id, privilege, scope");
 
@@ -1331,11 +1341,11 @@ export async function getCatalogueAction() {
 export async function listTransferRequestsAction(includeDecided = false) {
     try {
         await requireModuleRead("tenure");
-        const { data: tenure } = await ictAdmin.supabase
+        const { data: tenure } = await db
             .from("tenures").select("id").eq("is_active", true).maybeSingle();
         if (!tenure) return { success: true as const, data: [] };
 
-        let q = ictAdmin.supabase
+        let q = db
             .from("unit_transfer_requests")
             .select(`
                 id, status, requested_at, decided_at, decline_reason,
@@ -1388,7 +1398,7 @@ export async function listTransferRequestsAction(includeDecided = false) {
 export async function approveTransferAction(requestId: string) {
     try {
         const ctx = await requireVpAdmin();
-        const { error } = await ictAdmin.supabase.rpc("rcf_approve_unit_transfer", {
+        const { error } = await db.rpc("rcf_approve_unit_transfer", {
             p_request_id: requestId,
             p_decided_by: ctx.profile.id,
         });
@@ -1406,7 +1416,7 @@ export async function approveTransferAction(requestId: string) {
 export async function declineTransferAction(requestId: string, reason?: string) {
     try {
         const ctx = await requireVpAdmin();
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("unit_transfer_requests")
             .update({
                 status: "declined",
@@ -1452,7 +1462,7 @@ async function logHandoverEvent(
     detail?: string | null,
 ) {
     const actor = actorOf(ctx);
-    const { error } = await ictAdmin.supabase.from("handover_events").insert({
+    const { error } = await db.from("handover_events").insert({
         intent_id: intentId,
         action,
         detail: detail ?? null,
@@ -1473,7 +1483,7 @@ export async function listHandoverIntentsAction() {
     try {
         await requireVpAdmin();
 
-        const { data, error } = await ictAdmin.supabase
+        const { data, error } = await db
             .from("handover_intents")
             .select(`
                 id, status, step, from_tenure_id, from_tenure_name, from_tenure_session,
@@ -1532,7 +1542,7 @@ export async function getHandoverIntentAction(intentId: string) {
     try {
         await requireVpAdmin();
 
-        const { data: intent, error } = await ictAdmin.supabase
+        const { data: intent, error } = await db
             .from("handover_intents")
             .select("*")
             .eq("id", intentId)
@@ -1542,7 +1552,7 @@ export async function getHandoverIntentAction(intentId: string) {
             return { success: false as const, error: "That handover record doesn't exist." };
         }
 
-        const { data: events } = await ictAdmin.supabase
+        const { data: events } = await db
             .from("handover_events")
             .select("id, action, detail, actor_name, created_at")
             .eq("intent_id", intentId)
@@ -1593,7 +1603,7 @@ export async function createHandoverIntentAction() {
     try {
         const ctx = await requireVpAdmin();
 
-        const { data: tenure } = await ictAdmin.supabase
+        const { data: tenure } = await db
             .from("tenures")
             .select("id, name, session")
             .eq("is_active", true)
@@ -1603,7 +1613,7 @@ export async function createHandoverIntentAction() {
             return { success: false as const, error: "There is no active tenure to hand over." };
         }
 
-        const { data: open } = await ictAdmin.supabase
+        const { data: open } = await db
             .from("handover_intents")
             .select("id")
             .eq("from_tenure_id", tenure.id)
@@ -1615,7 +1625,7 @@ export async function createHandoverIntentAction() {
         }
 
         const actor = actorOf(ctx);
-        const { data: created, error } = await ictAdmin.supabase
+        const { data: created, error } = await db
             .from("handover_intents")
             .insert({
                 from_tenure_id: tenure.id,
@@ -1663,7 +1673,7 @@ export async function saveHandoverProgressAction(
     try {
         const ctx = await requireVpAdmin();
 
-        const { data: intent } = await ictAdmin.supabase
+        const { data: intent } = await db
             .from("handover_intents")
             .select("status, step")
             .eq("id", intentId)
@@ -1674,7 +1684,7 @@ export async function saveHandoverProgressAction(
             return { success: false as const, error: `This handover is already ${intent.status}.` };
         }
 
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("handover_intents")
             .update({
                 step: Math.max(0, Math.min(progress.step, 10)),
@@ -1703,7 +1713,7 @@ export async function abandonHandoverIntentAction(intentId: string, reason?: str
         const ctx = await requireVpAdmin();
         const actor = actorOf(ctx);
 
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("handover_intents")
             .update({
                 status: "abandoned",

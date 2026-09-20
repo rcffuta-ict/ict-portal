@@ -35,7 +35,8 @@ interface UnitPosition {
     position: {
         id: string;
         title: string;
-        category: string;
+        /** Derived from the position's privilege tags — see derivePositionKind. */
+        category?: string;
     };
 }
 

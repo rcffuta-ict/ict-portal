@@ -1,14 +1,10 @@
 'use server'
 
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { requireAccess } from "@/lib/access-control";
-import { QAService } from "@rcffuta/ict-lib";
+import * as qa from "@/lib/qa";
 import { compareLevels, getRegistrationConfig, levelLabel } from "@/lib/event-utils";
 
-const qaService = new QAService(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 export interface LevelStat {
     /** Raw stored value, e.g. "200L" / "Alumni". */
@@ -51,7 +47,7 @@ interface Registration {
 export async function getEventAdminStats(slug: string): Promise<EventAdminStats | null> {
     await requireAccess("ADMIN");
 
-    const { data: event } = await ictAdmin.supabase
+    const { data: event } = await db
         .from('events')
         .select('*')
         .eq('slug', slug)
@@ -59,7 +55,7 @@ export async function getEventAdminStats(slug: string): Promise<EventAdminStats 
 
     if (!event) return null;
 
-    const { data: regs, error } = await ictAdmin.supabase
+    const { data: regs, error } = await db
         .from('event_registrations')
         .select('*')
         .eq('event_id', event.id);
@@ -123,7 +119,7 @@ export async function getEventQuestions(eventId: string) {
     try {
         await requireAccess("ADMIN");
 
-        const response = await qaService.getEventQuestions(eventId, {
+        const response = await qa.getEventQuestions(eventId, {
             status: ["visible", "answered", "flagged", "hidden"],
         });
         if (response.error) throw new Error(response.error);

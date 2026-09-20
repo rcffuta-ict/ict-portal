@@ -1,20 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { RcfIctClient } from "@rcffuta/ict-lib/server";
+import { db } from "@/lib/db";
+import { getEventBySlug, checkInUser } from "@/lib/events-data";
 
 // Hardcoded for the event
 const EVENT_SLUG = "sisters-conf-26";
 
 export async function getDashboardData() {
-    const rcf = RcfIctClient.fromEnv();
 
     // 1. Get Event Info
-    const event = await rcf.event.getEventBySlug(EVENT_SLUG);
+    const event = await getEventBySlug(EVENT_SLUG);
     if (!event) throw new Error("Event not found");
 
     // 2. Get All Registrations
-    const { data: attendees, error } = await rcf.supabase
+    const { data: attendees, error } = await db
         .from('event_registrations')
         .select('*')
         .eq('event_id', event.id)
@@ -45,12 +45,8 @@ export async function getDashboardData() {
 }
 
 export async function checkInUserAction(ticketId: string) {
-    const rcf = new RcfIctClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
     try {
-        const user = await rcf.event.checkInUser(ticketId);
+        const user = await checkInUser(ticketId);
         return { success: true, data: user };
     } catch (error: any) {
         return { success: false, error: error.message };

@@ -1,12 +1,13 @@
 /**
  * Single-call profile resolution via the `rcf_profile_context` / `rcf_login_context`
  * Postgres RPCs. Returns the `FullUserProfile` shape the client store expects
- * (camelCase, matching @rcffuta/ict-lib) enriched with leadership/scope data that
+ * (camelCase, defined in src/lib/types/portal.ts) enriched with leadership/scope data
  * ict-lib doesn't expose. Server-only (service-role RPC).
  */
-import type { FullUserProfile } from "@rcffuta/ict-lib";
-import { ictAdmin } from "@/lib/ict";
+import type { FullUserProfile } from "@/lib/types/portal";
+import { db } from "@/lib/db";
 import type { Privilege } from "@/lib/modules";
+import type { PositionKind } from "@/lib/privileges";
 
 /** Enriched leadership row from the context RPC (superset of ict-lib's roles). */
 export interface LeadershipContext {
@@ -15,18 +16,28 @@ export interface LeadershipContext {
     title: string;
     alias: string | null;
     slug: string | null;
-    category: "PRESIDENT" | "CENTRAL" | "UNIT" | "TEAM" | "LEVEL" | "ZONE";
-    isDefault: boolean;
+    /**
+     * What KIND of office this is — for display and grouping only.
+     *
+     * DERIVED, not stored: migration 0013 dropped `leadership_positions.category` and
+     * the RPC now computes this with `rcf_position_kind()`, the SQL twin of
+     * `derivePositionKind()` in src/lib/privileges.ts. It therefore cannot drift out of
+     * step with the privilege tags below, which is what the stored column kept doing.
+     */
+    category: PositionKind;
+    /** Hierarchy rank — presentation and ordering only (migration 0011). */
+    tier: "PRESIDENT" | "VP" | "EXECUTIVE" | "COORDINATOR" | null;
+    /** Part of the frozen catalogue, so it may not be deleted (migration 0011). */
+    isProtected: boolean;
     unitId: string | null;
     unitName: string | null;
     classSetId: string | null;
     residentialZoneId: string | null;
     tenureId: string;
     /**
-     * Privilege tags (+ scopes) held by this leadership's POSITION — the source of
-     * truth for authorization (see src/lib/module-access.ts + access-control.ts).
-     * `category`/`isDefault` above are legacy and kept only for the not-yet-rebuilt
-     * cabinet/tenure UI.
+     * Privilege tags (+ scopes) held by this leadership's POSITION — the SINGLE source
+     * of truth for authorization (see src/lib/module-access.ts + access-control.ts).
+     * `category` and `tier` above are presentation, and are derived from these.
      */
     privileges: Privilege[];
 }
@@ -64,7 +75,7 @@ export type ProfileContext = FullUserProfile & {
  * Resolve the full, enriched profile context for a profile id in one round-trip.
  */
 export async function getProfileContext(profileId: string): Promise<ProfileContext | null> {
-    const { data, error } = await ictAdmin.supabase.rpc("rcf_profile_context", {
+    const { data, error } = await db.rpc("rcf_profile_context", {
         p_profile_id: profileId,
     });
     if (error || !data) {
@@ -91,7 +102,7 @@ export interface LoginContext {
  * Returns null when the email has no profile or no login record.
  */
 export async function getLoginContext(email: string): Promise<LoginContext | null> {
-    const { data, error } = await ictAdmin.supabase.rpc("rcf_login_context", {
+    const { data, error } = await db.rpc("rcf_login_context", {
         p_email: email,
     });
     if (error || !data) {

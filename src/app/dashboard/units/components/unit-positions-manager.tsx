@@ -29,8 +29,9 @@ interface UnitPosition {
     position: {
         id: string;
         title: string;
-        category: string;
-        description?: string;
+        /** Hierarchy rank (migration 0011). Replaced the dropped `category` column. */
+        tier?: string | null;
+        description?: string | null;
     };
 }
 
@@ -53,8 +54,9 @@ interface LeadershipEntry {
 interface AvailablePosition {
     id: string;
     title: string;
+    /** Derived from the position's privilege tags — see derivePositionKind. */
     category: string;
-    description?: string;
+    description?: string | null;
 }
 
 interface Props {

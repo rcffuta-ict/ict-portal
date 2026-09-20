@@ -7,7 +7,7 @@
  * keeps "who may log in" == "who has been appointed", while never inventing a
  * password on the member's behalf.
  */
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 
 /**
@@ -21,7 +21,7 @@ export async function ensureLoginProvisioned(
     profileId: string,
     grantedBy: string,
 ): Promise<{ created: boolean }> {
-    const { data: existing } = await ictAdmin.supabase
+    const { data: existing } = await db
         .from("profile_login")
         .select("id")
         .eq("profile_id", profileId)
@@ -29,7 +29,7 @@ export async function ensureLoginProvisioned(
 
     if (existing) return { created: false };
 
-    const { error } = await ictAdmin.supabase.from("profile_login").insert({
+    const { error } = await db.from("profile_login").insert({
         profile_id: profileId,
         password_hash: null, // set by the leader on first login
         is_active: true,
@@ -45,7 +45,7 @@ export async function ensureLoginProvisioned(
  * a VP Admin / ICT Coordinator.
  */
 export async function resetLoginPassword(profileId: string): Promise<void> {
-    const { error } = await ictAdmin.supabase
+    const { error } = await db
         .from("profile_login")
         .update({
             password_hash: null,
@@ -69,14 +69,14 @@ export async function setLoginPassword(
 ): Promise<void> {
     const password_hash = await hashPassword(newPassword);
 
-    const { data: existing } = await ictAdmin.supabase
+    const { data: existing } = await db
         .from("profile_login")
         .select("id")
         .eq("profile_id", profileId)
         .maybeSingle();
 
     if (existing) {
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("profile_login")
             .update({
                 password_hash,
@@ -88,7 +88,7 @@ export async function setLoginPassword(
             .eq("id", existing.id);
         if (error) throw new Error(`Failed to set password: ${error.message}`);
     } else {
-        const { error } = await ictAdmin.supabase.from("profile_login").insert({
+        const { error } = await db.from("profile_login").insert({
             profile_id: profileId,
             password_hash,
             is_active: true,
@@ -100,7 +100,7 @@ export async function setLoginPassword(
 
 /** Enable/disable a leader's login without deleting the audit history. */
 export async function setLoginActive(profileId: string, isActive: boolean): Promise<void> {
-    const { error } = await ictAdmin.supabase
+    const { error } = await db
         .from("profile_login")
         .update({ is_active: isActive, updated_at: new Date().toISOString() })
         .eq("profile_id", profileId);
@@ -129,7 +129,7 @@ export async function setLoginActive(profileId: string, isActive: boolean): Prom
 export async function deprovisionLoginIfUnappointed(
     profileId: string,
 ): Promise<{ removed: boolean; reason?: string }> {
-    const { data: tenure } = await ictAdmin.supabase
+    const { data: tenure } = await db
         .from("tenures")
         .select("id")
         .eq("is_active", true)
@@ -139,7 +139,7 @@ export async function deprovisionLoginIfUnappointed(
     // Leave access alone rather than locking everyone out on a half-finished handover.
     if (!tenure?.id) return { removed: false, reason: "no active tenure" };
 
-    const { data: stillHeld } = await ictAdmin.supabase
+    const { data: stillHeld } = await db
         .from("leadership")
         .select("id")
         .eq("profile_id", profileId)
@@ -152,7 +152,7 @@ export async function deprovisionLoginIfUnappointed(
 
     await revokeAllSessions(profileId, "leadership_removed");
 
-    const { error } = await ictAdmin.supabase
+    const { error } = await db
         .from("profile_login")
         .delete()
         .eq("profile_id", profileId);
@@ -171,7 +171,7 @@ export async function revokeAllSessions(
     profileId: string,
     reason: string,
 ): Promise<number> {
-    const { data, error } = await ictAdmin.supabase
+    const { data, error } = await db
         .from("auth_sessions")
         .update({ revoked_at: new Date().toISOString(), revoked_reason: reason })
         .eq("profile_id", profileId)

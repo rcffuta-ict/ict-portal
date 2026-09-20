@@ -15,8 +15,15 @@ import {
     resetLeaderLoginAction,
 } from "../actions";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
+import { UNDISABLEABLE_POSITION_SLUGS } from "@/config/leadership-positions";
 
-const CATEGORIES = ["PRESIDENT", "CENTRAL", "UNIT", "TEAM", "LEVEL", "ZONE"] as const;
+/**
+ * The VP Admin and ICT Coordinator can never be disabled. Matched by immutable slug —
+ * the old `is_default` column was dropped in migration 0013, and matching on the
+ * editable title would let a rename quietly unprotect them.
+ */
+const UNDISABLEABLE = new Set<string>(UNDISABLEABLE_POSITION_SLUGS);
+
 
 export function AppointPanel({ onSuccess }: { onSuccess?: () => void }) {
     return (
@@ -220,7 +227,7 @@ function RoleManager() {
     const [roles, setRoles] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
-    const [form, setForm] = useState({ title: "", alias: "", category: "CENTRAL" as (typeof CATEGORIES)[number], description: "" });
+    const [form, setForm] = useState({ title: "", alias: "", description: "" });
     const [saving, setSaving] = useState(false);
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
 
@@ -250,7 +257,7 @@ function RoleManager() {
         const res = await createRoleAction(form);
         setSaving(false);
         if (res.success) {
-            setForm({ title: "", alias: "", category: "CENTRAL", description: "" });
+            setForm({ title: "", alias: "", description: "" });
             setShowForm(false);
             load();
         } else showAlert({ type: "error", message: res.error });
@@ -280,9 +287,11 @@ function RoleManager() {
                         <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Title (e.g. Welfare Head)" className="h-10 rounded-lg border border-slate-200 text-sm px-3 outline-none focus:border-rcf-navy" />
                         <input value={form.alias} onChange={(e) => setForm({ ...form, alias: e.target.value })} placeholder="Alias (e.g. Welfare)" className="h-10 rounded-lg border border-slate-200 text-sm px-3 outline-none focus:border-rcf-navy" />
                     </div>
-                    <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as any })} className="w-full h-10 rounded-lg border border-slate-200 text-sm px-3 bg-white outline-none focus:border-rcf-navy">
-                        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <p className="text-[11px] leading-relaxed text-slate-500">
+                        What kind of office this is follows from the privileges you grant it —
+                        there is nothing to pick here. Assign its privilege tags after creating
+                        it, and it will group itself.
+                    </p>
                     <button onClick={create} disabled={saving} className="w-full h-10 bg-rcf-navy text-white rounded-lg font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50">
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create role"}
                     </button>
@@ -299,14 +308,14 @@ function RoleManager() {
                                 <p className="text-sm font-semibold text-slate-800 truncate">
                                     {r.title}{r.alias ? <span className="text-slate-400 font-normal"> · {r.alias}</span> : null}
                                 </p>
-                                <p className="text-[10px] text-slate-400 uppercase tracking-wide">{r.category}{r.is_default ? " · protected" : ""}</p>
+                                <p className="text-[10px] text-slate-400 uppercase tracking-wide">{r.category}{r.is_protected ? " · protected" : ""}</p>
                             </div>
                             <button
                                 onClick={() => toggle(r)}
-                                disabled={r.is_default}
-                                className={`p-1 ${r.is_default ? "opacity-30 cursor-not-allowed" : "hover:opacity-80"}`}
+                                disabled={UNDISABLEABLE.has(r.slug)}
+                                className={`p-1 ${UNDISABLEABLE.has(r.slug) ? "opacity-30 cursor-not-allowed" : "hover:opacity-80"}`}
                                 aria-label={r.is_active ? "Disable role" : "Enable role"}
-                                title={r.is_default ? "Protected role" : r.is_active ? "Disable" : "Enable"}
+                                title={UNDISABLEABLE.has(r.slug) ? "Protected role" : r.is_active ? "Disable" : "Enable"}
                             >
                                 {r.is_active ? <ToggleRight className="h-6 w-6 text-green-500" /> : <ToggleLeft className="h-6 w-6 text-slate-300" />}
                             </button>

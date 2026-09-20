@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { requireModuleRead, canManageLevel } from "@/lib/access-control";
 import { getActiveTenure } from "@/utils/action";
 import { computeLevel } from "@/lib/levels";
@@ -81,7 +81,7 @@ export async function getLevelModuleData() {
         const canWriteAny = ctx.isSysAdmin || ctx.isVpAdmin; // write-bypass tier
 
         // Fetch all generations first (needed to resolve level-token scopes to ids).
-        const { data: allSets } = await ictAdmin.supabase
+        const { data: allSets } = await db
             .from("class_sets")
             .select("id, family_name, entry_year, is_foundation, level_override")
             .order("entry_year", { ascending: false });
@@ -96,7 +96,7 @@ export async function getLevelModuleData() {
         }
 
         // Member gender tallies per class_set.
-        const { data: profs } = await ictAdmin.supabase
+        const { data: profs } = await db
             .from("profiles")
             .select("class_set_id, gender");
         const stats = new Map<string, GenderTally>();
@@ -141,7 +141,7 @@ export async function getGenerationAction(classSetId: string) {
         const tenure = await getActiveTenure();
         const session = tenure?.session ?? null;
 
-        const { data: s } = await ictAdmin.supabase
+        const { data: s } = await db
             .from("class_sets")
             .select("id, family_name, entry_year, is_foundation, level_override")
             .eq("id", classSetId)
@@ -189,7 +189,7 @@ export async function getLevelMembersAction(
         const page = Math.max(opts.page ?? 1, 1);
         const from = (page - 1) * pageSize;
 
-        let q = ictAdmin.supabase
+        let q = db
             .from("profiles")
             .select(
                 "id, first_name, last_name, email, phone_number, department, avatar_url, matric_number, gender",
@@ -237,7 +237,7 @@ export async function getLevelStatsAction(classSetId: string) {
             return { success: false, error: "You don't have access to this level." };
         }
 
-        const { data: members } = await ictAdmin.supabase
+        const { data: members } = await db
             .from("profiles")
             .select("id, gender")
             .eq("class_set_id", classSetId);
@@ -247,7 +247,7 @@ export async function getLevelStatsAction(classSetId: string) {
 
         const workerIds = new Set<string>();
         if (ids.length) {
-            const { data: memberships } = await ictAdmin.supabase
+            const { data: memberships } = await db
                 .from("membership_units")
                 .select("profile_id, unit:units(is_workforce)")
                 .in("profile_id", ids);
@@ -283,7 +283,7 @@ export async function getLevelStatsAction(classSetId: string) {
 export async function getMemberDetailAction(profileId: string) {
     try {
         const ctx = await requireModuleRead("level");
-        const { data: prof } = await ictAdmin.supabase
+        const { data: prof } = await db
             .from("profiles").select("class_set_id").eq("id", profileId).maybeSingle();
         if (!prof) return { success: false as const, error: "Member not found.", canWrite: false };
         if (prof.class_set_id == null || !(await canReadLevel(ctx, prof.class_set_id))) {
@@ -327,7 +327,7 @@ export async function listLevelInvitesAction(classSetId: string) {
         const creatorIds = Array.from(new Set(rows.map((r: any) => r.created_by).filter(Boolean)));
         const creators = new Map<string, string>();
         if (creatorIds.length) {
-            const { data: people } = await ictAdmin.supabase
+            const { data: people } = await db
                 .from("profiles")
                 .select("id, first_name, last_name")
                 .in("id", creatorIds);
@@ -358,7 +358,7 @@ export async function getActiveLevelTokenAction(classSetId: string) {
         if (!(await canManageLevel(ctx, classSetId))) {
             return { success: false as const, token: null };
         }
-        const { data } = await ictAdmin.supabase
+        const { data } = await db
             .from("registration_invites")
             .select("id, token, label, created_at")
             .eq("class_set_id", classSetId)
@@ -390,7 +390,7 @@ export async function generateLevelTokenAction(classSetId: string, label?: strin
 
         // Revoke the current token first — the DB's partial unique index would reject a
         // second live token anyway, so this ordering is required, not just tidy.
-        const { data: live } = await ictAdmin.supabase
+        const { data: live } = await db
             .from("registration_invites")
             .select("id")
             .eq("class_set_id", classSetId)
@@ -431,7 +431,7 @@ export async function generateLevelTokenAction(classSetId: string, label?: strin
 export async function revokeLevelTokenAction(inviteId: string) {
     try {
         const ctx = await requireModuleRead("level");
-        const { data: invite } = await ictAdmin.supabase
+        const { data: invite } = await db
             .from("registration_invites")
             .select("id, class_set_id, is_active")
             .eq("id", inviteId)
@@ -523,14 +523,14 @@ export async function exportLevelMembersAction(classSetId: string, fields: strin
         const tenure = await getActiveTenure();
         const session = tenure?.session ?? null;
 
-        const { data: set } = await ictAdmin.supabase
+        const { data: set } = await db
             .from("class_sets")
             .select("id, family_name, entry_year, is_foundation, level_override")
             .eq("id", classSetId)
             .maybeSingle();
         if (!set) return { success: false, error: "Generation not found." };
 
-        const { data: members } = await ictAdmin.supabase
+        const { data: members } = await db
             .from("profiles")
             .select(`id, residential_zone_id, ${PROFILE_COLUMNS.join(", ")}`)
             .eq("class_set_id", classSetId)
@@ -542,7 +542,7 @@ export async function exportLevelMembersAction(classSetId: string, fields: strin
         // Derived columns — fetched only when actually selected.
         const zoneNames = new Map<string, string>();
         if (selected.includes("zone")) {
-            const { data: zones } = await ictAdmin.supabase
+            const { data: zones } = await db
                 .from("residential_zones")
                 .select("id, name");
             for (const z of zones ?? []) zoneNames.set(z.id, z.name);
@@ -551,7 +551,7 @@ export async function exportLevelMembersAction(classSetId: string, fields: strin
         const unitByProfile = new Map<string, string>();
         const teamsByProfile = new Map<string, string[]>();
         if ((selected.includes("unit") || selected.includes("teams")) && ids.length) {
-            const { data: memberships } = await ictAdmin.supabase
+            const { data: memberships } = await db
                 .from("membership_units")
                 .select("profile_id, unit:units(name, type)")
                 .in("profile_id", ids);

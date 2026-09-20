@@ -1,17 +1,22 @@
 'use server'
 
 import { revalidatePath } from "next/cache";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { requireSysAdmin, requirePresidentOrSysAdmin } from "@/lib/access-control";
 import { getModuleAccessConfig } from "@/lib/module-access";
 import { MODULES, type ModuleId, type ModuleAccessConfig, type WriteScope } from "@/lib/modules";
 import { normalizeAccessToken } from "@/lib/privileges";
 import { getSessionProfileId } from "@/lib/auth/session";
+import { listPositions } from "@/lib/positions";
 
 export interface PositionOption {
     title: string;
     alias: string | null;
     slug: string;
+    /**
+     * What kind of office this is, DERIVED from its privilege tags (migration 0013
+     * dropped the stored `category` column). Display and grouping only.
+     */
     category: string;
     isActive: boolean;
 }
@@ -41,13 +46,9 @@ export async function getSettingsData(): Promise<SettingsData> {
         const ctx = await requirePresidentOrSysAdmin();
         const config = await getModuleAccessConfig();
 
-        const [positionsRes, unitsRes] = await Promise.all([
-            ictAdmin.supabase
-                .from("leadership_positions")
-                .select("title, alias, slug, category, is_active")
-                .order("category", { ascending: true })
-                .order("title", { ascending: true }),
-            ictAdmin.supabase
+        const [positions, unitsRes] = await Promise.all([
+            listPositions(),
+            db
                 .from("units")
                 .select("id, name, slug")
                 .order("name", { ascending: true }),
@@ -57,13 +58,15 @@ export async function getSettingsData(): Promise<SettingsData> {
             authorized: true,
             canWrite: ctx.isSysAdmin,
             config,
-            positions: (positionsRes.data ?? []).map((p) => ({
-                title: p.title,
-                alias: p.alias,
-                slug: p.slug,
-                category: p.category,
-                isActive: p.is_active,
-            })),
+            positions: [...positions]
+                .sort((a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title))
+                .map((p) => ({
+                    title: p.title,
+                    alias: p.alias,
+                    slug: p.slug ?? "",
+                    category: p.category,
+                    isActive: p.is_active,
+                })),
             units: (unitsRes.data ?? []).map((u) => ({ id: u.id, name: u.name, slug: u.slug })),
         };
     } catch {
@@ -104,7 +107,7 @@ export async function updateModuleAccessAction(
         const profileId = await getSessionProfileId();
         const writeScope: WriteScope = input.writeScope === "OWN" ? "OWN" : "ALL";
 
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("module_access")
             .update({
                 read_slugs: cleanTokens(input.readTokens),

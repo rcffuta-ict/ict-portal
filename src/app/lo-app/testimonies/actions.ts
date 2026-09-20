@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { checkEnhancedAdminAccess } from "@/lib/access-control";
 import { getLoMember, requireLoMember } from "@/lib/lo-member";
 import {
@@ -81,7 +81,7 @@ async function amenData(
 
     if (testimonyIds.length === 0) return { counts, mine };
 
-    const { data, error } = await ictAdmin.supabase
+    const { data, error } = await db
         .from("testimony_amens")
         .select("testimony_id, profile_id")
         .in("testimony_id", testimonyIds);
@@ -117,7 +117,7 @@ export async function getTestimonies(options?: {
         const admin = await checkEnhancedAdminAccess();
         const viewerProfileId = member?.profileId || null;
 
-        let query = ictAdmin.supabase
+        let query = db
             .from("testimonies")
             .select(PUBLIC_COLUMNS)
             // Newest first by posting time, not publish time: a member's own pending
@@ -179,7 +179,7 @@ export async function getTestimonyById(id: string) {
         const admin = await checkEnhancedAdminAccess();
         const viewerProfileId = member?.profileId || null;
 
-        const { data, error } = await ictAdmin.supabase
+        const { data, error } = await db
             .from("testimonies")
             .select(PUBLIC_COLUMNS)
             .eq("id", id)
@@ -221,7 +221,7 @@ export async function getTestimoniesForReview() {
             return { success: false, error: "Unauthorized", data: [] as Testimony[] };
         }
 
-        const { data, error } = await ictAdmin.supabase
+        const { data, error } = await db
             .from("testimonies")
             .select(PUBLIC_COLUMNS)
             // Newest first; the queue defaults to the "pending" filter on top of this.
@@ -273,7 +273,7 @@ export async function submitTestimony(input: {
             ? input.category
             : "other";
 
-        const { data, error } = await ictAdmin.supabase
+        const { data, error } = await db
             .from("testimonies")
             .insert({
                 title,
@@ -303,7 +303,7 @@ export async function toggleAmen(testimonyId: string) {
     try {
         const member = await requireLoMember();
 
-        const { data: existing } = await ictAdmin.supabase
+        const { data: existing } = await db
             .from("testimony_amens")
             .select("id")
             .eq("testimony_id", testimonyId)
@@ -311,7 +311,7 @@ export async function toggleAmen(testimonyId: string) {
             .maybeSingle();
 
         if (existing) {
-            const { error } = await ictAdmin.supabase
+            const { error } = await db
                 .from("testimony_amens")
                 .delete()
                 .eq("id", existing.id);
@@ -319,7 +319,7 @@ export async function toggleAmen(testimonyId: string) {
             return { success: true, amened: false };
         }
 
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("testimony_amens")
             .insert({ testimony_id: testimonyId, profile_id: member.profileId });
 
@@ -337,7 +337,7 @@ export async function toggleAmen(testimonyId: string) {
  */
 export async function recordTestimonyShare(testimonyId: string) {
     try {
-        const { error } = await ictAdmin.supabase.rpc("increment_testimony_share", {
+        const { error } = await db.rpc("increment_testimony_share", {
             p_testimony_id: testimonyId,
         });
         if (error) throw new Error(error.message);
@@ -382,7 +382,7 @@ export async function moderateTestimony(
         // published_at is set the first time it goes public and then left alone, so
         // the feed's ordering doesn't jump when a post is hidden and restored.
         if (status === "approved") {
-            const { data: current } = await ictAdmin.supabase
+            const { data: current } = await db
                 .from("testimonies")
                 .select("published_at")
                 .eq("id", testimonyId)
@@ -391,7 +391,7 @@ export async function moderateTestimony(
             if (!current?.published_at) update.published_at = now;
         }
 
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("testimonies")
             .update(update)
             .eq("id", testimonyId);

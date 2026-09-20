@@ -2,7 +2,8 @@
 'use server'
 
 import { revalidatePath } from "next/cache";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
+import { getZoneMembers, createZone } from "@/lib/fellowship";
 import { getActiveTenure } from "@/utils/action";
 import { requireContext, requireAccess } from "@/lib/access-control";
 
@@ -25,14 +26,14 @@ export async function getZoneModuleData() {
 
     // Is the current user a pastor this tenure?
     if (tenureId) {
-        const { data: pastor } = await ictAdmin.supabase
+        const { data: pastor } = await db
             .from("zone_pastors")
             .select("zone_id")
             .eq("profile_id", ctx.profile.id)
             .eq("tenure_id", tenureId)
             .maybeSingle();
         if (pastor?.zone_id) {
-            const members = await ictAdmin.zone.getZoneMembers(pastor.zone_id);
+            const members = await getZoneMembers(pastor.zone_id);
             return { role: "PASTOR", members, zoneId: pastor.zone_id, authorized: true };
         }
     }
@@ -41,7 +42,7 @@ export async function getZoneModuleData() {
 }
 
 async function getZonesOverview(tenureId: string | null) {
-    const { data: zones } = await ictAdmin.supabase
+    const { data: zones } = await db
         .from("residential_zones")
         .select("id, name, description")
         .order("name");
@@ -49,8 +50,8 @@ async function getZonesOverview(tenureId: string | null) {
     const results = await Promise.all(
         (zones || []).map(async (z: any) => {
             const [{ count: memberCount }, { count: pastorCount }] = await Promise.all([
-                ictAdmin.supabase.from("profiles").select("id", { count: "exact", head: true }).eq("residential_zone_id", z.id),
-                ictAdmin.supabase
+                db.from("profiles").select("id", { count: "exact", head: true }).eq("residential_zone_id", z.id),
+                db
                     .from("zone_pastors")
                     .select("id", { count: "exact", head: true })
                     .eq("zone_id", z.id)
@@ -67,7 +68,7 @@ async function getZonesOverview(tenureId: string | null) {
 export async function createZoneAction(formData: FormData) {
     try {
         await requireAccess("ADMIN");
-        await ictAdmin.zone.createZone(
+        await createZone(
             formData.get("name") as string,
             formData.get("description") as string,
         );
@@ -86,14 +87,14 @@ export async function assignPastorAction(formData: FormData) {
         const zoneId = formData.get("zoneId") as string;
         const tenureId = formData.get("tenureId") as string;
 
-        const { data: profile } = await ictAdmin.supabase
+        const { data: profile } = await db
             .from("profiles")
             .select("id")
             .eq("email", email)
             .maybeSingle();
         if (!profile) return { success: false, error: "No member found with that email." };
 
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("zone_pastors")
             .insert({ profile_id: profile.id, zone_id: zoneId, tenure_id: tenureId });
         if (error) {
@@ -112,12 +113,12 @@ export async function getZoneDetailsAction(zoneId: string, tenureId: string) {
     if (!tenureId) throw new Error("No active tenure given");
 
     const [{ data: pastorRows }, members] = await Promise.all([
-        ictAdmin.supabase
+        db
             .from("zone_pastors")
             .select("id, profile:profiles(id, first_name, last_name, email, phone_number, avatar_url)")
             .eq("zone_id", zoneId)
             .eq("tenure_id", tenureId),
-        ictAdmin.zone.getZoneMembers(zoneId),
+        getZoneMembers(zoneId),
     ]);
 
     // Flatten to the shape the coordinator view expects (leadershipId kept as the row id).
@@ -139,7 +140,7 @@ export async function getZoneDetailsAction(zoneId: string, tenureId: string) {
 export async function removePastorAction(zonePastorId: string) {
     try {
         await requireAccess("ADMIN");
-        const { error } = await ictAdmin.supabase.from("zone_pastors").delete().eq("id", zonePastorId);
+        const { error } = await db.from("zone_pastors").delete().eq("id", zonePastorId);
         if (error) throw error;
         revalidatePath("/dashboard/zones");
         return { success: true };

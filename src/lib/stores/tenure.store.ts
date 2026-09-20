@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-// We assume 'Tenure' is exported from your lib types. 
 // If not, define it here or export it from src/types/index.ts in ict-lib
-import type { Tenure } from '@rcffuta/ict-lib'; 
+import type { Tenure } from '@/lib/types/portal'; 
 
 interface TenureState {
   activeTenure: Tenure | null;

@@ -8,7 +8,7 @@
  */
 import { cookies } from "next/headers";
 import { randomBytes, createHash } from "crypto";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 
 export const SESSION_COOKIE = "rcf-session";
 const SESSION_TTL_DAYS = 7;
@@ -39,7 +39,7 @@ export async function createSession(profileId: string, meta: SessionMeta = {}): 
     const token = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-    const { error } = await ictAdmin.supabase.from("auth_sessions").insert({
+    const { error } = await db.from("auth_sessions").insert({
         profile_id: profileId,
         token_hash: sha256(token),
         ip: meta.ip ?? null,
@@ -64,7 +64,7 @@ export async function getSessionProfileId(): Promise<string | null> {
     const token = cookieStore.get(SESSION_COOKIE)?.value;
     if (!token) return null;
 
-    const { data, error } = await ictAdmin.supabase
+    const { data, error } = await db
         .from("auth_sessions")
         .select("id, profile_id, expires_at, revoked_at")
         .eq("token_hash", sha256(token))
@@ -75,7 +75,7 @@ export async function getSessionProfileId(): Promise<string | null> {
     if (new Date(data.expires_at).getTime() < Date.now()) return null;
 
     // Best-effort activity timestamp; don't fail the request if it errors.
-    await ictAdmin.supabase
+    await db
         .from("auth_sessions")
         .update({ last_seen_at: new Date().toISOString() })
         .eq("id", data.id);
@@ -97,7 +97,7 @@ export async function revokeCurrentSession(): Promise<string | null> {
     // Setting revoked_at fires the `trg_audit_session_revoke` trigger, which
     // writes the 'logout' event to login_events (reason distinguishes it from an
     // admin-initiated revoke). No app-side audit call needed.
-    const { data } = await ictAdmin.supabase
+    const { data } = await db
         .from("auth_sessions")
         .update({ revoked_at: new Date().toISOString(), revoked_reason: "logout" })
         .eq("token_hash", sha256(token))

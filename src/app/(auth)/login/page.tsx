@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { checkLeaderAction, loginAction, setInitialPasswordAction } from "./actions";
 
 import { Loader2, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, ArrowLeft } from "lucide-react";
-import type { FullUserProfile } from "@rcffuta/ict-lib";
+import type { FullUserProfile } from "@/lib/types/portal";
 import FormInput from "@/components/ui/FormInput";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import { Logo } from "@/components/ui/logo";

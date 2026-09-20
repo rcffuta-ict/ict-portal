@@ -12,7 +12,7 @@
  * in `src/lib/access-control.ts`, which queries the DB.
  */
 
-import type { FullUserProfile } from '@rcffuta/ict-lib';
+import type { FullUserProfile } from "@/lib/types/portal";
 
 export type UserRole = 'USER' | 'ADMIN' | 'MODERATOR';
 

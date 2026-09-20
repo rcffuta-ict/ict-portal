@@ -2,7 +2,7 @@
 'use server'
 
 import { revalidatePath } from "next/cache";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { requireSysAdmin, requirePresidentOrSysAdmin } from "@/lib/access-control";
 import { getActiveTenure } from "@/utils/action";
 import { computeLevel } from "@/lib/levels";
@@ -166,7 +166,7 @@ async function resolveRelationalIds(
     const negate = c.op === "is_not" || c.op === "is_empty";
 
     if (c.field === "leadership") {
-        let q = ictAdmin.supabase
+        let q = db
             .from("leadership")
             .select("profile_id, position:leadership_positions(title)");
         if (tenureId) q = q.eq("tenure_id", tenureId);
@@ -182,7 +182,7 @@ async function resolveRelationalIds(
 
     // unit / teams both live in membership_units, split by units.type.
     const wantType = c.field === "teams" ? "TEAM" : "UNIT";
-    let q = ictAdmin.supabase
+    let q = db
         .from("membership_units")
         .select("profile_id, unit:units(name, type)");
     if (tenureId) q = q.eq("tenure_id", tenureId);
@@ -251,7 +251,7 @@ async function fetchRows(query: OracleQuery, opts: { paged: boolean }): Promise<
         }
     }
 
-    let q = ictAdmin.supabase
+    let q = db
         .from("profiles")
         .select(selectColumnsFor(columns).join(", "), { count: "exact" });
 
@@ -327,7 +327,7 @@ async function decorate(rows: any[], columns: string[], tenureId: string | null)
     if (want.has("level") || want.has("generation") || want.has("class_set_id")) {
         const tenure = await getActiveTenure();
         const session = (tenure as any)?.session ?? null;
-        const { data: sets } = await ictAdmin.supabase
+        const { data: sets } = await db
             .from("class_sets")
             .select("id, family_name, entry_year, is_foundation, level_override");
         const byId = new Map((sets ?? []).map((s: any) => [s.id, s]));
@@ -341,7 +341,7 @@ async function decorate(rows: any[], columns: string[], tenureId: string | null)
     }
 
     if (want.has("zone") || want.has("residential_zone_id")) {
-        const { data: zones } = await ictAdmin.supabase
+        const { data: zones } = await db
             .from("residential_zones")
             .select("id, name");
         const byId = new Map((zones ?? []).map((z: any) => [z.id, z.name]));
@@ -351,7 +351,7 @@ async function decorate(rows: any[], columns: string[], tenureId: string | null)
     }
 
     if (want.has("unit") || want.has("teams")) {
-        let mq = ictAdmin.supabase
+        let mq = db
             .from("membership_units")
             .select("profile_id, unit:units(name, type)")
             .in("profile_id", ids);
@@ -375,7 +375,7 @@ async function decorate(rows: any[], columns: string[], tenureId: string | null)
     }
 
     if (want.has("leadership")) {
-        let lq = ictAdmin.supabase
+        let lq = db
             .from("leadership")
             .select("profile_id, position:leadership_positions(title)")
             .in("profile_id", ids);
@@ -486,9 +486,9 @@ export async function getOracleRefData() {
     try {
         await requirePresidentOrSysAdmin();
         const [zones, sets, units] = await Promise.all([
-            ictAdmin.supabase.from("residential_zones").select("id, name").order("name"),
-            ictAdmin.supabase.from("class_sets").select("id, family_name, entry_year").order("entry_year", { ascending: false }),
-            ictAdmin.supabase.from("units").select("id, name, type").order("name"),
+            db.from("residential_zones").select("id, name").order("name"),
+            db.from("class_sets").select("id, family_name, entry_year").order("entry_year", { ascending: false }),
+            db.from("units").select("id, name, type").order("name"),
         ]);
         return {
             success: true as const,
@@ -513,7 +513,7 @@ export async function getMemberRecord(profileId: string) {
     try {
         const ctx = await requirePresidentOrSysAdmin();
 
-        const { data: raw, error } = await ictAdmin.supabase
+        const { data: raw, error } = await db
             .from("profiles")
             .select("*")
             .eq("id", profileId)
@@ -525,7 +525,7 @@ export async function getMemberRecord(profileId: string) {
         const tenure = await getActiveTenure();
         const tenureId = (tenure as any)?.id ?? null;
 
-        let mq = ictAdmin.supabase
+        let mq = db
             .from("membership_units")
             .select("unit_id, unit:units(id, name, type)")
             .eq("profile_id", profileId);
@@ -604,7 +604,7 @@ export async function updateMemberAction(profileId: string, patch: Record<string
     try {
         const ctx = await requireSysAdmin();
 
-        const { data: before, error: readErr } = await ictAdmin.supabase
+        const { data: before, error: readErr } = await db
             .from("profiles")
             .select("*")
             .eq("id", profileId)
@@ -637,7 +637,7 @@ export async function updateMemberAction(profileId: string, patch: Record<string
 
         update.updated_at = new Date().toISOString();
 
-        const { error } = await ictAdmin.supabase
+        const { error } = await db
             .from("profiles")
             .update(update)
             .eq("id", profileId);
@@ -689,13 +689,13 @@ export async function updateMembershipAction(
             return { success: false as const, error: "There is no active tenure to assign membership in." };
         }
 
-        const { data: profile } = await ictAdmin.supabase
+        const { data: profile } = await db
             .from("profiles").select("first_name, last_name").eq("id", profileId).maybeSingle();
         if (!profile) return { success: false as const, error: "Member not found." };
 
         // Validate every id against `units` — the client can't name a row that isn't a unit.
         const wanted = [next.unitId, ...(next.teamIds ?? [])].filter(Boolean) as string[];
-        const { data: units } = await ictAdmin.supabase
+        const { data: units } = await db
             .from("units").select("id, name, type").in("id", wanted.length ? wanted : [NO_MATCH_ID]);
         const byId = new Map((units ?? []).map((u: any) => [u.id, u]));
         for (const id of wanted) {
@@ -708,7 +708,7 @@ export async function updateMembershipAction(
             if (byId.get(id)?.type !== "TEAM") throw new Error("One of the selected teams is not a team.");
         }
 
-        const { data: existing } = await ictAdmin.supabase
+        const { data: existing } = await db
             .from("membership_units")
             .select("id, unit_id, unit:units(name, type)")
             .eq("profile_id", profileId)
@@ -722,14 +722,14 @@ export async function updateMembershipAction(
         const toAdd = wanted.filter((id) => !beforeIds.has(id));
 
         if (toRemove.length) {
-            const { error } = await ictAdmin.supabase
+            const { error } = await db
                 .from("membership_units")
                 .delete()
                 .in("id", toRemove.map((m) => m.id));
             if (error) throw new Error(error.message);
         }
         if (toAdd.length) {
-            const { error } = await ictAdmin.supabase.from("membership_units").insert(
+            const { error } = await db.from("membership_units").insert(
                 toAdd.map((unit_id) => ({ profile_id: profileId, unit_id, tenure_id: tenureId })),
             );
             if (error) throw new Error(error.message);
@@ -786,7 +786,7 @@ async function writeAudit(
 ) {
     if (!changes.length) return;
     const actorName = [ctx?.profile?.firstName, ctx?.profile?.lastName].filter(Boolean).join(" ");
-    const { error } = await ictAdmin.supabase.from("admin_audit_log").insert(
+    const { error } = await db.from("admin_audit_log").insert(
         changes.map((c) => ({
             actor_profile_id: ctx.profile.id,
             actor_name: actorName || null,
@@ -805,7 +805,7 @@ async function writeAudit(
 export async function getAuditTrail(profileId: string, limit = 50) {
     try {
         await requirePresidentOrSysAdmin();
-        const { data, error } = await ictAdmin.supabase
+        const { data, error } = await db
             .from("admin_audit_log")
             .select("id, actor_name, action, field, old_value, new_value, created_at")
             .eq("target_profile_id", profileId)

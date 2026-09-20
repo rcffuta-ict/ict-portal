@@ -1,6 +1,6 @@
 'use server'
 
-import { ict, ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { checkIsAdminByEmail } from "@/utils/action";
 
@@ -11,7 +11,7 @@ async function isUserAdmin(email: string | null | undefined): Promise<boolean> {
 
 export async function getEvents() {
   try {
-    const { data: events, error } = await ict.supabase
+    const { data: events, error } = await db
       .from('events')
       .select('*')
       .order('date', { ascending: false });
@@ -42,7 +42,7 @@ export async function getEvents() {
 
 export async function getEventBySlug(slug: string) {
   try {
-    const { data: event, error } = await ict.supabase
+    const { data: event, error } = await db
       .from('events')
       .select('*')
       .eq('slug', slug)
@@ -74,7 +74,7 @@ export async function getEventBySlug(slug: string) {
 
 export async function getEventRegistrations(eventId: string) {
   try {
-    const { data: registrations, error } = await ict.supabase
+    const { data: registrations, error } = await db
       .from('event_registrations')
       .select('*')
       .eq('event_id', eventId)
@@ -127,17 +127,9 @@ export async function createEvent(data: {
       return { success: false, error: "Title and Slug are required" };
     }
 
-    // Insert event using admin client to ensure permissions if RLS is strict
-    // although ict.supabase might work if RLS allows authenticated insert for admins,
-    // using ictAdmin is safer if configured.
-    // Based on `src/lib/ict.ts`, `ictAdmin` is `RcfIctClient.asAdmin()`.
-    // However, `RcfIctClient` stores `supabase` as a property.
-    // Let's use `ict.supabase` first, assuming the user is logged in as admin.
-    // Wait, server actions run on server. `ictAdmin` uses service role key?
-    // In `src/lib/ict.ts`: `export const ictAdmin = RcfIctClient.asAdmin();`
-    // Let's check `ict.ts` again.
-
-    const { error } = await ictAdmin.supabase
+    // `db` is the service-role client and bypasses RLS — authorization for this action
+    // is the caller's responsibility, checked above.
+    const { error } = await db
       .from('events')
       .insert({
         title: data.title,
@@ -184,7 +176,7 @@ export async function updateEvent(id: string, data: {
 
     if (!id) return { success: false, error: "Event ID is required" };
 
-    const { error } = await ictAdmin.supabase
+    const { error } = await db
       .from('events')
       .update({
         ...(data.title && { title: data.title }),
@@ -227,7 +219,7 @@ export async function registerForEvent(data: {
 }) {
   try {
     // Basic check for existing registration
-    const { data: existing } = await ict.supabase
+    const { data: existing } = await db
       .from('event_registrations')
       .select('id')
       .eq('event_id', data.event_id)
@@ -238,7 +230,7 @@ export async function registerForEvent(data: {
       return { success: false, error: "You are already registered for this event", alreadyRegistered: true };
     }
 
-    const { data: registration, error } = await ict.supabase
+    const { data: registration, error } = await db
       .from('event_registrations')
       .insert({
         event_id: data.event_id,
@@ -269,12 +261,12 @@ export async function registerForEvent(data: {
 
 export async function getEventRegistrationStats(eventId: string) {
   try {
-    const { count, error: countError } = await ict.supabase
+    const { count, error: countError } = await db
       .from('event_registrations')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', eventId);
 
-    const { data: recent, error: recentError } = await ict.supabase
+    const { data: recent, error: recentError } = await db
       .from('event_registrations')
       .select('first_name, last_name, gender')
       .eq('event_id', eventId)

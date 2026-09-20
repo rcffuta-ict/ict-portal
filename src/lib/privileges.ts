@@ -123,16 +123,52 @@ export function validatePrivilegeSet(privs: Privilege[]): string | null {
     return null;
 }
 
+/** What kind of office a position is. Display and grouping only — never authorization. */
+export const POSITION_KINDS = [
+    "PRESIDENT",
+    "CENTRAL",
+    "UNIT",
+    "TEAM",
+    "LEVEL",
+    "ZONE",
+] as const;
+
+export type PositionKind = (typeof POSITION_KINDS)[number];
+
 /**
- * Derive the legacy `leadership_positions.category` value from a privilege set, so the
- * still-NOT-NULL column stays populated. The new UI reads privileges, not category.
+ * What KIND of office a position is, derived from the privilege tags it holds.
+ *
+ * This used to be a stored column (`leadership_positions.category`) that three
+ * different code paths had to remember to rewrite whenever privileges changed — a
+ * second, parallel description of the same fact, kept in step by hand. Migration 0013
+ * dropped the column; this function and its SQL twin `rcf_position_kind()` are now the
+ * only definition, so the kind cannot disagree with the tags that actually decide
+ * access.
+ *
+ * Order matters: a position holding several tags takes the most significant one.
+ * SYSADMIN reads as CENTRAL, which is why the ICT Coordinator still groups with the
+ * church-wide offices even though it also carries EXCO:ict for the unit it leads.
+ *
+ * @param privs      the position's privilege tags
+ * @param isTeamSlug resolves an EXCO scope to whether that unit is a TEAM. Without it,
+ *                   every EXCO position reads as 'UNIT' — the safe default, since a
+ *                   team misread as a unit shows in the wrong group but grants nothing
+ *                   extra.
  */
-export function deriveCategory(privs: Privilege[]): string {
+export function derivePositionKind(
+    privs: Privilege[],
+    isTeamSlug?: (slug: string) => boolean,
+): PositionKind {
     const tags = new Set(privs.map((p) => p.tag));
     if (tags.has("PRESIDENT")) return "PRESIDENT";
     if (tags.has("CENTRAL") || tags.has("SYSADMIN")) return "CENTRAL";
     if (tags.has("LEVEL")) return "LEVEL";
     if (tags.has("ZONE")) return "ZONE";
+
+    if (isTeamSlug) {
+        const exco = privs.find((p) => p.tag === "EXCO" && p.scope);
+        if (exco?.scope && isTeamSlug(exco.scope)) return "TEAM";
+    }
     return "UNIT"; // EXCO or empty
 }
 

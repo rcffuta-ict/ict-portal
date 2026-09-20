@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
 import { setLoginPassword } from "@/lib/auth/provision";
 import { createSession } from "@/lib/auth/session";
@@ -40,7 +40,7 @@ export async function checkLeaderAction(email: string) {
 async function finishLogin(profileId: string, email: string, meta: { ip?: string | null; userAgent?: string | null }) {
     // Session insert fires the DB trigger that records 'login_success'.
     await createSession(profileId, meta);
-    await ictAdmin.supabase
+    await db
         .from("profile_login")
         .update({
             failed_attempts: 0,
@@ -80,7 +80,7 @@ export async function loginAction(formData: FormData) {
             const lockedUntil = attempts >= MAX_FAILED_ATTEMPTS
                 ? new Date(Date.now() + LOCK_MINUTES * 60 * 1000).toISOString()
                 : null;
-            await ictAdmin.supabase
+            await db
                 .from("profile_login")
                 .update({ failed_attempts: attempts, locked_until: lockedUntil, updated_at: new Date().toISOString() })
                 .eq("id", login.loginId);

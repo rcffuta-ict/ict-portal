@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { ict } from "@/lib/ict"; // Using your initialized client
+import { db } from "@/lib/db"; // Using your initialized client
 
 const EVENT_SLUG = "singles-weekend-26";
 
@@ -16,7 +16,7 @@ function generateCouponCode(): string {
 }
 
 export async function getEventDetails() {
-  const { data } = await ict.supabase
+  const { data } = await db
     .from('events')
     .select('*')
     .eq('slug', EVENT_SLUG)
@@ -26,7 +26,7 @@ export async function getEventDetails() {
 }
 
 export async function checkExistingRegistration(email: string, phone?: string) {
-  const { data: event } = await ict.supabase
+  const { data: event } = await db
     .from('events')
     .select('id')
     .eq('slug', EVENT_SLUG)
@@ -35,7 +35,7 @@ export async function checkExistingRegistration(email: string, phone?: string) {
   if (!event) return { exists: false };
 
   // Try email first
-  const { data: existingByEmail } = await ict.supabase
+  const { data: existingByEmail } = await db
     .from('event_registrations')
     .select('first_name, last_name, email, phone_number, checked_in_at, coupon_code')
     .eq('event_id', event.id)
@@ -52,7 +52,7 @@ export async function checkExistingRegistration(email: string, phone?: string) {
     if (normalizedPhone.startsWith("0")) normalizedPhone = "+234" + normalizedPhone.slice(1);
     else if (normalizedPhone.startsWith("234")) normalizedPhone = "+" + normalizedPhone;
 
-    const { data: existingByPhone } = await ict.supabase
+    const { data: existingByPhone } = await db
       .from('event_registrations')
       .select('first_name, last_name, email, phone_number, checked_in_at, coupon_code')
       .eq('event_id', event.id)
@@ -82,7 +82,7 @@ interface RegistrationData {
 
 export async function registerAgapeAction(input: FormData | RegistrationData) {
   // 1. Get Event ID
-  const { data: event } = await ict.supabase
+  const { data: event } = await db
     .from('events')
     .select('id')
     .eq('slug', EVENT_SLUG)
@@ -160,7 +160,7 @@ export async function registerAgapeAction(input: FormData | RegistrationData) {
   // 3. Insert to DB
   try {
     // Check for duplicates manually first (cleaner error msg)
-    const { data: existing } = await ict.supabase
+    const { data: existing } = await db
         .from('event_registrations')
         .select('id, first_name, last_name, phone_number, checked_in_at, coupon_code')
         .eq('event_id', event.id)
@@ -182,7 +182,7 @@ export async function registerAgapeAction(input: FormData | RegistrationData) {
         };
     }
 
-    const { error } = await ict.supabase
+    const { error } = await db
       .from('event_registrations')
       .insert(data);
 

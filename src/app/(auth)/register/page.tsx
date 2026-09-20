@@ -15,7 +15,7 @@ import {
     Mail,
     PencilLine,
 } from "lucide-react";
-import { DepartmentUtils } from "@rcffuta/ict-lib";
+import { DepartmentUtils } from "@/lib/departments";
 
 import { Logo } from "@/components/ui/logo";
 import FormInput from "@/components/ui/FormInput";

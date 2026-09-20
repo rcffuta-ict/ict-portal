@@ -10,7 +10,14 @@
  * Pure data — no imports, safe anywhere.
  */
 
-export type BackupGroup = "identity" | "structure" | "access" | "audit" | "invites" | "activity";
+export type BackupGroup =
+    | "identity"
+    | "structure"
+    | "access"
+    | "audit"
+    | "invites"
+    | "activity"
+    | "foreign";
 
 export const BACKUP_GROUP_LABELS: Record<BackupGroup, string> = {
     identity: "People",
@@ -19,7 +26,21 @@ export const BACKUP_GROUP_LABELS: Record<BackupGroup, string> = {
     audit: "Audit trails",
     invites: "Invites",
     activity: "Events & activity",
+    foreign: "Other applications (not the portal's data)",
 };
+
+/**
+ * How much of the database a backup covers.
+ *
+ *   "tenure" — the LITE backup the VP Admin takes during a handover. Tenure-scoped
+ *              tables are filtered to one tenure; it answers "capture this tenure".
+ *   "system" — the FULL SYSTEM INSURANCE the System Admin takes before a structural
+ *              change. No tenure filtering at all, every tenure and all history.
+ *
+ * The distinction matters because a tenure-scoped backup CANNOT restore a dropped
+ * column or a deleted tenure. Only the system scope is an undo for a migration.
+ */
+export type BackupScope = "tenure" | "system";
 
 export interface TableSpec {
     name: string;
@@ -222,6 +243,42 @@ export const BACKUP_TABLES: TableSpec[] = [
         required: false,
     },
 ];
+
+/**
+ * Tables belonging to the OTHER applications that share this Supabase project.
+ *
+ * Offered only in the system scope, and OFF BY DEFAULT. Off, because a portal admin
+ * accidentally exporting the store's customer list — names, emails, phone numbers,
+ * payment receipts — is a real privacy problem and nothing to do with running a
+ * fellowship. Offered at all, because insurance that cannot put the whole project back
+ * is not insurance.
+ *
+ * These are never required, never tenure-scoped (they have no concept of a tenure), and
+ * always listed under their owning application so nobody ticks one by accident.
+ */
+export const FOREIGN_TABLES: TableSpec[] = [
+    ...["rw_categories", "rw_products", "rw_product_variants", "rw_product_images",
+        "rw_orders", "rw_order_items", "rw_payments", "rw_settings", "rw_audit_logs",
+        "rw_admin_moderators", "rw_verdicts", "rw_verdict_orders", "rw_email_templates",
+        "rw_email_logs", "rw_email_queue", "rw_sponsors", "rw_sponsor_leads"]
+        .map((name) => ({ name, label: name, description: "ReadWrite store", group: "foreign" as const, required: false })),
+    ...["fyb_registrations", "fyb_admins", "fyb_pair_intents", "fyb_settings",
+        "fyb_consent_tokens", "fyb_email_templates", "fyb_email_queue", "fyb_email_logs",
+        "fyb_token_attempts", "fyb_award_categories", "fyb_award_candidates",
+        "fyb_award_votes", "fyb_award_candidate_members"]
+        .map((name) => ({ name, label: name, description: "Final Year Brethren", group: "foreign" as const, required: false })),
+    ...["elib_courses", "elib_materials", "elib_downloads"]
+        .map((name) => ({ name, label: name, description: "E-library", group: "foreign" as const, required: false })),
+    ...["game_sessions", "game_rounds", "game_participants", "trivia_questions",
+        "trivia_answers", "bingo_calls", "bingo_cards", "bingo_marks", "bingo_wins",
+        "buzzer_prompts", "buzzer_presses"]
+        .map((name) => ({ name, label: name, description: "Games & engagement", group: "foreign" as const, required: false })),
+];
+
+/** Every table a backup of the given scope may offer. */
+export function tablesForScope(scope: BackupScope): TableSpec[] {
+    return scope === "system" ? [...BACKUP_TABLES, ...FOREIGN_TABLES] : BACKUP_TABLES;
+}
 
 export const REQUIRED_TABLES = BACKUP_TABLES.filter((t) => t.required).map((t) => t.name);
 export const OPTIONAL_TABLES = BACKUP_TABLES.filter((t) => !t.required).map((t) => t.name);
