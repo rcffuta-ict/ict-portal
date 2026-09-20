@@ -26,54 +26,12 @@ import {
     c, heading, section, table, kv, ok, warn, info, blank, progress,
     chooseEnvironment, flagValue, hasFlag, die,
 } from "./lib/cli.mjs";
+import {
+    PORTAL_TABLES, FOREIGN, DROPPED_IN_0013, UNCLASSIFIED, classify,
+} from "./lib/tables.mjs";
 
-/** Tables this portal owns. Anything here is ours to migrate. */
-const PORTAL_TABLES = [
-    "schema_migrations",
-    "class_sets", "residential_zones", "profiles", "tenures", "units", "leadership",
-    "leadership_positions", "position_privileges", "membership_units", "unit_positions",
-    "zone_pastors", "module_access",
-    "profile_login", "auth_sessions", "login_events",
-    "registration_invites", "invite_events",
-    "events", "event_registrations", "event_questions", "question_stars",
-    // question_flags is KEPT deliberately — the event_questions_with_details view
-    // depends on it. See migration 0013.
-    "question_flags",
-    "testimonies", "testimony_amens", "lo_member_links", "lo_member_verify_attempts",
-    "admin_audit_log", "unit_transfer_requests", "handover_intents", "handover_events",
-];
-
-/** Other applications sharing this database. NEVER ours to touch. */
-const FOREIGN = {
-    "ReadWrite store": ["rw_categories", "rw_products", "rw_product_variants",
-        "rw_product_images", "rw_orders", "rw_order_items", "rw_payments", "rw_settings",
-        "rw_audit_logs", "rw_admin_moderators", "rw_verdicts", "rw_verdict_orders",
-        "rw_email_templates", "rw_email_logs", "rw_email_queue", "rw_sponsors",
-        "rw_sponsor_leads"],
-    "Final Year Brethren": ["fyb_registrations", "fyb_admins", "fyb_pair_intents",
-        "fyb_settings", "fyb_consent_tokens", "fyb_email_templates", "fyb_email_queue",
-        "fyb_email_logs", "fyb_token_attempts", "fyb_award_categories",
-        "fyb_award_candidates", "fyb_award_votes", "fyb_award_candidate_members"],
-    "E-library": ["elib_courses", "elib_materials", "elib_downloads"],
-    "Games & engagement": ["game_sessions", "game_rounds", "game_participants",
-        "trivia_questions", "trivia_answers", "bingo_calls", "bingo_cards", "bingo_marks",
-        "bingo_wins", "buzzer_prompts", "buzzer_presses"],
-};
-
-/** Expected GONE after migration 0013. Listed so "still present" is visible. */
-const DROPPED_IN_0013 = ["verification_codes", "question_references"];
-
-/** Unknown owner. Listed, never touched. */
-const UNCLASSIFIED = ["categories"];
-
-function classify(name) {
-    if (PORTAL_TABLES.includes(name)) return { group: "PORTAL", owner: "ICT Portal" };
-    for (const [owner, tables] of Object.entries(FOREIGN)) {
-        if (tables.includes(name)) return { group: "FOREIGN", owner };
-    }
-    if (DROPPED_IN_0013.includes(name)) return { group: "DROPPED", owner: "removed by 0013" };
-    return { group: "UNCLASSIFIED", owner: "unknown - do not touch" };
-}
+// The classification lives in ./lib/tables.mjs so that bootstrap-supabase.mjs works
+// from the same lists. Editing it in two places was how they were going to drift.
 
 async function main() {
     const json = hasFlag("json");

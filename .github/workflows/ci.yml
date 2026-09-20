@@ -76,6 +76,12 @@ jobs:
             - name: Replay a second time
               run: supabase db reset
 
+            # The bootstrap seed is 291 lines of INSERTs that must still fit the
+            # schema. Applying it here means a migration that breaks it fails the PR
+            # rather than the next time someone builds an environment.
+            - name: Apply the bootstrap seed
+              run: supabase db query --local -f db/seed/default.sql
+
             - name: Lint the resulting schema
               run: supabase db lint --local --level warning --fail-on error
 

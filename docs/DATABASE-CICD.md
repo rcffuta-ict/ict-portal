@@ -8,10 +8,15 @@ recorded that they had run. This document replaces that.
 | git branch | Supabase project | Applied by |
 |---|---|---|
 | `main` | production `izofyqiaazidryoejsot` | `.github/workflows/deploy-production.yml` |
-| `stage`, `dev`, `dev/**` | staging `kcyylplbizwgttqjdezf` | `.github/workflows/deploy-staging.yml` |
+| `stage`, `dev`, `dev/**` | staging (the new project) | `.github/workflows/deploy-staging.yml` |
 
-Staging and development share one project. The Free plan allows two active projects per
-organisation and production holds the other one. **This means a staging rehearsal runs
+Both projects live in **one Supabase account** — the one that holds production. Staging
+used to be a project in a separate account, which meant two logins, two access tokens
+and no way for one workflow to reach both. The replacement is a new project created in
+the production account's remaining Free slot.
+
+Staging and development share that one project. The Free plan allows two active projects
+per organisation and production holds the other one. **This means a staging rehearsal runs
 against test-seeded data, so it proves a migration applies — not how it behaves on the
 production dataset.** If that distinction ever matters for a release, the fix is a third
 project (pause one, use a second organisation, or go Pro).
@@ -43,12 +48,21 @@ Repository → Settings → Secrets and variables → Actions:
 | `SUPABASE_ACCESS_TOKEN` | supabase.com/dashboard/account/tokens |
 | `PRODUCTION_PROJECT_ID` | `izofyqiaazidryoejsot` |
 | `PRODUCTION_DB_PASSWORD` | Project → Settings → Database → Database password |
-| `STAGING_PROJECT_ID` | `kcyylplbizwgttqjdezf` |
-| `STAGING_DB_PASSWORD` | as above, on the staging project |
+| `STAGING_PROJECT_ID` | the new project's ref, from its dashboard URL |
+| `STAGING_DB_PASSWORD` | as above, on the new project |
+
+One access token covers both, now that both projects are in the same account.
 
 The database password is not the service-role key and is not in any `.env` file. If
 nobody knows it, reset it in the dashboard — that is safe, the portal connects over
-PostgREST with the service-role key, not over Postgres.
+PostgREST with the service-role key, not over Postgres. You set the new project's
+password when you created it.
+
+Once the new project exists, point the local environment files at it too:
+`.env.local` and `.env.development` should carry its `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY`, and every environment file needs `PRODUCTION_SUPABASE_URL`
+set to the production URL — that is what `scripts/lib/cli.mjs` uses to refuse to run a
+destructive script against production.
 
 ### 2. Require approval before production
 
@@ -64,66 +78,64 @@ Run `SHOW server_version;` in the production SQL editor and set `major_version` 
 `supabase/config.toml` to match. Otherwise the CI replay tests a different Postgres
 than the one you deploy to.
 
-### 4. Generate the baseline
-
-`supabase/migrations/` is empty apart from its README. It needs one file: a dump of the
-production schema as it stands today. This cannot be done from a service-role key, so
-run it yourself:
+### 4. Build the baseline and the new project
 
 ```bash
 supabase login
-supabase link --project-ref izofyqiaazidryoejsot
-supabase db dump --linked -f supabase/migrations/20260101000000_0000_baseline.sql
+pnpm db:bootstrap              # dry run: dumps, filters, reports, writes nothing
+pnpm db:bootstrap -- --apply   # does it for real
 ```
 
-The timestamp is deliberately dated far in the past so that every migration you write
-from now on sorts after it, regardless of when you run this.
+`scripts/bootstrap-supabase.mjs` treats the two projects differently, because they are
+in completely different states:
 
-`db dump` with no `--schema` dumps `public`, which includes the other applications
-sharing this database — `rw_*` (ReadWrite), `fyb_*`, `elib_*`, `game_*`, `trivia_*`,
-`bingo_*`, `buzzer_*`. **Leave them in.** The baseline is a description of the database,
-not a claim of ownership, and a baseline missing them would make any future `db diff`
-propose creating tables that already exist. `db push` only ever applies the files in
-this folder; it never drops anything, so their presence cannot hurt them. Do not write
-migrations that alter them.
+- **SOURCE (production)** already has the schema. It gets exactly one write: a row in
+  the CLI's ledger saying the baseline is already applied. No DDL, no data, nothing
+  dropped. This is the step that stops the first push to `main` replaying 0001's
+  `auth.users` FK drop and RLS lockdown against a live database.
+- **TARGET (the new project)** is empty. It gets the baseline applied for real, then
+  `db/seed/default.sql` if you say yes.
 
-Read the file before committing it. Check it ends with 0013's state: no
-`leadership_positions.category`, no `is_default`, `question_flags` present,
-`public.schema_migrations` present with thirteen rows.
+What it produces is `supabase/migrations/20260101000000_0000_baseline.sql` — a
+`pg_dump` of production, dated in the past so every migration you write from now on
+sorts after it regardless of when you ran this.
 
-Then watch the first CI run of the `migrations` job. `pg_dump` output occasionally
-carries `ALTER ... OWNER TO` lines naming roles that exist on Supabase but not in a
-bare local Postgres. If the replay fails on a missing role, delete those lines from the
-baseline — ownership is not something this repo should be asserting anyway. Do not
-"fix" it by weakening the CI job; a replay that cannot rebuild the schema is the one
-check here that is worth having.
+**The other four applications are filtered out.** This database is shared by ReadWrite
+(`rw_*`), Final Year Brethren (`fyb_*`), the e-library (`elib_*`) and the games
+(`game_*`, `trivia_*`, `bingo_*`, `buzzer_*`). Their objects are removed from the
+baseline so the portal's staging project is the portal and nothing else, and so this
+repo does not quietly version-control another app's schema and let it drift.
 
-### 5. Tell both projects the baseline is already applied
+That is safe in this specific database because every one of the 45 references between
+these applications points *at* `public.profiles` — no portal table references a foreign
+one (see `scripts/prune-profiles.mjs`). The script proves it anyway: it refuses to
+write a baseline where a kept object still references a removed one. Pass
+`--include-foreign` to keep everything.
 
-This is the step that prevents a disaster. `supabase_migrations.schema_migrations` — the
-CLI's own ledger, which decides what `db push` applies — is empty on both projects,
-because everything so far was applied by hand. Without this step the first push replays
-the baseline against a live database.
+**Nothing is removed from production.** The filter only shapes a file that gets applied
+to the new, empty project. Production is only ever read from.
 
-```bash
-# production
-supabase link --project-ref izofyqiaazidryoejsot
-supabase migration repair --status applied 20260101000000
-supabase migration list          # baseline must show on BOTH sides
+Before writing, the script checks the dump really is at 0013's end state — ledger
+present, `question_flags` kept, `leadership_positions.category` and `is_default` gone,
+`rcf_profile_context` present, every portal table accounted for — and aborts if not. A
+dump taken from the wrong project is perfectly valid SQL and would otherwise become the
+thing every future environment is built from.
 
-# staging
-supabase link --project-ref kcyylplbizwgttqjdezf
-supabase migration repair --status applied 20260101000000
-supabase migration list
-```
+Read the generated file before committing. Then watch the first CI run of the
+`migrations` job: `pg_dump` output occasionally carries `ALTER ... OWNER TO` lines
+naming roles that exist on Supabase but not in a bare local Postgres. If the replay
+fails on a missing role, delete those lines — ownership is not something this repo
+should be asserting. Do not "fix" it by weakening the CI job; a replay that cannot
+rebuild the schema is the one check here worth having.
 
-`migration list` showing the version in the Local column and blank in Remote means the
-repair did not take. Do not push until both columns match.
-
-### 6. Prove it
+### 5. Prove it
 
 Push a no-op commit to `stage`. The workflow should run and report that the remote
 database is up to date, having applied nothing.
+
+`supabase migration list` showing the baseline in the Local column and blank in Remote
+means the repair did not take. Do not push to `main` until both columns match on the
+production project.
 
 ## Writing a migration, from now on
 
@@ -175,8 +187,11 @@ someone renamed or deleted an applied file. Restore it, or
 ## What is not automated
 
 - `db/seed/default.sql` — bootstrap data (units, positions, privileges). Applied on
-  purpose, not on push. There is no `supabase/seed.sql` because Supabase only runs seed
-  files on preview branches, which this plan does not have.
+  purpose: by `pnpm db:bootstrap` when a project is first built, and by CI against the
+  throwaway local database so a PR fails if a migration stops the seed fitting the
+  schema. It is never applied automatically to a live project. There is no
+  `supabase/seed.sql`, and `sql_paths` in `config.toml` is deliberately empty —
+  Supabase only runs seed files on preview branches, which the Free plan does not have.
 - `scripts/seed-test.mjs` — test data. Refuses to run against production.
 - `db/migrations/0001`–`0013` — archived, never applied again. See
   `db/migrations/README.md`.
