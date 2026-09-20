@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
-import type { FullUserProfile, UserBio, UserLocation, UserAcademics } from '@rcffuta/ict-lib';
+import type { FullUserProfile, UserBio, UserLocation, UserAcademics } from "@/lib/types/portal";
 
 /**
  * The user object handed to the store is actually the enriched ProfileContext

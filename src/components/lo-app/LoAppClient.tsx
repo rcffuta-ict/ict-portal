@@ -55,7 +55,11 @@ export interface AuthUser {
     firstName: string;
     lastName: string;
     email: string;
-    level: string;
+    /**
+     * COMPUTED from the member's generation against the active session — null when they
+     * have not been placed in one yet, which is the normal state for a new member.
+     */
+    level: string | null;
 }
 
 export interface LoEvent {
@@ -145,10 +149,13 @@ export function LoAppClient({
             });
 
             if (result.success) {
-                const newQuestions = result.data || [];
+                // The Q&A rows come from a database VIEW, so there is no schema to derive
+                // their type from — the assertion belongs here, where the expected shape
+                // is actually known.
+                const newQuestions = (result.data ?? []) as unknown as Question[];
                 setQuestions(newQuestions);
 
-                const ids = newQuestions.map((q: Question) => q.id);
+                const ids = newQuestions.map((q) => q.id);
                 const [countsRes, userRes] = await Promise.all([
                     getStarCounts(ids),
                     getUserStars(ids, authenticatedUser?.id),

@@ -18,7 +18,7 @@
  *
  * Server-only: reads the service-role client. Never import into a client component.
  */
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 import {
     MODULES,
@@ -45,7 +45,7 @@ export async function getModuleAccessConfig(): Promise<ModuleAccessConfig> {
         MODULES.map((m) => [m, emptyRow(m)]),
     ) as ModuleAccessConfig;
 
-    const { data, error } = await ictAdmin.supabase
+    const { data, error } = await db
         .from("module_access")
         .select("module, read_slugs, write_slugs, write_scope");
 

@@ -157,7 +157,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                             {initials}
                         </div> */}
 
-                        <AvatarDisplay url={user?.profile.avatarUrl} initials={initials} size="sm" />
+                        <AvatarDisplay url={user?.profile.avatarUrl ?? undefined} initials={initials} size="sm" />
 
                         <div className="min-w-0 flex-1">
                             <p className="font-bold text-sm truncate">

@@ -1,6 +1,6 @@
 'use server'
 
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 
 const EVENT_SLUG = "singles-weekend-26";
 
@@ -10,7 +10,7 @@ const EVENT_SLUG = "singles-weekend-26";
 export async function findRegistrationByIdentifier(identifier: string) {
   try {
     // Get event first
-    const { data: event, error: eventError } = await ictAdmin.supabase
+    const { data: event, error: eventError } = await db
       .from('events')
       .select('id')
       .eq('slug', EVENT_SLUG)
@@ -31,7 +31,7 @@ export async function findRegistrationByIdentifier(identifier: string) {
 
     if (isEmail) {
       // Search by email
-      const result = await ictAdmin.supabase
+      const result = await db
         .from('event_registrations')
         .select('id, first_name, last_name, email, phone_number, gender, checked_in_at, coupon_code, coupon_active, coupon_used_at')
         .eq('event_id', event.id)
@@ -71,7 +71,7 @@ export async function findRegistrationByIdentifier(identifier: string) {
       }
 
       // Search for any of the phone variants
-      const result = await ictAdmin.supabase
+      const result = await db
         .from('event_registrations')
         .select('id, first_name, last_name, email, phone_number, gender, checked_in_at, coupon_code, coupon_active, coupon_used_at')
         .eq('event_id', event.id)
@@ -142,7 +142,7 @@ export async function findRegistrationByIdentifier(identifier: string) {
  */
 export async function verifyRegistration(registrationId: string) {
   try {
-    const { data: registration, error: regError } = await ictAdmin.supabase
+    const { data: registration, error: regError } = await db
       .from('event_registrations')
       .select('*, events(*)')
       .eq('id', registrationId)
@@ -208,7 +208,7 @@ export async function verifyRegistration(registrationId: string) {
  */
 export async function completeCheckIn(registrationId: string, wantsCoupon: boolean) {
   try {
-    const { data: registration, error: regError } = await ictAdmin.supabase
+    const { data: registration, error: regError } = await db
       .from('event_registrations')
       .select('*, events(*)')
       .eq('id', registrationId)
@@ -269,7 +269,7 @@ export async function completeCheckIn(registrationId: string, wantsCoupon: boole
       updateData.coupon_active = true;
     }
 
-    const { error: updateError } = await ictAdmin.supabase
+    const { error: updateError } = await db
       .from('event_registrations')
       .update(updateData)
       .eq('id', registrationId);
@@ -309,7 +309,7 @@ export async function completeCheckIn(registrationId: string, wantsCoupon: boole
 export async function processCheckIn(registrationId: string) {
   try {
     // 1. Fetch the registration
-    const { data: registration, error: regError } = await ictAdmin.supabase
+    const { data: registration, error: regError } = await db
       .from('event_registrations')
       .select('*, events(*)')
       .eq('id', registrationId)
@@ -355,7 +355,7 @@ export async function processCheckIn(registrationId: string) {
       couponCode = `AG26-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
     }
 
-    const { error: updateError } = await ictAdmin.supabase
+    const { error: updateError } = await db
       .from('event_registrations')
       .update({
         checked_in_at: checkInTime,
@@ -397,7 +397,7 @@ export async function processCheckIn(registrationId: string) {
 export async function validateCoupon(couponCode: string) {
   try {
     // Get event
-    const { data: event } = await ictAdmin.supabase
+    const { data: event } = await db
       .from('events')
       .select('id, config')
       .eq('slug', EVENT_SLUG)
@@ -435,7 +435,7 @@ export async function validateCoupon(couponCode: string) {
 
     // Search for any variant (case-insensitive)
     for (const variant of searchVariants) {
-      const result = await ictAdmin.supabase
+      const result = await db
         .from('event_registrations')
         .select('*')
         .eq('event_id', event.id)
@@ -498,7 +498,7 @@ export async function redeemCoupon(registrationId: string) {
   try {
     // We update ONLY if coupon_used_at is still null.
     // This handles the "already redeemed" check at the database level.
-    const { data: updatedRow, error } = await ictAdmin.supabase
+    const { data: updatedRow, error } = await db
       .from('event_registrations')
       .update({
         coupon_active: false,

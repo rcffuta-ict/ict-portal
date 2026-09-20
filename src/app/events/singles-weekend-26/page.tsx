@@ -121,7 +121,7 @@ export default function SinglesWeekendRegistration() {
           if (profile.email) {
             const existing = await checkExistingRegistration(
               profile.email,
-              profile.phoneNumber
+              profile.phoneNumber ?? undefined
             );
             if (existing.exists && existing.registration) {
               setExistingReg({

@@ -15,10 +15,11 @@ import {
     AlertTriangle,
 } from "lucide-react";
 import {
-    BACKUP_TABLES,
     BACKUP_GROUP_LABELS,
     DEFAULT_TABLE_SELECTION,
+    tablesForScope,
     type BackupGroup,
+    type BackupScope,
 } from "@/lib/backup-tables";
 import FormInput from "@/components/ui/FormInput";
 
@@ -38,17 +39,26 @@ export function BackupPicker({
     tenureName,
     presidentName,
     onDownloaded,
+    scope = "tenure",
 }: {
     tenureId?: string | null;
     tenureName?: string | null;
     /** Default passphrase — the president of the tenure being backed up. */
     presidentName?: string | null;
     onDownloaded?: () => void;
+    /**
+     * "tenure" is the handover's lite backup. "system" is full insurance: every tenure,
+     * all history, the other applications available, and encryption not optional.
+     */
+    scope?: BackupScope;
 }) {
+    const system = scope === "system";
+    const available = useMemo(() => tablesForScope(scope), [scope]);
     const [selected, setSelected] = useState<Set<string>>(
         () => new Set(DEFAULT_TABLE_SELECTION),
     );
     const [format, setFormat] = useState<"json" | "csv">("json");
+    // A system backup is always encrypted — the toggle is absent, not merely defaulted.
     const [lock, setLock] = useState(true);
     const [useCustom, setUseCustom] = useState(false);
     const [custom, setCustom] = useState("");
@@ -63,11 +73,13 @@ export function BackupPicker({
             "audit",
             "invites",
             "activity",
+            // Last, and only ever present in the system scope: other teams' data.
+            "foreign",
         ];
         return order
-            .map((g) => ({ group: g, tables: BACKUP_TABLES.filter((t) => t.group === g) }))
+            .map((g) => ({ group: g, tables: available.filter((t) => t.group === g) }))
             .filter((g) => g.tables.length > 0);
-    }, []);
+    }, [available]);
 
     const toggle = (name: string, required: boolean) => {
         if (required) return; // not a choice — a bundle without it can't restore
@@ -79,29 +91,31 @@ export function BackupPicker({
         });
     };
 
-    const optionalCount = BACKUP_TABLES.filter(
-        (t) => !t.required && selected.has(t.name),
-    ).length;
-    const optionalTotal = BACKUP_TABLES.filter((t) => !t.required).length;
+    const optionalCount = available.filter((t) => !t.required && selected.has(t.name)).length;
+    const optionalTotal = available.filter((t) => !t.required).length;
 
     const passphrase = useCustom ? custom.trim() : (presidentName ?? "").trim();
-    const canLock = lock && passphrase.length > 0;
+    const canLock = (system || lock) && passphrase.length > 0;
 
     const href = useMemo(() => {
         const params = new URLSearchParams();
         if (tenureId) params.set("tenure", tenureId);
 
-        const optional = BACKUP_TABLES.filter((t) => !t.required && selected.has(t.name)).map(
+        if (system) params.set("scope", "system");
+
+        const optional = available.filter((t) => !t.required && selected.has(t.name)).map(
             (t) => t.name,
         );
         if (optional.length) params.set("tables", optional.join(","));
         if (format === "csv") params.set("format", "csv");
-        if (!canLock) params.set("lock", "0");
+        // Never send lock=0 for a system backup — the server refuses it anyway, and a
+        // UI that can ask for something the server rejects is a bug waiting to be filed.
+        if (!system && !canLock) params.set("lock", "0");
         if (canLock && useCustom) params.set("passphrase", passphrase);
 
         const qs = params.toString();
         return `/dashboard/tenure/backup${qs ? `?${qs}` : ""}`;
-    }, [tenureId, selected, format, canLock, useCustom, passphrase]);
+    }, [tenureId, selected, format, canLock, useCustom, passphrase, system, available]);
 
     const download = async () => {
         setStatus("preparing");
@@ -257,23 +271,34 @@ export function BackupPicker({
                     Lock the file
                 </h3>
 
-                <label className="mt-3 flex cursor-pointer items-start gap-3">
-                    <input
-                        type="checkbox"
-                        checked={lock}
-                        onChange={(e) => setLock(e.target.checked)}
-                        className="mt-0.5 h-4 w-4 shrink-0 accent-rcf-navy"
-                    />
-                    <span className="text-sm text-slate-700">
-                        Encrypt with AES-256
-                        <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
-                            This file holds every member&rsquo;s phone number, date of birth and home
-                            address. It will end up in a Downloads folder and probably a chat app.
+                {system ? (
+                    <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+                        <strong>Encryption is not optional here.</strong> A full system backup is
+                        every member&rsquo;s phone number, date of birth and home address across
+                        every tenure the fellowship has ever had — and it is meant to sit in
+                        storage for years. That is precisely the file that must not be readable
+                        by whoever finds it.
+                    </p>
+                ) : (
+                    <label className="mt-3 flex cursor-pointer items-start gap-3">
+                        <input
+                            type="checkbox"
+                            checked={lock}
+                            onChange={(e) => setLock(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 shrink-0 accent-rcf-navy"
+                        />
+                        <span className="text-sm text-slate-700">
+                            Encrypt with AES-256
+                            <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                                This file holds every member&rsquo;s phone number, date of birth and
+                                home address. It will end up in a Downloads folder and probably a
+                                chat app.
+                            </span>
                         </span>
-                    </span>
-                </label>
+                    </label>
+                )}
 
-                {lock && (
+                {(system || lock) && (
                     <div className="mt-3 space-y-3 rounded-xl bg-slate-50 p-3">
                         <label className="flex cursor-pointer items-start gap-3">
                             <input
@@ -339,9 +364,11 @@ export function BackupPicker({
                     </div>
                 )}
 
-                {lock && !passphrase && (
+                {(system || lock) && !passphrase && (
                     <p role="alert" className="mt-3 text-xs font-medium text-red-600">
-                        Enter a passphrase, or turn encryption off to download unlocked.
+                        {system
+                            ? "Enter a passphrase — a full system backup cannot be downloaded unlocked."
+                            : "Enter a passphrase, or turn encryption off to download unlocked."}
                     </p>
                 )}
             </section>
@@ -375,7 +402,7 @@ export function BackupPicker({
             */}
             <button
                 type="button"
-                disabled={status === "preparing" || (lock && !passphrase)}
+                disabled={status === "preparing" || ((system || lock) && !passphrase)}
                 onClick={download}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-rcf-navy px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto"
             >
@@ -388,7 +415,9 @@ export function BackupPicker({
                 )}
                 {status === "preparing"
                     ? "Preparing backup…"
-                    : `Download ${canLock ? "locked " : ""}${format === "csv" ? "CSV" : "JSON"} backup${tenureName ? ` — ${tenureName}` : ""}`}
+                    : system
+                        ? `Download locked ${format === "csv" ? "CSV" : "JSON"} system backup`
+                        : `Download ${canLock ? "locked " : ""}${format === "csv" ? "CSV" : "JSON"} backup${tenureName ? ` — ${tenureName}` : ""}`}
             </button>
 
             <p className="text-[11px] text-slate-500">

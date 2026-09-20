@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Save, Loader2, RefreshCcw } from "lucide-react";
 import { useProfileStore } from "@/lib/stores/profile.store";
-import { DepartmentUtils } from "@rcffuta/ict-lib";
+import { DepartmentUtils } from "@/lib/departments";
 import { getZonesAction } from "@/app/(auth)/register/action";
 import { updateProfileAction } from "@/app/dashboard/profile/actions";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";

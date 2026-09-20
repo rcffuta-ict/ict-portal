@@ -5,10 +5,11 @@ import {
     backupFilename,
     backupToCsvZip,
     getTenurePresidentName,
-    BACKUP_TABLES,
+    tablesForScope,
+    type BackupScope,
 } from "@/lib/backup";
 import { encryptBackup, normalizePassphrase, type BackupPayload } from "@/lib/backup-crypto";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 
 /**
  * Download a fellowship backup bundle for one tenure.
@@ -22,13 +23,23 @@ import { ictAdmin } from "@/lib/ict";
  *   tenure=<uuid>     which tenure to back up (default: the active one)
  *   tables=a,b,c      optional tables to include; required ones are always added
  *   format=json|csv   json restores; csv is a ZIP of spreadsheets for reading
- *   lock=0            skip encryption (the file downloads unencrypted)
+ *   lock=0            skip encryption (tenure scope only — ignored for system)
  *   passphrase=…      override the default (the tenure president's name)
+ *   scope=system      FULL SYSTEM INSURANCE (see below)
  *
- * AUTHORIZATION: System Admin or VP Admin only — the two people who run a handover.
- * This is the most sensitive export in the app (every member's contact details and home
- * address in one file), so it is deliberately NOT open to the wider read-bypass tier
- * that can browse the same data a screen at a time.
+ * TWO SCOPES, TWO DIFFERENT PRODUCTS
+ *   scope=tenure (default) — the LITE backup. VP Admin or System Admin. Tenure-scoped
+ *       tables are filtered to one tenure. This is the handover gate: evidence that the
+ *       outgoing tenure was captured.
+ *   scope=system — FULL SYSTEM INSURANCE. System Admin ONLY. No tenure filtering at all,
+ *       every tenure and all history, encryption MANDATORY, and the other applications'
+ *       tables available (off by default). This is the undo for a structural migration —
+ *       a tenure-scoped file cannot restore a dropped column or a deleted tenure.
+ *
+ * AUTHORIZATION: System Admin or VP Admin. This is the most sensitive export in the app
+ * (every member's contact details and home address in one file), so it is deliberately
+ * NOT open to the wider read-bypass tier that can browse the same data a screen at a
+ * time. The system scope narrows further still, to the System Admin alone.
  */
 export async function GET(request: NextRequest) {
     const ctx = await getCurrentContext();
@@ -46,10 +57,22 @@ export async function GET(request: NextRequest) {
     try {
         const params = request.nextUrl.searchParams;
         const tenureId = params.get("tenure");
+        const scope: BackupScope = params.get("scope") === "system" ? "system" : "tenure";
 
-        // Validate every requested table against the registry — the browser can't name
-        // a table the backup doesn't already know about.
-        const known = new Set(BACKUP_TABLES.map((t) => t.name));
+        // The full-system export reaches across every tenure and can include other
+        // applications' data. That is the System Admin's call alone — the VP Admin runs
+        // handovers, which is the tenure scope.
+        if (scope === "system" && !ctx.isSysAdmin) {
+            return NextResponse.json(
+                { error: "Only the System Admin can take a full system backup." },
+                { status: 403 },
+            );
+        }
+
+        // Validate every requested table against the registry FOR THIS SCOPE — the
+        // browser can't name a table the backup doesn't already know about, and can't
+        // reach a foreign-app table from the tenure scope at all.
+        const known = new Set(tablesForScope(scope).map((t) => t.name));
         const tablesParam = params.get("tables");
         const tables = tablesParam
             ? tablesParam.split(",").map((t) => t.trim()).filter((t) => known.has(t))
@@ -60,6 +83,7 @@ export async function GET(request: NextRequest) {
             takenBy: { id: ctx.profile.id, name: actorName },
             tenureId,
             tables,
+            scope,
         });
 
         // Default passphrase: the president of the tenure being backed up. Memorable and
@@ -68,7 +92,22 @@ export async function GET(request: NextRequest) {
         const president = await getTenurePresidentName(backup.manifest.tenure.id);
         const custom = params.get("passphrase");
         const passphrase = custom?.trim() || president;
-        const lock = params.get("lock") !== "0" && !!passphrase;
+
+        // Encryption is optional for a tenure backup and MANDATORY for system insurance:
+        // that file is every member's home address and phone number across every tenure
+        // the fellowship has ever had, and it exists to be stored somewhere for years.
+        // An unencrypted copy of it sitting in a Downloads folder is the actual risk.
+        if (scope === "system" && !passphrase) {
+            return NextResponse.json(
+                {
+                    error:
+                        "A full system backup must be encrypted, and no passphrase could be "
+                        + "derived. Set one explicitly, or appoint a President for this tenure.",
+                },
+                { status: 400 },
+            );
+        }
+        const lock = scope === "system" || (params.get("lock") !== "0" && !!passphrase);
 
         backup.manifest.encrypted = lock;
 
@@ -109,12 +148,13 @@ export async function GET(request: NextRequest) {
         // close — evidence a backup was actually taken, rather than a checkbox the VP
         // Admin ticks on their own say-so. It also means an export of every member's
         // contact details is never silent.
-        const { error: auditError } = await ictAdmin.supabase.from("admin_audit_log").insert({
+        const { error: auditError } = await db.from("admin_audit_log").insert({
             actor_profile_id: ctx.profile.id,
             actor_name: actorName || null,
-            action: "backup.download",
+            action: scope === "system" ? "backup.system" : "backup.download",
             field: filename,
             new_value: JSON.stringify({
+                scope,
                 tenure: backup.manifest.tenure,
                 format: payload,
                 encrypted: lock,
@@ -127,7 +167,7 @@ export async function GET(request: NextRequest) {
             // this table, so a silent failure here would block the handover with a
             // confusing "no backup" message. Make it loud in the logs.
             console.error(
-                "backup.download could not be recorded (is migration 0010 applied?):",
+                "The backup download could not be recorded (is migration 0010 applied?):",
                 auditError.message,
             );
         }

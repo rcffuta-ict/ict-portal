@@ -11,7 +11,7 @@
  * actions that call `createInvite` — this module is the mechanism, not the policy.
  */
 import { randomBytes } from "crypto";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 
 export type InvitePurpose = "create" | "update" | "reset" | "level";
 
@@ -98,7 +98,7 @@ export async function createInvite(input: InviteInput): Promise<{ token: string;
 
     for (let attempt = 0; attempt < attempts; attempt++) {
         const token = isShort ? generateShortToken() : generateToken();
-        const { data, error } = await ictAdmin.supabase
+        const { data, error } = await db
             .from("registration_invites")
             .insert({
                 token,
@@ -132,7 +132,7 @@ export async function getInviteByToken(
     const token = rawToken ? normalizeToken(rawToken) : "";
     if (!token) return { valid: false, reason: "Missing invite token." };
 
-    const { data, error } = await ictAdmin.supabase
+    const { data, error } = await db
         .from("registration_invites")
         .select(`
             id, token, purpose, class_set_id, target_profile_id, is_active,
@@ -177,13 +177,13 @@ export async function getInviteByToken(
 export async function consumeInvite(inviteId: string): Promise<void> {
     // Atomic increment via RPC-less update: read-modify-write is acceptable here
     // because invites are low-contention; max_uses is also enforced at read time.
-    const { data } = await ictAdmin.supabase
+    const { data } = await db
         .from("registration_invites")
         .select("use_count")
         .eq("id", inviteId)
         .maybeSingle();
     const next = ((data?.use_count as number) ?? 0) + 1;
-    await ictAdmin.supabase
+    await db
         .from("registration_invites")
         .update({ use_count: next })
         .eq("id", inviteId);
@@ -191,7 +191,7 @@ export async function consumeInvite(inviteId: string): Promise<void> {
 
 /** Revoke an invite (idempotent). */
 export async function revokeInvite(inviteId: string): Promise<void> {
-    const { error } = await ictAdmin.supabase
+    const { error } = await db
         .from("registration_invites")
         .update({ is_active: false, revoked_at: new Date().toISOString() })
         .eq("id", inviteId);
@@ -210,7 +210,7 @@ export async function logInviteEvent(input: {
     actorName?: string | null;
     actorEmail?: string | null;
 }): Promise<void> {
-    const { error } = await ictAdmin.supabase.from("invite_events").insert({
+    const { error } = await db.from("invite_events").insert({
         invite_id: input.inviteId,
         action: input.action,
         profile_id: input.profileId ?? null,
@@ -222,7 +222,7 @@ export async function logInviteEvent(input: {
 
 /** A generation's token activity, newest first (the Activity tab). */
 export async function listInviteEventsByClassSet(classSetId: string, limit = 200) {
-    const { data } = await ictAdmin.supabase
+    const { data } = await db
         .from("invite_events")
         .select(`
             id, action, actor_name, actor_email, created_at, profile_id,
@@ -241,7 +241,7 @@ export async function listInviteEventsByClassSet(classSetId: string, limit = 200
  * Callers must have already checked `canManageLevel` for this class_set.
  */
 export async function listInvitesByClassSet(classSetId: string) {
-    const { data } = await ictAdmin.supabase
+    const { data } = await db
         .from("registration_invites")
         .select("id, token, label, purpose, class_set_id, target_profile_id, is_active, use_count, max_uses, expires_at, created_at, created_by, revoked_at")
         .eq("class_set_id", classSetId)
@@ -251,7 +251,7 @@ export async function listInvitesByClassSet(classSetId: string) {
 
 /** List a creator's active invites (for the coordinator/admin dashboards). */
 export async function listInvitesByCreator(createdBy: string) {
-    const { data } = await ictAdmin.supabase
+    const { data } = await db
         .from("registration_invites")
         .select("id, token, purpose, class_set_id, target_profile_id, is_active, use_count, max_uses, expires_at, created_at, revoked_at")
         .eq("created_by", createdBy)

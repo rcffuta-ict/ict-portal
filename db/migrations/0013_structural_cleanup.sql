@@ -22,12 +22,6 @@
 --
 -- WHAT THIS DELIBERATELY DOES NOT DO
 --   * No seeding. Bootstrap data lives in db/seed/default.sql and is run separately.
---   * `leadership_positions.category` and `.is_default` SURVIVE. They look like the
---     same class of legacy as is_central, but they are not: both are baked into
---     `rcf_profile_context` (0001/0004/0006), the RPC that resolves every session's
---     permissions, including the admin test `lp.is_default OR lp.category='PRESIDENT'`.
---     Dropping them means rewriting that function and ~15 call sites. That is its own
---     release with its own testing, not a footnote in a cleanup.
 --   * `leadership_positions.alias` SURVIVES and is not legacy at all — it is the short
 --     DISPLAY name ("VP Admin"), a different thing from `slug` ("vp-admin"), which is
 --     the immutable machine handle. An earlier draft of this plan had it wrong.
@@ -155,6 +149,207 @@ ALTER TABLE public.leadership_positions
     CHECK (tier IS NULL OR tier = ANY (ARRAY['PRESIDENT','VP','EXECUTIVE','COORDINATOR']));
 
 -- ----------------------------------------------------------------------------
+-- 3b. Derive `category` instead of storing it, and rewrite rcf_profile_context.
+--
+-- THE PROBLEM WITH THE STORED COLUMN
+--   `leadership_positions.category` ('PRESIDENT'|'CENTRAL'|'UNIT'|'TEAM'|'LEVEL'|'ZONE')
+--   predates the privilege-tag model of 0006. Since then it has been a SECOND,
+--   PARALLEL description of what a position is, kept in step with the first only
+--   because three separate code paths remember to rewrite it on every change
+--   (`deriveCategory()` in src/lib/privileges.ts). Two sources of truth for one fact is
+--   the bug; the only question was ever which one to delete.
+--
+--   `is_default` has the same shape of problem: a hand-maintained "this position is
+--   protected" flag that 0011 superseded with `is_protected`, while the auth RPC went
+--   on testing the old one (`lp.is_default OR lp.category = 'PRESIDENT'`).
+--
+-- THE FIX
+--   Derive both at read time from the privileges that already decide authorization.
+--   `rcf_position_kind()` below returns exactly what `deriveCategory()` returns in
+--   TypeScript, so the payload key `category` keeps its meaning and its callers — it
+--   simply can no longer disagree with the tags.
+--
+-- ONE DELIBERATE IMPROVEMENT
+--   The old RPC identified the VP Admin by `lp.title = 'Vice President Administration'`.
+--   Title is an EDITABLE, display-facing string: renaming that office in the UI would
+--   have silently stripped the VP Admin of `isVpAdmin` — and with it the handover, the
+--   catalogue and every transfer approval. It now matches on `lp.slug = 'vp-admin'`,
+--   which is immutable by design. This is a real latent bug being closed, not a
+--   refactor.
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.rcf_position_kind(p_position_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+AS $$
+    -- Mirrors deriveCategory() in src/lib/privileges.ts. Order matters: a position
+    -- holding several tags takes the most significant one. SYSADMIN counts as CENTRAL
+    -- so the ICT Coordinator still reads as a church-wide office even though it now
+    -- also carries EXCO:ict for the unit it leads.
+    SELECT CASE
+        WHEN EXISTS (SELECT 1 FROM public.position_privileges
+                      WHERE position_id = p_position_id AND privilege = 'PRESIDENT')
+            THEN 'PRESIDENT'
+        WHEN EXISTS (SELECT 1 FROM public.position_privileges
+                      WHERE position_id = p_position_id
+                        AND privilege IN ('CENTRAL','SYSADMIN'))
+            THEN 'CENTRAL'
+        WHEN EXISTS (SELECT 1 FROM public.position_privileges
+                      WHERE position_id = p_position_id AND privilege = 'LEVEL')
+            THEN 'LEVEL'
+        WHEN EXISTS (SELECT 1 FROM public.position_privileges
+                      WHERE position_id = p_position_id AND privilege = 'ZONE')
+            THEN 'ZONE'
+        -- EXCO splits on what it is scoped to: leading a team is not leading a unit.
+        WHEN EXISTS (SELECT 1 FROM public.position_privileges pp
+                       JOIN public.units u ON u.slug = pp.scope
+                      WHERE pp.position_id = p_position_id
+                        AND pp.privilege = 'EXCO' AND u.type = 'TEAM')
+            THEN 'TEAM'
+        ELSE 'UNIT'
+    END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rcf_position_kind(uuid) FROM anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 3c. rcf_profile_context — rewritten free of `category` and `is_default`.
+--
+-- Reproduces 0006's function exactly, with four changes, each marked `-- 0013`:
+--   * roles[].scope        now public.rcf_position_kind(lp.id)   (was lp.category)
+--   * roles[].slug         added — an immutable handle the client can test against
+--                          instead of comparing editable titles
+--   * leadership[].category now derived; .isDefault replaced by .tier + .isProtected
+--   * isVpAdmin / isAdmin  now match lp.slug = 'vp-admin' (was the editable title)
+--
+-- Must run BEFORE the column drops below.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.rcf_profile_context(p_profile_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+    v_tenure_id uuid;
+    v_session   text;
+    v_result    jsonb;
+BEGIN
+    SELECT id, session INTO v_tenure_id, v_session
+    FROM public.tenures WHERE is_active LIMIT 1;
+
+    SELECT jsonb_build_object(
+        'profile', jsonb_build_object(
+            'id', p.id,
+            'firstName', p.first_name,
+            'lastName', p.last_name,
+            'middleName', p.middle_name,
+            'email', p.email,
+            'phoneNumber', p.phone_number,
+            'gender', p.gender,
+            'avatarUrl', p.avatar_url,
+            'avatarPublicId', p.avatar_public_id
+        ),
+        'location', jsonb_build_object(
+            'schoolAddress', p.school_address,
+            'homeAddress', p.home_address,
+            'residentialZone', rz.name
+        ),
+        'academics', jsonb_build_object(
+            'matricNumber', p.matric_number,
+            'department', p.department,
+            'faculty', p.faculty,
+            'entryYear', cs.entry_year,
+            'family', cs.family_name,
+            'currentLevel', public.rcf_compute_level(cs.entry_year, COALESCE(cs.is_foundation, false), v_session)
+        ),
+        'classSet', CASE WHEN cs.id IS NULL THEN NULL ELSE jsonb_build_object(
+            'id', cs.id, 'entryYear', cs.entry_year, 'familyName', cs.family_name,
+            'isFoundation', COALESCE(cs.is_foundation, false),
+            'currentLevel', public.rcf_compute_level(cs.entry_year, COALESCE(cs.is_foundation, false), v_session)
+        ) END,
+        'roles', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+                'title', lp.title, 'slug', lp.slug,
+                'scope', public.rcf_position_kind(lp.id),
+                'contextName', COALESCE(u.name, lcs.family_name, lrz.name)))
+            FROM public.leadership l
+            JOIN public.leadership_positions lp ON lp.id = l.position_id
+            LEFT JOIN public.units u ON u.id = l.unit_id
+            LEFT JOIN public.class_sets lcs ON lcs.id = l.class_set_id
+            LEFT JOIN public.residential_zones lrz ON lrz.id = l.residential_zone_id
+            WHERE l.profile_id = p.id AND (v_tenure_id IS NULL OR l.tenure_id = v_tenure_id)
+        ), '[]'::jsonb),
+        'leadership', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+                'leadershipId', l.id, 'positionId', l.position_id,
+                'title', lp.title, 'alias', lp.alias, 'slug', lp.slug,
+                'category', public.rcf_position_kind(lp.id),          -- 0013: derived, not stored
+                'tier', lp.tier, 'isProtected', lp.is_protected,      -- 0013: replaces isDefault
+                'unitId', l.unit_id, 'unitName', u.name,
+                'classSetId', l.class_set_id, 'residentialZoneId', l.residential_zone_id,
+                'tenureId', l.tenure_id,
+                'privileges', COALESCE((                                        -- 0006: per-position privilege tags
+                    SELECT jsonb_agg(jsonb_build_object('tag', pp.privilege, 'scope', pp.scope))
+                    FROM public.position_privileges pp WHERE pp.position_id = l.position_id
+                ), '[]'::jsonb)))
+            FROM public.leadership l
+            JOIN public.leadership_positions lp ON lp.id = l.position_id
+            LEFT JOIN public.units u ON u.id = l.unit_id
+            WHERE l.profile_id = p.id AND (v_tenure_id IS NULL OR l.tenure_id = v_tenure_id)
+        ), '[]'::jsonb),
+        'unit', (
+            SELECT jsonb_build_object('id', u.id, 'name', u.name, 'role', mu.role)
+            FROM public.membership_units mu
+            JOIN public.units u ON u.id = mu.unit_id
+            WHERE mu.profile_id = p.id AND u.type = 'UNIT'
+              AND (v_tenure_id IS NULL OR mu.tenure_id = v_tenure_id)
+            LIMIT 1
+        ),
+        'teams', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object('id', u.id, 'name', u.name, 'role', mu.role))
+            FROM public.membership_units mu
+            JOIN public.units u ON u.id = mu.unit_id
+            WHERE mu.profile_id = p.id AND u.type = 'TEAM'
+              AND (v_tenure_id IS NULL OR mu.tenure_id = v_tenure_id)
+        ), '[]'::jsonb),
+        -- 0006: admin flags are derived from PRIVILEGE TAGS, not category/is_default.
+        'isSysAdmin', EXISTS (                                                  -- 0006
+            SELECT 1 FROM public.leadership l
+            JOIN public.position_privileges pp ON pp.position_id = l.position_id
+            WHERE l.profile_id = p.id AND (v_tenure_id IS NULL OR l.tenure_id = v_tenure_id)
+              AND pp.privilege = 'SYSADMIN'),
+        'isPresident', EXISTS (                                                 -- 0006
+            SELECT 1 FROM public.leadership l
+            JOIN public.position_privileges pp ON pp.position_id = l.position_id
+            WHERE l.profile_id = p.id AND (v_tenure_id IS NULL OR l.tenure_id = v_tenure_id)
+              AND pp.privilege = 'PRESIDENT'),
+        'isVpAdmin', EXISTS (
+            SELECT 1 FROM public.leadership l
+            JOIN public.leadership_positions lp ON lp.id = l.position_id
+            WHERE l.profile_id = p.id AND (v_tenure_id IS NULL OR l.tenure_id = v_tenure_id)
+              AND lp.slug = 'vp-admin'),                                 -- 0013: slug, not title
+        -- READ-bypass tier: SysAdmin, President, or VP Admin see everything (write is
+        -- gated separately in app resolvers — President is globally write-blocked).
+        'isAdmin', EXISTS (                                                     -- 0006
+            SELECT 1 FROM public.leadership l
+            LEFT JOIN public.position_privileges pp ON pp.position_id = l.position_id
+            JOIN public.leadership_positions lp ON lp.id = l.position_id
+            WHERE l.profile_id = p.id AND (v_tenure_id IS NULL OR l.tenure_id = v_tenure_id)
+              AND (pp.privilege IN ('SYSADMIN','PRESIDENT')
+                   OR lp.slug = 'vp-admin'))                             -- 0013: slug, not title
+    )
+    INTO v_result
+    FROM public.profiles p
+    LEFT JOIN public.residential_zones rz ON rz.id = p.residential_zone_id
+    LEFT JOIN public.class_sets cs ON cs.id = p.class_set_id
+    WHERE p.id = p_profile_id;
+
+    RETURN v_result;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rcf_profile_context(uuid) FROM anon, authenticated;
+
+-- ----------------------------------------------------------------------------
 -- 4. Drop what nothing references.
 --
 -- Each of these was verified against the whole of src/ and the whole of db/migrations/
@@ -181,6 +376,16 @@ ALTER TABLE public.leadership_positions DROP COLUMN IF EXISTS is_central;
 
 -- `event_registrations.raffle_id` — a one-off for a single past event.
 ALTER TABLE public.event_registrations DROP COLUMN IF EXISTS raffle_id;
+
+-- `leadership_positions.category` — a second, parallel description of what a position
+-- is, now derived from the privilege tags by rcf_position_kind(). See 3b.
+ALTER TABLE public.leadership_positions DROP COLUMN IF EXISTS category;
+
+-- `leadership_positions.is_default` — superseded by `is_protected` (0011). The auth
+-- RPC no longer reads it; the app identifies the fixed offices by immutable SLUG
+-- (FIXED_POSITIONS in src/config/leadership-positions.ts), which is what it should
+-- always have done.
+ALTER TABLE public.leadership_positions DROP COLUMN IF EXISTS is_default;
 
 -- ----------------------------------------------------------------------------
 -- 5. RLS sweep over portal-owned tables.
@@ -244,8 +449,10 @@ $$;
 INSERT INTO public.schema_migrations (id, version, name, applied_at, applied_by, notes)
 VALUES ('0013', '1.0.0', 'structural_cleanup', now(), current_user,
         'Dropped verification_codes, question_flags, question_references, '
-        || 'leadership.can_manage_unit, leadership_positions.is_central, '
-        || 'event_registrations.raffle_id. ict-coord retiered to EXECUTIVE + EXCO:ict.')
+        || 'leadership.can_manage_unit, event_registrations.raffle_id, and '
+        || 'leadership_positions.is_central/category/is_default. category is now derived '
+        || 'by rcf_position_kind(); rcf_profile_context rewritten and VP Admin matched '
+        || 'by slug rather than editable title. ict-coord retiered to EXECUTIVE + EXCO:ict.')
 ON CONFLICT (id) DO UPDATE
     SET version = EXCLUDED.version,
         name    = EXCLUDED.name,

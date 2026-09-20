@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { getInviteByToken, consumeInvite, logInviteEvent } from "@/lib/invites";
 
 /**
@@ -43,7 +43,7 @@ export async function validateInviteAction(token: string) {
     // For 'update' pre-fill the current profile so the member can edit it.
     let prefill: Record<string, string | null> | null = null;
     if (inv.purpose === "update" && inv.targetProfileId) {
-        const { data } = await ictAdmin.supabase
+        const { data } = await db
             .from("profiles")
             .select("first_name, last_name, middle_name, email, phone_number, gender, dob, matric_number, department, faculty, school_address, home_address, residential_zone_id, avatar_url")
             .eq("id", inv.targetProfileId)
@@ -87,7 +87,7 @@ export async function lookupLevelMemberAction(token: string, email: string) {
         const clean = email.trim().toLowerCase();
         if (!clean) return { success: false as const, error: "Enter your email address." };
 
-        const { data: profile } = await ictAdmin.supabase
+        const { data: profile } = await db
             .from("profiles")
             .select(`${PREFILL_COLUMNS}, class_set_id`)
             .eq("email", clean)
@@ -116,7 +116,7 @@ export async function lookupLevelMemberAction(token: string, email: string) {
 /** Public: fetch residential zones for the location step (service role — RLS deny). */
 export async function getZonesAction() {
     try {
-        const { data } = await ictAdmin.supabase
+        const { data } = await db
             .from("residential_zones")
             .select("id, name")
             .order("name");
@@ -174,7 +174,7 @@ export async function submitRegistrationAction(
         // the client, so re-verify the membership here rather than trusting the lookup step.
         let updateId: string | null = inv.purpose === "update" ? inv.targetProfileId : null;
         if (inv.purpose === "level" && targetProfileId) {
-            const { data: target } = await ictAdmin.supabase
+            const { data: target } = await db
                 .from("profiles")
                 .select("id, class_set_id")
                 .eq("id", targetProfileId)
@@ -186,7 +186,7 @@ export async function submitRegistrationAction(
         }
 
         if (updateId) {
-            const { error } = await ictAdmin.supabase
+            const { error } = await db
                 .from("profiles")
                 .update({ ...columns, class_set_id: inv.classSetId, entry_year: entryYear, updated_at: new Date().toISOString() })
                 .eq("id", updateId);
@@ -203,7 +203,7 @@ export async function submitRegistrationAction(
         }
 
         // create: guard against duplicate email.
-        const { data: existing } = await ictAdmin.supabase
+        const { data: existing } = await db
             .from("profiles")
             .select("id")
             .eq("email", columns.email)
@@ -217,7 +217,7 @@ export async function submitRegistrationAction(
             };
         }
 
-        const { data: created, error } = await ictAdmin.supabase
+        const { data: created, error } = await db
             .from("profiles")
             .insert({ ...columns, class_set_id: inv.classSetId, entry_year: entryYear })
             .select("id")

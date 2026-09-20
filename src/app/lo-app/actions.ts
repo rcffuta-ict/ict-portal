@@ -1,10 +1,11 @@
 "use server";
 
-import { CreateQuestionInput, QAService } from "@rcffuta/ict-lib";
 import { checkEnhancedAdminAccess } from "@/lib/access-control";
 import { validateSession } from "@/lib/auth-utils";
-import { RcfIctClient } from "@rcffuta/ict-lib/server";
-import { ict } from "@/lib/ict";
+import { db } from "@/lib/db";
+import { getProfileContext } from "@/lib/auth/profile-context";
+import * as qa from "@/lib/qa";
+import type { CreateQuestionInput } from "@/lib/qa";
 import {
     forgetLoMemberLink,
     getLoMember,
@@ -12,17 +13,11 @@ import {
     type LoMember,
 } from "@/lib/lo-member";
 
-// Initialize QAService with service role for server actions
-const qaService = new QAService(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 // ─── Events ───
 
 export async function getActiveEvents() {
     try {
-        const { data: events, error } = await ict.supabase
+        const { data: events, error } = await db
             .from("events")
             .select("id, title, slug, description, date, is_active, created_at, is_recurring, is_exclusive")
             // .or(`date.gte.${new Date().toISOString()},is_recurring.eq.true`)
@@ -46,14 +41,14 @@ export async function getQuestions(options?: {
 }) {
     try {
         if (options?.eventId) {
-            const response = await qaService.getEventQuestions(options.eventId, {
+            const response = await qa.getEventQuestions(options.eventId, {
                 status: options.status as any,
                 search_term: options.search_term,
             });
             if (response.error) throw new Error(response.error);
             return { success: true, data: response.data };
         } else {
-            const response = await qaService.searchQuestions({
+            const response = await qa.searchQuestions<Record<string, unknown>>({
                 search_term: options?.search_term || "",
             });
             if (response.error) throw new Error(response.error);
@@ -90,8 +85,7 @@ export async function askQuestion(data: {
         try {
             const { valid, user } = await validateSession();
             if (valid && user) {
-                const rcf = RcfIctClient.fromEnv();
-                const fullProfile = await rcf.member.getFullProfile(user.id);
+                const fullProfile = await getProfileContext(user.id);
                 if (fullProfile) {
                     payload.asked_by_profile_id = fullProfile.profile.id;
                     payload.asker_name = `${fullProfile.profile.firstName} ${fullProfile.profile.lastName}`;
@@ -105,7 +99,7 @@ export async function askQuestion(data: {
             payload.asker_name = data.asker_name || "Anonymous";
         }
 
-        const response = await qaService.createQuestion(payload);
+        const response = await qa.createQuestion(payload);
 
         if (response.error) throw new Error(response.error);
         return { success: true, data: response.data };
@@ -121,7 +115,7 @@ export async function answerQuestion(questionId: string, answerText: string) {
             return { success: false, error: "Unauthorized: Admin access required" };
         }
 
-        const response = await qaService.answerQuestion(
+        const response = await qa.answerQuestion(
             questionId,
             answerText,
             adminCheck.user.id
@@ -144,7 +138,7 @@ export async function toggleVisibility(
             return { success: false, error: "Unauthorized" };
         }
 
-        const response = await qaService.toggleQuestionVisibility({
+        const response = await qa.toggleQuestionVisibility({
             question_id: questionId,
             new_status: status,
         });
@@ -162,7 +156,7 @@ export async function getStarCounts(questionIds: string[]) {
     try {
         if (questionIds.length === 0) return { success: true, data: {} };
 
-        const { data, error } = await ict.supabase
+        const { data, error } = await db
             .from("question_stars")
             .select("question_id")
             .in("question_id", questionIds);
@@ -184,7 +178,7 @@ export async function getUserStars(questionIds: string[], profileId: string="") 
     try {
         if (questionIds.length === 0 || !profileId) return { success: true, data: [] };
 
-        const { data, error } = await ict.supabase
+        const { data, error } = await db
             .from("question_stars")
             .select("question_id")
             .eq("profile_id", profileId)
@@ -205,7 +199,7 @@ export async function toggleStar(questionId: string, profileId: string) {
         }
 
         // Check if already starred
-        const { data: existing } = await ict.supabase
+        const { data: existing } = await db
             .from("question_stars")
             .select("id")
             .eq("question_id", questionId)
@@ -214,14 +208,14 @@ export async function toggleStar(questionId: string, profileId: string) {
 
         if (existing) {
             // Unstar
-            await ict.supabase
+            await db
                 .from("question_stars")
                 .delete()
                 .eq("id", existing.id);
             return { success: true, starred: false };
         } else {
             // Star
-            const { error } = await ict.supabase
+            const { error } = await db
                 .from("question_stars")
                 .insert({ question_id: questionId, profile_id: profileId });
 
@@ -237,7 +231,7 @@ export async function toggleStar(questionId: string, profileId: string) {
 
 export async function searchQuestions(eventId: string, searchTerm: string) {
     try {
-        const response = await qaService.searchQuestions({
+        const response = await qa.searchQuestions({
             search_term: searchTerm,
             event_id_filter: eventId,
         });
@@ -259,7 +253,7 @@ export async function clusterQuestions(questionIds: string[]) {
             return { success: false, error: "Select at least 2 questions to cluster." };
         }
 
-        const { data, error } = await ict.supabase.rpc('cluster_questions', {
+        const { data, error } = await db.rpc('cluster_questions', {
             question_ids: questionIds
         });
 

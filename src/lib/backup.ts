@@ -24,14 +24,14 @@
  *
  * Server-only.
  */
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { csvCell } from "@/lib/csv";
 import { createZip, type ZipEntry } from "@/lib/zip";
 import {
-    BACKUP_TABLES,
-    OPTIONAL_TABLES,
     DEFAULT_TABLE_SELECTION,
+    tablesForScope,
     type TableSpec,
+    type BackupScope,
 } from "@/lib/backup-tables";
 
 /** Bumped when the shape of the bundle changes, so a restore can refuse a stranger. */
@@ -45,14 +45,18 @@ const PAGE_SIZE = 1000;
 export {
     BACKUP_GROUP_LABELS,
     BACKUP_TABLES,
+    FOREIGN_TABLES,
     REQUIRED_TABLES,
     OPTIONAL_TABLES,
     DEFAULT_TABLE_SELECTION,
+    tablesForScope,
 } from "@/lib/backup-tables";
-export type { BackupGroup, TableSpec } from "@/lib/backup-tables";
+export type { BackupGroup, TableSpec, BackupScope } from "@/lib/backup-tables";
 
 export interface BackupManifest {
     formatVersion: number;
+    /** "tenure" = one tenure's data; "system" = the whole database, unfiltered. */
+    scope: BackupScope;
     tenure: { id: string | null; name: string | null; session: string | null; theme: string | null };
     label: string;
     takenAt: string;
@@ -77,7 +81,7 @@ async function dumpTable(spec: TableSpec, tenureId: string | null): Promise<Reco
     const rows: Record<string, unknown>[] = [];
 
     for (let from = 0; ; from += PAGE_SIZE) {
-        let q = ictAdmin.supabase.from(spec.name).select("*");
+        let q = db.from(spec.name).select("*");
         if (spec.tenureColumn && tenureId) q = q.eq(spec.tenureColumn, tenureId);
 
         const { data, error } = await q.range(from, from + PAGE_SIZE - 1);
@@ -108,7 +112,7 @@ async function dumpTable(spec: TableSpec, tenureId: string | null): Promise<Reco
 export async function getTenurePresidentName(tenureId: string | null): Promise<string | null> {
     if (!tenureId) return null;
 
-    const { data } = await ictAdmin.supabase
+    const { data } = await db
         .from("leadership")
         .select("profile:profiles(first_name, last_name), position:leadership_positions!inner(position_privileges!inner(privilege))")
         .eq("tenure_id", tenureId)
@@ -137,11 +141,18 @@ export async function buildBackup(options: {
     takenBy: { id: string; name: string } | null;
     tenureId?: string | null;
     tables?: string[];
+    /**
+     * "tenure" (default) filters tenure-scoped tables to one tenure — the lite backup
+     * the handover takes. "system" applies NO tenure filter at all: every tenure, all
+     * history, which is the only kind that can undo a structural change.
+     */
+    scope?: BackupScope;
 }): Promise<Backup> {
+    const scope: BackupScope = options.scope ?? "tenure";
     const { data: tenure } = options.tenureId
-        ? await ictAdmin.supabase
+        ? await db
             .from("tenures").select("id, name, session, theme").eq("id", options.tenureId).maybeSingle()
-        : await ictAdmin.supabase
+        : await db
             .from("tenures").select("id, name, session, theme").eq("is_active", true).maybeSingle();
 
     const tenureId = tenure?.id ?? null;
@@ -149,7 +160,13 @@ export async function buildBackup(options: {
     // Required tables are forced in no matter what the caller asked for — a bundle
     // missing them isn't a backup, it's a file that looks like one.
     const requested = new Set(options.tables ?? DEFAULT_TABLE_SELECTION);
-    const selected = BACKUP_TABLES.filter((t) => t.required || requested.has(t.name));
+    const selected = tablesForScope(scope).filter((t) => t.required || requested.has(t.name));
+
+    // In the system scope the tenure is recorded for LABELLING only — it names the file
+    // and supplies the default passphrase — but nothing is filtered by it. Passing the
+    // id through to dumpTable here would quietly produce a tenure-scoped file under a
+    // "full system" name, which is the one failure mode this scope exists to prevent.
+    const filterTenureId = scope === "system" ? null : tenureId;
 
     const tables: Record<string, Record<string, unknown>[]> = {};
     const counts: Record<string, number> = {};
@@ -157,7 +174,7 @@ export async function buildBackup(options: {
 
     for (const spec of selected) {
         try {
-            const rows = await dumpTable(spec, tenureId);
+            const rows = await dumpTable(spec, filterTenureId);
             tables[spec.name] = rows;
             counts[spec.name] = rows.length;
         } catch (e) {
@@ -169,11 +186,14 @@ export async function buildBackup(options: {
     }
 
     const selectedNames = new Set(selected.map((t) => t.name));
-    const excluded = OPTIONAL_TABLES.filter((n) => !selectedNames.has(n));
+    const excluded = tablesForScope(scope)
+        .filter((t) => !t.required && !selectedNames.has(t.name))
+        .map((t) => t.name);
 
     return {
         manifest: {
             formatVersion: BACKUP_FORMAT_VERSION,
+            scope,
             tenure: {
                 id: tenureId,
                 name: tenure?.name ?? null,

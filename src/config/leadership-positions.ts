@@ -65,13 +65,6 @@ export interface PositionSpec {
     tier: PositionTier;
     description: string;
     privileges: Privilege[];
-    /**
-     * Legacy `leadership_positions.category`, still read by the not-yet-rebuilt
-     * cabinet UI. Derived from the tier; privileges remain the real authority.
-     */
-    category: "PRESIDENT" | "CENTRAL" | "UNIT" | "TEAM" | "LEVEL" | "ZONE";
-    /** One of the two protected offices that must exist in every tenure. */
-    isDefault?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +89,6 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         title: "President",
         alias: "President",
         tier: "PRESIDENT",
-        category: "PRESIDENT",
         description:
             "Head of the fellowship. Sees every module including Settings, and is globally write-blocked.",
         // PRESIDENT is EXCLUSIVE — the DB trigger from migration 0006 rejects any
@@ -108,8 +100,6 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         title: "Vice President Administration",
         alias: "VP Admin",
         tier: "VP",
-        category: "CENTRAL",
-        isDefault: true,
         description:
             "Administrative head. Appoints leaders, approves unit transfers, and runs the handover.",
         privileges: [{ tag: "CENTRAL", scope: null }],
@@ -119,7 +109,6 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         title: "Vice President Church Growth",
         alias: "VP Church Growth",
         tier: "VP",
-        category: "CENTRAL",
         description: "Growth and outreach head. Church-wide read access.",
         privileges: [{ tag: "CENTRAL", scope: null }],
     },
@@ -131,8 +120,6 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         // other unit heads in the hierarchy. Tier is placement only — it takes nothing
         // away from SYSADMIN, because authorization has only ever read privilege tags.
         tier: "EXECUTIVE",
-        category: "UNIT",
-        isDefault: true,
         description:
             "System Admin, and Executive of the Information and Communications Unit. Full read and write everywhere, including Settings and the Oracle.",
         // Two tags, two distinct jobs: SYSADMIN is the portal-wide System Admin right;
@@ -166,7 +153,6 @@ export function excoPositionFor(unit: {
         title: `Executive — ${unit.name}`,
         alias,
         tier: "EXECUTIVE",
-        category: unit.type === "TEAM" ? "TEAM" : "UNIT",
         description: `Leads ${unit.name}. Adds and removes its members directly.`,
         // Scoped to this unit's slug — the EXCO tag with no scope would be
         // church-wide, which is not what leading one unit means.
@@ -205,7 +191,6 @@ export function levelCoordinatorFor(level: string): PositionSpec {
         title: `Level Coordinator — ${level}`,
         alias: `${level} Coord`,
         tier: "COORDINATOR",
-        category: "LEVEL",
         description: isFinalist
             ? "Coordinates the finalists, and holds coordinator authority over EVERY level in the fellowship."
             : `Coordinates ${level}. Authority is limited to that generation.`,
@@ -233,6 +218,23 @@ export function buildCatalogue(
         ...units.filter((u) => u.slug !== ICT_UNIT_SLUG).map(excoPositionFor),
         ...levelCoordinatorPositions(),
     ];
+}
+
+/**
+ * The two offices that must exist and stay enabled in EVERY tenure: the VP Admin (who
+ * appoints everyone else and runs the handover) and the ICT Coordinator (the System
+ * Admin). Disabling either leaves the fellowship unable to administer itself.
+ *
+ * This replaces the old `leadership_positions.is_default` column, dropped in migration
+ * 0013. Identifying them by IMMUTABLE SLUG rather than by a stored boolean — or worse,
+ * by their editable titles — means renaming an office in the UI can never accidentally
+ * unprotect it.
+ */
+export const UNDISABLEABLE_POSITION_SLUGS = ["vp-admin", "ict-coord"] as const;
+
+/** Whether this position may never be disabled. */
+export function isUndisableablePosition(slug: string | null | undefined): boolean {
+    return !!slug && (UNDISABLEABLE_POSITION_SLUGS as readonly string[]).includes(slug);
 }
 
 /** True when a slug belongs to the fixed, never-generated set. */

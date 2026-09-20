@@ -3,7 +3,7 @@
  * Best-effort: auditing must never break the auth flow, so failures are logged
  * and swallowed. Server-only.
  */
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 
 export type LoginEvent =
     | "login_success"
@@ -20,7 +20,7 @@ export interface AuditContext {
 
 export async function recordLoginEvent(event: LoginEvent, ctx: AuditContext): Promise<void> {
     try {
-        await ictAdmin.supabase.from("login_events").insert({
+        await db.from("login_events").insert({
             profile_id: ctx.profileId ?? null,
             email: ctx.email ?? null,
             event,

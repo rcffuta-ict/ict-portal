@@ -2,7 +2,7 @@
 'use server'
 
 import { revalidatePath } from "next/cache";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { requireContext, canManageLevel } from "@/lib/access-control";
 import { createInvite, revokeInvite, listInvitesByCreator } from "@/lib/invites";
 
@@ -54,7 +54,7 @@ export async function listMyInvitesAction() {
 export async function revokeInviteAction(inviteId: string) {
     try {
         const ctx = await requireContext();
-        const { data: invite } = await ictAdmin.supabase
+        const { data: invite } = await db
             .from("registration_invites")
             .select("created_by, class_set_id")
             .eq("id", inviteId)

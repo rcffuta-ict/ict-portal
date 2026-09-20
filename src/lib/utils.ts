@@ -1,4 +1,5 @@
-import { DepartmentUtils, FullUserProfile, LeadershipRole, UnitMembership } from "@rcffuta/ict-lib";
+import { DepartmentUtils } from "@/lib/departments";
+import type { FullUserProfile, LeadershipRole, UnitMembership } from "@/lib/types/portal";
 import clsx from "clsx";
 
 export type ExtractedUserProfile = {
@@ -124,10 +125,12 @@ export function extractUserProfileInfo(userData: FullUserProfile): ExtractedUser
         firstName: profile.firstName,
         lastName: profile.lastName,
         email: profile.email,
-        phone: profile.phoneNumber,
-        gender: profile.gender,
-        dob: formatDate(profile.dob),
-        avatarUrl: profile.avatarUrl,
+        // Nullable on the profile — coalesce for display rather than letting a null
+        // reach the UI, which renders as a blank field with no explanation.
+        phone: profile.phoneNumber || "Not Set",
+        gender: profile.gender || "Not Set",
+        dob: formatDate(profile.dob ?? undefined) || "Not Set",
+        avatarUrl: profile.avatarUrl ?? undefined,
 
         // Academic
         matric: academics?.matricNumber || "Not Set",

@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { BioData, LocationData } from "@rcffuta/ict-lib/server";
+import type { BioData, LocationData } from "@/lib/types/portal";
 import { revalidatePath } from "next/cache";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
+import { updateLocationInfo } from "@/lib/fellowship";
 import { getSessionProfileId } from "@/lib/auth/session";
 import { requireSysAdmin } from "@/lib/access-control";
 
@@ -58,7 +59,7 @@ export async function updateProfileAction(formData: FormData, targetId?: string)
         const avatarPublicId = formData.get("avatarPublicId") as string | null;
         const hasAvatarField = formData.has("avatarUrl");
 
-        const bioResult = await ictAdmin.supabase
+        const bioResult = await db
             .from('profiles')
             .update({
                 first_name: bioData.firstName,
@@ -79,7 +80,7 @@ export async function updateProfileAction(formData: FormData, targetId?: string)
         // Supabase resolves with an error rather than throwing, so this result is checked
         // too — an earlier version only inspected the bio update and reported a silent
         // failure here as success.
-        await ictAdmin.auth.updateLocationInfo(userId, locationData);
+        await updateLocationInfo(userId, locationData);
 
         // NOTE: there is deliberately no "current level" write. Level is COMPUTED from
         // the member's generation (`class_sets` + the active session, via

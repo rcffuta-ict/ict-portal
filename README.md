@@ -45,13 +45,79 @@ carry a `NEXT_PUBLIC_` prefix — that prefix ships the value to the browser.
 
 ### Database
 
-SQL lives in `db/`: `db-schema.sql` is the reference dump, `db/migrations/*.sql` are
-applied in numeric order. After applying `0001` and `0002`, seed the first admin so
-you have someone who can log in:
+SQL lives in `db/`:
+
+| | |
+|---|---|
+| `db/migrations/*.sql` | applied **by hand, in numeric order**, in the Supabase SQL editor — there is no migration runner |
+| `db/seed/default.sql` | bootstrap structure: units and offices. Runs in production. Re-runnable, which makes it the **reset seed** |
+| `db/db-schema.sql` | reference dump. Re-dump it after a migration; never hand-append to it |
+
+**Which migrations has a database actually had?** Ask it:
+
+```sql
+select id, version, name, applied_at from public.schema_migrations order by id;
+```
+
+That table arrived with `0013`, which backfills `0001`–`0012`. Before it, the question
+was unanswerable — migrations were applied by hand and nothing recorded that they had
+been.
+
+Setting up from scratch:
 
 ```bash
+# 1. apply db/migrations/*.sql in order, then:
+psql "$DATABASE_URL" -f db/seed/default.sql      # or paste into the SQL editor
+
+# 2. someone who can log in
 node scripts/bootstrap-admin.mjs <email> <password> [firstName] [lastName]
+
+# 3. development only — ~110 fake members to test the handover against
+node scripts/seed-test.mjs --i-understand-this-is-not-production --password 'dev-pass'
 ```
+
+`db/seed/default.sql` is **generated** from `src/config/fellowship-units.ts` and
+`src/config/leadership-positions.ts`. Edit those, then:
+
+```bash
+node scripts/gen-default-seed.mjs            # regenerate
+node scripts/gen-default-seed.mjs --check    # CI: fail if out of date
+```
+
+### Versioning — the database decides the number
+
+| | |
+|---|---|
+| **PATCH** | code only. No migration; deploying does not touch the database |
+| **MINOR** | a new migration exists. SQL must be applied |
+| **MAJOR** | not safely reversible — dropped columns or tables, or a manual data step |
+
+So a version tells you whether a deploy needs SQL, which matters more here than
+semver's usual API-compatibility promise: there is one deployment and no consumers.
+
+```bash
+node scripts/release.mjs                   # dry run — proposes the version + changelog
+node scripts/release.mjs --commit --tag    # write CHANGELOG.md, bump package.json, tag
+node scripts/release.mjs --major --commit  # MAJOR is never inferred; you pass it
+```
+
+### Other tools
+
+```bash
+node scripts/db-inventory.mjs      # row counts, grouped PORTAL / FOREIGN / UNCLASSIFIED
+node scripts/restore-backup.mjs    # restore a .rcfvault (dry run by default)
+node scripts/purge-auth-users.mjs  # delete orphaned Supabase auth.users rows
+```
+
+> **This Supabase project is shared by five applications.** `rw_*` (ReadWrite store),
+> `fyb_*` (Final Year Brethren), `elib_*` (e-library) and `game_*`/`trivia_*`/`bingo_*`/
+> `buzzer_*` (games) are **not ours**. Run `db-inventory.mjs` before and after any
+> migration: no FOREIGN row count may change.
+
+> **`public.auth_sessions` is ours; `auth.users` is Supabase's.** The portal left
+> Supabase Auth in migration `0001`. `auth_sessions` holds every leader's live session —
+> deleting it logs out the whole fellowship. `purge-auth-users.mjs` refuses to touch
+> anything in `public` for exactly this reason.
 
 ## Commands
 

@@ -1,13 +1,13 @@
 'use server'
 
-import { ict } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 const EVENT_SLUG = "singles-weekend-26";
 
 export async function getAgapeStats() {
   // 1. Fetch Event & Config
-  const { data: event } = await ict.supabase
+  const { data: event } = await db
     .from('events')
     .select('*')
     .eq('slug', EVENT_SLUG)
@@ -16,7 +16,7 @@ export async function getAgapeStats() {
   if (!event) throw new Error("Event not found");
 
   // 2. Fetch All Registrations
-  const { data: regs, error } = await ict.supabase
+  const { data: regs, error } = await db
     .from('event_registrations')
     .select('*')
     .eq('event_id', event.id);
@@ -75,7 +75,7 @@ export async function getAgapeStats() {
 export async function updateEventConfig(formData: FormData) {
   const maxItems = formData.get('max_shopping_items');
   
-  const { data: event } = await ict.supabase
+  const { data: event } = await db
     .from('events')
     .select('config')
     .eq('slug', EVENT_SLUG)
@@ -86,7 +86,7 @@ export async function updateEventConfig(formData: FormData) {
     max_shopping_items: Number(maxItems)
   };
 
-  await ict.supabase
+  await db
     .from('events')
     .update({ config: newConfig })
     .eq('slug', EVENT_SLUG);
@@ -105,7 +105,7 @@ export async function checkInByPhone(phone: string) {
   }
 
   // Get event
-  const { data: event } = await ict.supabase
+  const { data: event } = await db
     .from('events')
     .select('id')
     .eq('slug', EVENT_SLUG)
@@ -116,7 +116,7 @@ export async function checkInByPhone(phone: string) {
   }
 
   // Find registration by phone
-  const { data: registration } = await ict.supabase
+  const { data: registration } = await db
     .from('event_registrations')
     .select('*')
     .eq('event_id', event.id)
@@ -149,7 +149,7 @@ export async function checkInByPhone(phone: string) {
     couponCode = `AG26-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
   }
 
-  const { error: updateError } = await ict.supabase
+  const { error: updateError } = await db
     .from('event_registrations')
     .update({ 
       checked_in_at: checkInTime,
@@ -175,7 +175,7 @@ export async function checkInByPhone(phone: string) {
 
 export async function redeemCouponAction(couponCode: string) {
   // Get event
-  const { data: event } = await ict.supabase
+  const { data: event } = await db
     .from('events')
     .select('id')
     .eq('slug', EVENT_SLUG)
@@ -186,7 +186,7 @@ export async function redeemCouponAction(couponCode: string) {
   }
 
   // Find registration by coupon code
-  const { data: registration } = await ict.supabase
+  const { data: registration } = await db
     .from('event_registrations')
     .select('*')
     .eq('event_id', event.id)
@@ -219,7 +219,7 @@ export async function redeemCouponAction(couponCode: string) {
   }
 
   // Redeem coupon
-  const { error: updateError } = await ict.supabase
+  const { error: updateError } = await db
     .from('event_registrations')
     .update({ 
       coupon_active: false,

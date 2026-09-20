@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { ShieldAlert, Settings as SettingsIcon } from "lucide-react";
+import Link from "next/link";
+import { ShieldAlert, Settings as SettingsIcon, ShieldCheck, ChevronRight } from "lucide-react";
 import { getSettingsData } from "./actions";
 import { ModuleAccessEditor } from "./components/module-access-editor";
 
@@ -56,6 +57,27 @@ export default async function SettingsPage() {
                 units={data.units ?? []}
                 canWrite={data.canWrite ?? false}
             />
+
+            {/* System Admin only. The President can read this page but must not be handed
+                a link to an export of every member's home address. */}
+            {data.canWrite && (
+                <Link
+                    href="/dashboard/settings/insurance"
+                    className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 transition-colors hover:border-rcf-navy/40 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+                >
+                    <div className="inline-flex shrink-0 rounded-xl bg-rcf-navy/10 p-3 text-rcf-navy">
+                        <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <h2 className="text-sm font-bold text-slate-900">System insurance</h2>
+                        <p className="mt-0.5 text-sm leading-snug text-slate-500">
+                            A complete encrypted backup of the whole database — every tenure, all
+                            history. Take one before anything structural.
+                        </p>
+                    </div>
+                    <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" aria-hidden="true" />
+                </Link>
+            )}
         </div>
     );
 }

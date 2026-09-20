@@ -97,7 +97,7 @@ export default function EventAdminPage() {
             const questionsData = await getEventQuestions(
                 (statsData.event as { id: string }).id,
             );
-            setQuestions(questionsData.success ? ((questionsData.data as EventQuestion[]) || []) : []);
+            setQuestions(questionsData.success ? ((questionsData.data as unknown as EventQuestion[]) || []) : []);
         } catch (err) {
             console.error("Failed to load admin data", err);
             setError("We couldn't load this event's data. Please try again.");

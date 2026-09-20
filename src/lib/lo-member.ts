@@ -24,7 +24,7 @@
  */
 import { cookies, headers } from "next/headers";
 import { createHash, randomBytes } from "crypto";
-import { ictAdmin } from "@/lib/ict";
+import { db } from "@/lib/db";
 import { getSessionProfileId } from "@/lib/auth/session";
 
 export const LO_MEMBER_COOKIE = "lo-member";
@@ -68,7 +68,7 @@ async function clientHash(): Promise<string> {
 
 async function logAttempt(identifier: string, succeeded: boolean): Promise<void> {
     try {
-        await ictAdmin.supabase.from("lo_member_verify_attempts").insert({
+        await db.from("lo_member_verify_attempts").insert({
             client_hash: await clientHash(),
             identifier: identifier.slice(0, 64),
             succeeded,
@@ -85,7 +85,7 @@ async function isRateLimited(): Promise<boolean> {
         Date.now() - RATE_LIMIT_WINDOW_MINUTES * 60 * 1000,
     ).toISOString();
 
-    const { count, error } = await ictAdmin.supabase
+    const { count, error } = await db
         .from("lo_member_verify_attempts")
         .select("id", { count: "exact", head: true })
         .eq("client_hash", await clientHash())
@@ -117,7 +117,7 @@ async function findProfileByIdentifier(identifier: string): Promise<ProfileRow |
     const columns = "id, first_name, last_name, matric_number, email, class_set_id";
 
     if (trimmed.includes("@")) {
-        const { data } = await ictAdmin.supabase
+        const { data } = await db
             .from("profiles")
             .select(columns)
             .ilike("email", trimmed)
@@ -130,7 +130,7 @@ async function findProfileByIdentifier(identifier: string): Promise<ProfileRow |
     const normalized = normalizeMatric(trimmed);
     if (!normalized) return null;
 
-    const { data } = await ictAdmin.supabase
+    const { data } = await db
         .from("profiles")
         .select(columns)
         .ilike("matric_number", `%${normalized.slice(-4)}%`)
@@ -201,7 +201,7 @@ export async function verifyAndLinkMember(
     const expiresAt = new Date(Date.now() + LINK_TTL_DAYS * 24 * 60 * 60 * 1000);
     const headerList = await headers();
 
-    const { error } = await ictAdmin.supabase.from("lo_member_links").insert({
+    const { error } = await db.from("lo_member_links").insert({
         profile_id: profile.id,
         token_hash: sha256(token),
         user_agent: headerList.get("user-agent"),
@@ -238,7 +238,7 @@ async function memberFromProfileId(
     profileId: string,
     via: LoMember["via"],
 ): Promise<LoMember | null> {
-    const { data } = await ictAdmin.supabase
+    const { data } = await db
         .from("profiles")
         .select("id, first_name, last_name")
         .eq("id", profileId)
@@ -269,7 +269,7 @@ export async function getLoMember(): Promise<LoMember | null> {
     const token = cookieStore.get(LO_MEMBER_COOKIE)?.value;
     if (!token) return null;
 
-    const { data } = await ictAdmin.supabase
+    const { data } = await db
         .from("lo_member_links")
         .select("id, profile_id, expires_at, revoked_at")
         .eq("token_hash", sha256(token))
@@ -279,7 +279,7 @@ export async function getLoMember(): Promise<LoMember | null> {
     if (new Date(data.expires_at as string).getTime() < Date.now()) return null;
 
     // Best-effort activity stamp; a failure here must not log the member out.
-    await ictAdmin.supabase
+    await db
         .from("lo_member_links")
         .update({ last_seen_at: new Date().toISOString() })
         .eq("id", data.id);
@@ -302,7 +302,7 @@ export async function forgetLoMemberLink(): Promise<void> {
     const token = cookieStore.get(LO_MEMBER_COOKIE)?.value;
 
     if (token) {
-        await ictAdmin.supabase
+        await db
             .from("lo_member_links")
             .update({ revoked_at: new Date().toISOString() })
             .eq("token_hash", sha256(token))
