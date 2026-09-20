@@ -84,7 +84,11 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# Deliberately empty. The portal's bootstrap data is db/seed/default.sql, outside this
+# directory, and it is applied on purpose rather than on every reset -- by
+# scripts/bootstrap-supabase.mjs for a new project, and by an explicit step in
+# .github/workflows/ci.yml so a replay proves the seed still fits the schema.
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.
