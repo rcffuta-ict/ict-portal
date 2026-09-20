@@ -24,7 +24,9 @@ below before touching any screen a member will see.
 - **Zustand** for client state (`src/lib/stores/*.store.ts`)
 - **react-hook-form + zod + @hookform/resolvers** for all forms
 - **framer-motion** for animation, **lucide-react** for icons
-- **@rcffuta/ict-lib** — internal SDK wrapping Supabase Auth + institutional member data
+- **@supabase/supabase-js** — used directly. The `@rcffuta/ict-lib` SDK that used to
+  wrap it has been removed entirely; `src/lib/db.ts` is now the single service-role
+  client. If you find a doc that still mentions `RcfIctClient`, it predates that.
 - **@yudiel/react-qr-scanner** + **react-qr-code** — event check-in QR flows
 - **date-fns**
 - Package manager is **pnpm** (`pnpm-lock.yaml`, `.npmrc` present). Never use npm/yarn
@@ -38,6 +40,24 @@ pnpm build    # production build — the real correctness check for App Router/a
 pnpm start    # run the production build
 pnpm lint     # ESLint (eslint-config-next core-web-vitals + typescript)
 ```
+
+## Database — migrations are applied by CI, not by hand
+
+```
+supabase migration new <name>   # create a correctly-named migration
+pnpm db:status                  # reconcile the schema against the ledger
+pnpm db:inventory               # row counts across every table
+pnpm release                    # decide the version from what changed
+```
+
+`supabase/migrations/` is the only SQL that runs. A push to `stage` or `dev/**` applies
+it to the staging project; a push to `main` applies it to production, behind an approval
+gate. `db/migrations/0001`–`0013` is the archived pre-handover series and is never
+applied again — it is not self-contained and never was. Full runbook:
+**`docs/DATABASE-CICD.md`**.
+
+Versioning is decided by the database: PATCH = code only, MINOR = a new migration
+exists, MAJOR = not safely reversible.
 
 **No test runner is configured** (no jest/vitest/playwright in package.json). Don't
 assume tests exist or invent a test command. If asked to add testing, propose
@@ -53,7 +73,8 @@ src/app/            App Router routes ONLY. Route groups: (auth), (home) — the
                      for route-only UI. Follow that pattern for new features.
 src/components/     Shared, reusable UI, organized by domain:
                      ui/ (generic primitives), auth/, layout/, events/, dashboard/, lo-app/
-src/lib/             Core logic: ict.ts (ICT client), auth-roles.ts, auth-utils.ts,
+src/lib/             Core logic: db.ts (service-role Supabase client), auth-roles.ts,
+                     auth-utils.ts, auth/session.ts (opaque DB-backed sessions),
                      access-control.ts, stores/ (zustand), hooks/, utils.ts (cn() etc.)
 src/hooks/           Cross-cutting hooks not tied to lib internals (e.g. useSessionGuard)
 src/config/          Static config — sidebar-items.tsx is the single source of truth
@@ -72,13 +93,16 @@ Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more th
 
 ## Auth & authorization — read this before touching any auth code
 
-- Sessions are Supabase Auth, wrapped by `@rcffuta/ict-lib`: `RcfIctClient.fromEnv()`
-  for normal operations, `RcfIctClient.asAdmin()` for elevated/service-role operations
-  that bypass RLS. Treat `asAdmin()` as dangerous — server-only, and only after the
-  caller's role has already been checked.
-- Tokens (`sb-access-token`, `sb-refresh-token`) are set as httpOnly, `sameSite=lax`
-  cookies from server actions (`src/app/actions/auth.ts`). Never read or write these
-  cookies from a client component.
+- **Supabase Auth is retired.** Sessions are opaque random tokens stored hashed in
+  `auth_sessions` (`src/lib/auth/session.ts`), with credentials in `profile_login`.
+  All database access goes through `src/lib/db.ts`, a service-role client that
+  **bypasses RLS**. Treat importing it as dangerous — server-only, and only after the
+  caller's role has already been checked. Every table has RLS enabled and forced with
+  no policies, so the service-role key is the only way in; leaking it to the browser
+  hands over the entire database.
+- The session cookie is `rcf-session` — httpOnly, `sameSite=lax`, set from
+  `src/lib/auth/session.ts` via server actions. Never read or write it from a client
+  component. (`sb-access-token` / `sb-refresh-token` no longer exist.)
 - **`src/proxy.ts` only checks whether a token is *present*, to decide redirect vs.
   allow — it is a UX convenience layer, not an authorization boundary.** Real
   permission checks belong in the server component / server action / route handler,
@@ -144,12 +168,16 @@ Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more th
 
 ## Never do this
 
-- Never call `RcfIctClient.asAdmin()` from client-side code or leak its result to the browser.
+- Never import `db` from `src/lib/db.ts` into a client component, and never let its
+  results or the service-role key reach the browser.
 - Never treat `src/proxy.ts` as the sole authorization check for a sensitive route or action.
 - Never add a `tailwind.config.js`/`.ts` — this is a Tailwind v4 CSS-first project.
 - Never introduce an npm or yarn lockfile — pnpm only.
-- Never commit secrets — Supabase/ICT-lib credentials come from environment variables
-  via `RcfIctClient.fromEnv()`.
+- Never commit secrets — Supabase credentials come from environment variables; see
+  `.env.example` for the six the code actually reads.
+- Never hand-create a file in `supabase/migrations/`. Use `supabase migration new`;
+  the CLI silently skips misnamed files and reports success. See
+  `docs/DATABASE-CICD.md`.
 
 ## When docs disagree with code
 

@@ -17,13 +17,11 @@ polish — see [AGENTS.md](./AGENTS.md) for the full UI/UX rules.
 | Language | TypeScript 5, strict |
 | State | Zustand (`src/lib/stores/*.store.ts`) |
 | Forms | react-hook-form + zod |
-| Data | Supabase (Postgres) via the private `@rcffuta/ict-lib` SDK |
+| Data | Supabase (Postgres) via `@supabase/supabase-js`, service-role only (`src/lib/db.ts`) |
+| Migrations | `supabase/migrations/`, applied by GitHub Actions — see [`docs/DATABASE-CICD.md`](./docs/DATABASE-CICD.md) |
 | Package manager | **pnpm only** — never npm/yarn |
 
 ## Getting started
-
-Installing requires access to the private `@rcffuta/ict-lib` package on GitHub
-Packages, so set `GITHUB_TOKEN` before the first install (see `.npmrc`).
 
 ```bash
 cp .env.example .env.local   # then fill in the values
@@ -165,8 +163,10 @@ alias, not long relative chains.
   `src/lib/auth-roles.ts` and `src/lib/access-control.ts`.
 - Roles (`USER`, `MODERATOR`, `ADMIN`) are *derived* from institutional profile data
   and leadership positions — never a field the client can set.
-- `RcfIctClient.asAdmin()` is service-role and bypasses RLS: server-only, and only
-  after the caller's role has been checked.
+- `src/lib/db.ts` is the service-role client and bypasses RLS — every table has RLS
+  enabled and forced with no policies, so it is the only way into the database.
+  Server-only, and only after the caller's role has been checked. Never import it into
+  a client component.
 - Adding a new top-level public route means updating the hardcoded `publicRoutes`
   list in `src/proxy.ts`, or anonymous visitors get bounced to `/login`.
 

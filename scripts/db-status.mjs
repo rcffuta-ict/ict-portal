@@ -8,6 +8,12 @@
  * This checks three things and reconciles them:
  *   1. The migration files on disk.
  *   2. The `schema_migrations` ledger, once 0013 has created it.
+ *
+ * SCOPE: this reports on the ARCHIVED 0001-0013 series in db/migrations/, which is
+ * the state every environment was brought to by hand before CI existed. Migrations
+ * written from now on live in supabase/migrations/ and are tracked by the CLI's own
+ * ledger (supabase_migrations.schema_migrations) -- `supabase migration list` is the
+ * tool for those. See docs/DATABASE-CICD.md.
  *   3. The SCHEMA ITSELF — the columns and tables each migration adds or removes.
  *
  * (3) is the one that matters when the ledger does not exist yet, or when a migration

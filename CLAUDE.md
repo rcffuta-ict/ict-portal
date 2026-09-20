@@ -41,7 +41,8 @@ This file only adds what's specific to running as Claude Code in this repo.
   Briefly explain the *why* behind non-obvious architectural choices in your
   summaries, not just the *what*.
 - Explicitly call out anything security-relevant you touched — cookies, roles,
-  `asAdmin()`, or `src/proxy.ts` — even if it wasn't the main ask.
+  the service-role client in `src/lib/db.ts`, or `src/proxy.ts` — even if it wasn't
+  the main ask.
 
 
 ## Don't
