@@ -352,6 +352,38 @@ function listProjects() {
     }
 }
 
+/**
+ * Fail before the dump if the CLI is authenticated as the wrong account.
+ *
+ * This is worth a dedicated check because of how the CLI resolves credentials: an
+ * exported SUPABASE_ACCESS_TOKEN wins, and otherwise it reads a token from the system
+ * keyring left by an earlier `supabase login`. After consolidating two Supabase
+ * accounts the keyring still holds the OLD one, so a token you just proved works by
+ * passing it inline is not the token this script's subprocesses will use. The symptom
+ * is a 403 on a project you can plainly see in the dashboard, three steps later.
+ */
+function assertProjectsVisible(projects, refs) {
+    const visible = new Set(projects.map((p) => p.id ?? p.ref));
+    const missing = refs.filter((r) => !visible.has(r));
+    if (!missing.length) return;
+
+    blank();
+    fail(`The logged-in account cannot see: ${missing.join(", ")}`);
+    blank();
+    info("It CAN see:");
+    table(
+        projects.map((p) => ({ ref: p.id ?? p.ref, name: p.name ?? "", org: p.organization_id ?? "" })),
+        [{ key: "ref", label: "REFERENCE" }, { key: "name", label: "NAME" }, { key: "org", label: "ORG" }],
+    );
+    blank();
+    throw new Error(
+        "That is a different Supabase account.\n" +
+        "  The CLI prefers an exported SUPABASE_ACCESS_TOKEN, then a token in the system\n" +
+        "  keyring from an earlier `supabase login`. Run `supabase login` with a token from\n" +
+        "  the account that owns these projects -- it overwrites the stored one.",
+    );
+}
+
 async function main() {
     const apply = hasFlag("apply");
     const keepForeign = hasFlag("include-foreign");
@@ -383,8 +415,13 @@ async function main() {
     ok("No baseline yet — this is a first run");
 
     const projects = listProjects();
-    if (projects.length) ok(`${projects.length} project(s) visible in this account`);
-    else warn("Could not list projects — you will be asked for refs. Run `supabase login` if that is unexpected.");
+    if (projects.length) {
+        ok(`${projects.length} project(s) visible to the logged-in account`);
+    } else {
+        warn("Could not list projects — you will be asked for refs.");
+        info(c.grey("  A scoped token can be unable to list while still working; a missing login cannot."));
+        info(c.grey("  If the next step 403s, run `supabase login` and try again."));
+    }
 
     // --- Choose the two ends ----------------------------------------------
     section("Projects");
@@ -398,6 +435,9 @@ async function main() {
     if (sourceRef === targetRef) {
         throw new Error("SOURCE and TARGET are the same project. That would apply the baseline to production.");
     }
+
+    // Only meaningful when listing succeeded; an empty list proves nothing either way.
+    if (projects.length) assertProjectsVisible(projects, [sourceRef, targetRef]);
 
     blank();
     kv([

@@ -278,6 +278,29 @@ Check locally before touching the repository settings again:
 SUPABASE_ACCESS_TOKEN=sbp_xxx supabase projects list
 ```
 
+### The CLI is authenticated as the wrong account
+
+Symptom: a 403 on a project you can plainly see in the dashboard, using a token you
+just proved works by passing it inline.
+
+The CLI resolves credentials in this order:
+
+1. an exported `SUPABASE_ACCESS_TOKEN`, which wins over everything;
+2. otherwise a token in the **system keyring**, left by an earlier `supabase login`.
+
+After consolidating two Supabase accounts the keyring still holds the old one. So
+`SUPABASE_ACCESS_TOKEN=sbp_new supabase projects list` succeeds, while
+`pnpm db:bootstrap` — which spawns `supabase` as a subprocess — silently uses the old
+account and 403s. Check what the stored credential actually sees:
+
+```bash
+env -u SUPABASE_ACCESS_TOKEN supabase projects list
+```
+
+If those are the wrong projects, `supabase login` with a token from the right account;
+it overwrites the stored one. `pnpm db:bootstrap` now checks this before dumping and
+names the account it is actually logged in as.
+
 Do not keep the access token in `.env.local`. Nothing in this codebase reads it —
 it is a CLI credential, and `supabase login` stores it in the CLI's own credential
 store where it will not be picked up and loaded into `process.env` by every script
