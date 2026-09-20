@@ -496,9 +496,32 @@ ALTER TABLE public.event_registrations DROP COLUMN IF EXISTS raffle_id;
 -- whatever else happened to depend on the column without naming it, and a migration
 -- that silently deletes an object nobody listed is how the next question_flags
 -- happens.
-DROP POLICY IF EXISTS "Admins can view and manage flags"      ON public.question_flags;
-DROP POLICY IF EXISTS "Admins can manage all questions"       ON public.event_questions;
-DROP POLICY IF EXISTS "Admins can manage question references" ON public.question_references;
+-- Guarded on the RELATION, not just the policy. `DROP POLICY IF EXISTS` tolerates a
+-- missing POLICY but not a missing TABLE -- and on PostgreSQL 17 that is a hard error:
+--
+--     ERROR: relation "public.question_references" does not exist (SQLSTATE 42P01)
+--
+-- `question_references` is dropped a few statements above this one, so the unguarded
+-- form aborted the whole migration. PostgreSQL 16 only raises a NOTICE there, which is
+-- how it passed a rehearsal on the wrong major version; production and staging are
+-- both 17. to_regclass() makes this independent of BOTH the statement order and the
+-- server version.
+DO $$
+DECLARE
+    r record;
+BEGIN
+    FOR r IN
+        SELECT * FROM (VALUES
+            ('question_flags',      'Admins can view and manage flags'),
+            ('event_questions',     'Admins can manage all questions'),
+            ('question_references', 'Admins can manage question references')
+        ) AS v(tbl, pol)
+    LOOP
+        IF to_regclass('public.' || quote_ident(r.tbl)) IS NOT NULL THEN
+            EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.pol, r.tbl);
+        END IF;
+    END LOOP;
+END $$;
 
 ALTER TABLE public.leadership_positions DROP COLUMN IF EXISTS category;
 
