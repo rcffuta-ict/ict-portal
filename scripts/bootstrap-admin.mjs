@@ -1,7 +1,10 @@
 /**
  * Bootstrap the first VP Admin login.
  *
- * Run AFTER applying db/migrations/0001 + 0002. Creates (or reuses) a profile,
+ * Run AFTER the schema and seed are in place -- `pnpm db:bootstrap --apply` does both.
+ * This is the step that makes a freshly built project usable: until one leader has a
+ * password, nobody can sign in at all, because the portal has no self-registration for
+ * leaders. Creates (or reuses) a profile,
  * assigns the protected "Vice President Administration" position in the active
  * tenure, and sets a login password — using the exact scrypt format as
  * src/lib/auth/password.ts, so the seeded admin can log in immediately.

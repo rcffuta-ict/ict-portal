@@ -44,3 +44,6 @@ next-env.d.ts
 
 # temporary files
 .tmp
+
+# local backup bundles — real member data, never commit these
+.backups

@@ -29,9 +29,19 @@
  *   other four applications sharing this database filtered out, plus a backfill of
  *   public.schema_migrations so the new project can answer "which migrations ran".
  *
+ * TWO MODES, chosen by whether the baseline file already exists
+ *
+ *   GENERATE   no baseline yet. Dumps production, filters it, writes the baseline,
+ *              marks it applied on production, builds the target. Runs once, ever.
+ *
+ *   PROVISION  baseline committed. Builds a project from it. No production project is
+ *              read and nothing is dumped -- so this works on a Supabase account that
+ *              has never seen the portal, which is the point: a successor clones this
+ *              repo, runs it, restores a backup, and is running.
+ *
  * Usage:
- *   node scripts/bootstrap-supabase.mjs              # dry run: dump, filter, report
- *   node scripts/bootstrap-supabase.mjs --apply      # also write to both projects
+ *   node scripts/bootstrap-supabase.mjs              # dry run
+ *   node scripts/bootstrap-supabase.mjs --apply      # write
  *   node scripts/bootstrap-supabase.mjs --apply --include-foreign
  *   node scripts/bootstrap-supabase.mjs --source izofyqiaazidryoejsot --target abc123
  *
@@ -242,6 +252,25 @@ function auditBaseline(kept) {
             why: "the auth RPC — the portal cannot log anyone in without it",
         },
         {
+            // These three are in NO migration at all. They were created by hand in the
+            // SQL editor and exist only in the live database, which is precisely why
+            // the baseline is a dump rather than a replay of db/migrations/ -- rebuild
+            // from those files and the Q&A feature dies with no error anywhere.
+            check: "event_questions_with_details view present",
+            pass: names.has("event_questions_with_details"),
+            why: "exists in no migration; src/lib/qa.ts reads it directly",
+        },
+        {
+            check: "search_questions function present",
+            pass: names.has("search_questions"),
+            why: "exists in no migration; called via rpc() from src/lib/qa.ts",
+        },
+        {
+            check: "toggle_question_visibility function present",
+            pass: names.has("toggle_question_visibility"),
+            why: "exists in no migration; called via rpc() from src/lib/qa.ts",
+        },
+        {
             check: "every portal table present",
             pass: PORTAL_TABLES.every((t) => names.has(t)),
             why: "missing: " + PORTAL_TABLES.filter((t) => !names.has(t)).join(", "),
@@ -384,6 +413,97 @@ function assertProjectsVisible(projects, refs) {
     );
 }
 
+
+// ---------------------------------------------------------------------------
+// PROVISION — build a project from the committed baseline
+// ---------------------------------------------------------------------------
+
+/**
+ * The successor's path, and the disaster-recovery path.
+ *
+ * Everything needed to stand the portal up lives in this repository: the baseline
+ * carries the schema (including the `event_questions_with_details` view and the
+ * `search_questions` / `toggle_question_visibility` functions, which exist in no
+ * migration and would be lost by anyone rebuilding from db/migrations/), and
+ * db/seed/default.sql carries the leadership catalogue. Neither needs a production
+ * project to exist, so this works on a Supabase account that has never seen the portal.
+ *
+ * Data is separate and deliberately so: restore it from a backup bundle afterwards.
+ * `profiles` is the table everything else references, and it is restored parents-first
+ * by scripts/restore-backup.mjs -- nobody should ever be editing it by hand.
+ */
+async function provision({ targetRef, apply }) {
+    if (!apply) {
+        section("What --apply would do");
+        info(`1. supabase link --project-ref ${targetRef}`);
+        info(`2. supabase db push                                    ${c.grey("(applies the baseline)")}`);
+        info(`3. supabase db query --linked -f db/seed/default.sql   ${c.grey("(optional, you are asked)")}`);
+        blank();
+        ok("Re-run with --apply to build it.");
+        printAfterwards(targetRef);
+        return;
+    }
+
+    section("1. Apply the schema");
+    warn(`This builds ${c.yellow(targetRef)}. It should be an EMPTY project.`);
+    if (!(await confirm(`Apply the baseline to ${c.yellow(targetRef)}?`, { default: false }))) {
+        throw new Error("Stopped. Nothing was written.");
+    }
+    link(targetRef);
+    supabase(["db", "push"], { capture: false });
+    ok("Schema applied");
+
+    section("2. Bootstrap data");
+    if (!existsSync(SEED_FILE)) {
+        warn("db/seed/default.sql is missing — skipping.");
+    } else if (await confirm("Apply db/seed/default.sql (units, positions, privileges)?", { default: true })) {
+        supabase(["db", "query", "--linked", "-f", "db/seed/default.sql"], { capture: false });
+        ok("Seed applied");
+    } else {
+        info("Skipped. Later: supabase db query --linked -f db/seed/default.sql");
+    }
+
+    section("Done");
+    kv([["TARGET", `${c.yellow(targetRef)} — schema built from the baseline`]]);
+    printAfterwards(targetRef);
+}
+
+/**
+ * The steps this script deliberately does NOT run.
+ *
+ * Restoring data and minting the first login both need credentials this script never
+ * asks for -- a bundle passphrase, an admin password -- and both are irreversible in
+ * ways a schema push is not. Printing them keeps the sequence in one place without
+ * quietly doing the dangerous half.
+ */
+function printAfterwards(targetRef) {
+    blank();
+    section("Then, to make it a working portal");
+    info(`1. Point .env.local at ${c.bold(targetRef)} — SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY`);
+    info("   from Dashboard -> Project Settings, plus a SESSION_SECRET (openssl rand -hex 32).");
+    blank();
+    info("2. Restore the data, if you have a bundle:");
+    info(c.grey("     node scripts/restore-backup.mjs <bundle>            # dry run first"));
+    info(c.grey("     node scripts/restore-backup.mjs <bundle> --commit"));
+    info(c.grey("   Rows upsert by primary key in FK-safe order, parents before children, so"));
+    info(c.grey("   `profiles` lands before anything that references it. Re-running is safe."));
+    blank();
+    info("3. Mint the first login — nobody can sign in until a leader exists:");
+    info(c.grey("     node scripts/bootstrap-admin.mjs <email> <password>"));
+    blank();
+    info("4. Make sure there is a System Admin — without one, Settings, the Oracle and");
+    info("   full-system backup are unreachable, and nothing warns you:");
+    info(c.grey("     pnpm db:ict-coord                  # check (safe on production)"));
+    info(c.grey("     pnpm db:ict-coord -- --seed        # staging only: the default coordinator"));
+    blank();
+    info("5. Verify:");
+    info(c.grey("     pnpm db:status      # schema vs the ledger"));
+    info(c.grey("     pnpm db:inventory   # row counts per table"));
+    blank();
+    info(c.grey("Credentials are never in a backup by design: restored leaders have a NULL"));
+    info(c.grey("password and set one on first login, and level invite tokens need rotating."));
+}
+
 async function main() {
     const apply = hasFlag("apply");
     const keepForeign = hasFlag("include-foreign");
@@ -404,15 +524,20 @@ async function main() {
     }
     ok(`Supabase CLI ${version}`);
 
-    if (existsSync(join(MIGRATIONS_DIR, BASELINE_NAME))) {
-        throw new Error(
-            `supabase/migrations/${BASELINE_NAME} already exists.\n` +
-            "  A baseline is generated once. If you really mean to regenerate it, delete that\n" +
-            "  file first — and remember every project that has applied it will then need\n" +
-            "  `supabase migration repair` to match.",
-        );
+    // GENERATE runs once, ever, by whoever creates the baseline from a live production
+    // project. PROVISION is every run after that, and is the path a successor takes:
+    // the baseline is committed, so there is nothing to dump and no production project
+    // to reach. That distinction is the whole reason this script can rebuild the portal
+    // on a Supabase account that has never seen it.
+    const mode = existsSync(join(MIGRATIONS_DIR, BASELINE_NAME)) ? "provision" : "generate";
+
+    if (mode === "provision") {
+        ok(`Baseline present: ${c.bold(BASELINE_NAME)}`);
+        info(c.grey("  PROVISION mode — building a project from the committed baseline."));
+        info(c.grey("  No production project is read, and nothing is dumped."));
+    } else {
+        ok("No baseline yet — GENERATE mode, dumping one from production");
     }
-    ok("No baseline yet — this is a first run");
 
     const projects = listProjects();
     if (projects.length) {
@@ -423,28 +548,41 @@ async function main() {
         info(c.grey("  If the next step 403s, run `supabase login` and try again."));
     }
 
-    // --- Choose the two ends ----------------------------------------------
+    // --- Choose the ends ---------------------------------------------------
     section("Projects");
-    info("SOURCE is the one that already has the real schema — production.");
-    info("TARGET is the new, EMPTY project that becomes staging/dev.");
-    blank();
 
-    const sourceRef = await pickProject("SOURCE (production — read from, never altered)", projects, flagValue("source"));
-    const targetRef = await pickProject("TARGET (new, empty — will be built)", projects, flagValue("target"), { danger: true });
+    let sourceRef = null;
+    if (mode === "generate") {
+        info("SOURCE is the one that already has the real schema — production.");
+        info("TARGET is the new, EMPTY project that becomes staging/dev.");
+        blank();
+        sourceRef = await pickProject("SOURCE (production — read from, never altered)", projects, flagValue("source"));
+    } else {
+        info("TARGET is the project to build. It should be EMPTY.");
+        blank();
+    }
 
-    if (sourceRef === targetRef) {
+    const targetRef = await pickProject("TARGET (will be built)", projects, flagValue("target"), { danger: true });
+
+    if (sourceRef && sourceRef === targetRef) {
         throw new Error("SOURCE and TARGET are the same project. That would apply the baseline to production.");
     }
 
     // Only meaningful when listing succeeded; an empty list proves nothing either way.
-    if (projects.length) assertProjectsVisible(projects, [sourceRef, targetRef]);
+    if (projects.length) assertProjectsVisible(projects, [sourceRef, targetRef].filter(Boolean));
 
     blank();
     kv([
-        ["SOURCE", `${c.cyan(sourceRef)}  ${c.grey("gets one ledger row, no DDL")}`],
+        ...(sourceRef ? [["SOURCE", `${c.cyan(sourceRef)}  ${c.grey("gets one ledger row, no DDL")}`]] : []),
         ["TARGET", `${c.yellow(targetRef)}  ${c.grey("gets the full schema")}`],
-        ["Foreign apps", keepForeign ? c.yellow("included") : "filtered out"],
+        ...(mode === "generate" ? [["Foreign apps", keepForeign ? c.yellow("included") : "filtered out"]] : []),
     ]);
+
+    // PROVISION short-circuits everything to do with dumping and production.
+    if (mode === "provision") {
+        await provision({ targetRef, apply });
+        return;
+    }
 
     // --- Dump --------------------------------------------------------------
     section("1. Dump the production schema");

@@ -219,6 +219,12 @@ want reflected in the human ledger, insert its row yourself in that migration.
 
 ## When a deploy fails
 
+Take a backup first. There is no restore button on the Free plan:
+
+```bash
+pnpm backup -- --encrypt        # signs you in, then writes an encrypted bundle
+```
+
 The job fails loudly. `db push` applies each migration file inside a transaction, so a
 failed file rolls back whole and the database is left as it was — this is what happened
 when 0013 hit the `question_flags` dependency. Open your migrations with an explicit
@@ -305,6 +311,14 @@ Do not keep the access token in `.env.local`. Nothing in this codebase reads it 
 it is a CLI credential, and `supabase login` stores it in the CLI's own credential
 store where it will not be picked up and loaded into `process.env` by every script
 that calls `chooseEnvironment()`.
+
+## Rebuilding from nothing
+
+This document assumes both projects already exist. For the other case — a fresh
+Supabase account, maybe only a backup file, and a successor who has never seen this
+system — see **[FRESH-START.md](./FRESH-START.md)**. `pnpm db:bootstrap` detects that
+the baseline is already committed and switches to provisioning a project from it,
+without needing a production project to read.
 
 ## What is not automated
 
