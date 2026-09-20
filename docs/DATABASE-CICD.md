@@ -54,13 +54,26 @@ existing password and session is invalidated — it is the scrypt pepper.
 
 Repository → Settings → Secrets and variables → Actions:
 
+Under **Secrets** — genuinely sensitive:
+
 | Secret | Where to get it |
 |---|---|
 | `SUPABASE_ACCESS_TOKEN` | supabase.com/dashboard/account/tokens |
-| `PRODUCTION_PROJECT_ID` | `izofyqiaazidryoejsot` |
 | `PRODUCTION_DB_PASSWORD` | Project → Settings → Database → Database password |
-| `STAGING_PROJECT_ID` | the new project's ref, from its dashboard URL |
 | `STAGING_DB_PASSWORD` | as above, on the new project |
+
+Under **Variables** — not secret, and you want them readable:
+
+| Variable | Value |
+|---|---|
+| `PRODUCTION_PROJECT_ID` | `izofyqiaazidryoejsot` |
+| `STAGING_PROJECT_ID` | the new project's ref, from its dashboard URL |
+
+Project refs go in Variables on purpose. They are in the URL of every dashboard page
+and in this file, so they are not worth protecting — and a ref stored as a *secret* is
+masked as `***` in every log line, including inside `supabase projects list`, which
+makes an authorisation failure almost impossible to diagnose. The workflows read
+`vars.*` and fall back to `secrets.*`, so an existing secret keeps working.
 
 One access token covers both, now that both projects are in the same account.
 
@@ -218,6 +231,30 @@ anywhere else.
 If the failure is "Remote migration versions not found in local migrations directory",
 someone renamed or deleted an applied file. Restore it, or
 `supabase migration repair --status reverted <version>` to drop the orphan row.
+
+### "Authorization failed for the access token and project ref pair"
+
+This one message covers four different problems, which is why the workflows now list
+the token's visible projects before attempting to link. Read that step's output:
+
+- **The project is not in the list.** The token belongs to a different Supabase
+  account. This is the likely one right after consolidating two accounts — a token
+  generated while signed into the old account sees the old projects and not
+  production. Generate a new one from the account that owns both projects.
+- **The project is not in the list, and it is a scoped token.** It was not granted
+  that project. Scoped tokens need the project explicitly selected, plus Migrations
+  (Read-write), API Keys (Read), Project Settings (Read) and Database (Read).
+- **The list itself fails.** The token is invalid, expired or revoked.
+- **The list looks right but `link` still 403s on API keys.** Known Supabase bug with
+  scoped tokens — `supabase link` reveals project API keys and scoped tokens are
+  refused, even on the Full access preset
+  (github.com/supabase/supabase/issues/50244). Use a classic token.
+
+Check locally before touching the repository settings again:
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_xxx supabase projects list
+```
 
 ## What is not automated
 

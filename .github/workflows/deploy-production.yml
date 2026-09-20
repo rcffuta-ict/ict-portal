@@ -32,7 +32,7 @@ jobs:
         env:
             SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
             SUPABASE_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
-            SUPABASE_PROJECT_ID: ${{ secrets.PRODUCTION_PROJECT_ID }}
+            SUPABASE_PROJECT_ID: ${{ vars.PRODUCTION_PROJECT_ID || secrets.PRODUCTION_PROJECT_ID }}
 
         steps:
             - uses: actions/checkout@v4
@@ -40,6 +40,39 @@ jobs:
             - uses: supabase/setup-cli@v1
               with:
                   version: latest
+
+            # Diagnosing a link failure is hard when the ref is masked, so the ref comes
+            # from a repository VARIABLE, falling back to a secret if you already made
+            # one. A project ref is not a secret -- it is in the URL of every dashboard
+            # page and in docs/DATABASE-CICD.md.
+            #
+            # This step exists because `supabase link` reports every authorisation
+            # problem with one opaque message ("Authorization failed for the access
+            # token and project ref pair"), which covers a wrong token, an expired
+            # token, a token from a different Supabase ACCOUNT, and a scoped token that
+            # simply was not given this project. Listing what the token can actually
+            # see separates those in one glance.
+            - name: Check the token can see this project
+              run: |
+                  set -o pipefail
+                  echo "Target project ref: ${SUPABASE_PROJECT_ID:-(EMPTY - the variable is not set)}"
+
+                  if [ -z "$SUPABASE_PROJECT_ID" ]; then
+                      echo "::error::PROJECT_ID is empty. Set it under Settings -> Secrets and variables -> Actions -> Variables."
+                      exit 1
+                  fi
+
+                  if ! supabase projects list > projects.txt 2>&1; then
+                      cat projects.txt
+                      echo "::error::The access token is invalid, expired, or revoked."
+                      exit 1
+                  fi
+                  cat projects.txt
+
+                  if ! grep -q "$SUPABASE_PROJECT_ID" projects.txt; then
+                      echo "::error::Token is valid but cannot see $SUPABASE_PROJECT_ID. Either it belongs to a different Supabase account, or it is a scoped token that was not granted this project."
+                      exit 1
+                  fi
 
             - name: Link to the production project
               run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
