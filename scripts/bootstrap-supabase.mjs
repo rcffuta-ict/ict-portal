@@ -140,6 +140,42 @@ function splitBlocks(sql) {
 }
 
 /**
+ * Match `public.<table>` in EITHER form pg_dump may emit.
+ *
+ * This cost a baseline. `supabase db dump` quotes every identifier —
+ * `"public"."rw_orders"`, not `public.rw_orders` — so the original `\bpublic\.x\b`
+ * patterns below matched nothing at all against a real dump, and every body scan that
+ * depended on them silently reported "clean". Against production's dump that let 115
+ * foreign blocks through, including 24 indexes on ReadWrite tables that do not exist in
+ * a fresh project: `db push` would have failed on the first one, which is the lucky
+ * outcome. The unlucky one is a baseline that looks fine and carries another
+ * application's objects into every environment built from it.
+ *
+ * The synthetic fixture this was tested against used unquoted identifiers. Real output
+ * does not. Hence: match both, always.
+ */
+function refPattern(table) {
+    return new RegExp(`(\\bpublic\\.${table}\\b|"public"\\."${table}")`);
+}
+
+/** The same, for the foreign-table PREFIXES. */
+const FOREIGN_REF = /(\bpublic\.|"public"\.")(rw_|fyb_|elib_|game_|trivia_|bingo_|buzzer_)\w+/;
+
+/**
+ * Every identifier named in a block header.
+ *
+ * The header for a table is bare (`-- Name: leadership_positions; Type: TABLE`), but
+ * for a COMMENT or an ACL it is a quoted expression: `TABLE "rw_orders"`,
+ * `COLUMN "rw_payments"."moderator_name"`. Taking only the first token there yields
+ * "TABLE" or "COLUMN", which is why 30 comments and 61 grants on other applications'
+ * tables were classified as the portal's. Read every identifier instead.
+ */
+function headerIdentifiers(name) {
+    const quoted = [...name.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    return quoted.length ? quoted : [name.split(/[\s(]/)[0]];
+}
+
+/**
  * Decide whether a block belongs to another application.
  *
  * Checks the BODY, not just the header name, because the direction of the foreign keys
@@ -149,19 +185,21 @@ function splitBlocks(sql) {
  * foreign block, and dropping it can never orphan a portal object.
  */
 function ownerOfBlock(block, { keepUnclassified }) {
-    const firstToken = block.name.split(/[\s(]/)[0];
-    if (isForeignName(firstToken)) return "FOREIGN";
+    const identifiers = headerIdentifiers(block.name);
+    const firstToken = identifiers[0];
+    if (identifiers.some(isForeignName)) return "FOREIGN";
 
     for (const t of ALL_FOREIGN) {
-        if (new RegExp(`\\bpublic\\.${t}\\b`).test(block.text)) return "FOREIGN";
+        if (refPattern(t).test(block.text)) return "FOREIGN";
     }
-    if (/\bpublic\.(rw_|fyb_|elib_|game_|trivia_|bingo_|buzzer_)\w+/.test(block.text)) return "FOREIGN";
+    if (FOREIGN_REF.test(block.text)) return "FOREIGN";
 
-    if (!keepUnclassified && UNCLASSIFIED.includes(firstToken)) return "UNCLASSIFIED";
-    if (!keepUnclassified && UNCLASSIFIED.some((t) => new RegExp(`\\bpublic\\.${t}\\b`).test(block.text))) {
+    if (!keepUnclassified && identifiers.some((i) => UNCLASSIFIED.includes(i))) return "UNCLASSIFIED";
+    if (!keepUnclassified && UNCLASSIFIED.some((t) => refPattern(t).test(block.text))) {
         return "UNCLASSIFIED";
     }
 
+    void firstToken;
     return "PORTAL";
 }
 
@@ -196,13 +234,13 @@ function filterDump(sql, { keepForeign, keepUnclassified }) {
 function findDanglingReferences(kept, dropped) {
     const droppedTables = new Set(
         dropped.filter((b) => b.type === "TABLE" || b.type === "VIEW")
-            .map((b) => b.name.split(/[\s(]/)[0]),
+            .flatMap((b) => headerIdentifiers(b.name)),
     );
 
     const problems = [];
     for (const b of kept) {
         for (const t of droppedTables) {
-            if (new RegExp(`\\bpublic\\.${t}\\b`).test(b.text)) {
+            if (refPattern(t).test(b.text)) {
                 problems.push({ block: `${b.type} ${b.name}`, references: t });
             }
         }
@@ -220,9 +258,9 @@ function findDanglingReferences(kept, dropped) {
  * where 0013 never landed, looks perfectly valid as SQL.
  */
 function auditBaseline(kept) {
-    const names = new Set(kept.map((b) => b.name.split(/[\s(]/)[0]));
+    const names = new Set(kept.flatMap((b) => headerIdentifiers(b.name)));
     const leadershipPositions = kept.find(
-        (b) => b.type === "TABLE" && b.name.split(/[\s(]/)[0] === "leadership_positions",
+        (b) => b.type === "TABLE" && headerIdentifiers(b.name).includes("leadership_positions"),
     );
 
     return [
@@ -238,12 +276,12 @@ function auditBaseline(kept) {
         },
         {
             check: "leadership_positions has no `category`",
-            pass: Boolean(leadershipPositions) && !/^\s+category\s/m.test(leadershipPositions.text),
+            pass: Boolean(leadershipPositions) && !/^\s+"?category"?\s/m.test(leadershipPositions.text),
             why: "0013 dropped it; it is derived by rcf_position_kind() now",
         },
         {
             check: "leadership_positions has no `is_default`",
-            pass: Boolean(leadershipPositions) && !/^\s+is_default\s/m.test(leadershipPositions.text),
+            pass: Boolean(leadershipPositions) && !/^\s+"?is_default"?\s/m.test(leadershipPositions.text),
             why: "0013 dropped it in favour of tier + is_protected",
         },
         {
