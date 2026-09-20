@@ -151,6 +151,31 @@ is the fact, and it flags any disagreement between them.
 npm scripts added: `db:status`, `db:inventory`, `db:seed-test`, `db:purge-auth`,
 `db:gen-seed`, `release`.
 
+## 16. APPLIED AND VERIFIED against the dev project (kcyylplbizwgttqjdezf)
+
+Migration 0013 is applied. Checked directly, not assumed:
+
+| Check | Result |
+|---|---|
+| `schema_migrations` ledger | 13 rows — 0001–0012 backfilled, 0013 recorded |
+| `pnpm db:status` | every migration on disk reconciles with the schema |
+| Columns dropped | `category`, `is_default`, `is_central`, `can_manage_unit`, `raffle_id` — all gone |
+| Tables dropped | `verification_codes`, `question_references` — both gone (`PGRST205`) |
+| `question_flags` | **still present**, as intended — the Q&A view depends on it |
+| `ict-coord` | `tier: EXECUTIVE`, privileges `SYSADMIN` + `EXCO:ict` |
+| `rcf_profile_context` | returns derived `category`, plus `tier` / `isProtected` / `roles[].slug`; `isSysAdmin` and `isAdmin` still resolve |
+| **Foreign apps** | **zero row-count change across all 44 `rw_`/`fyb_`/`elib_`/`game_` tables** |
+
+Only three portal counts moved, all expected: `schema_migrations` 0→13,
+`position_privileges` 12→13 (ict-coord's new `EXCO:ict`), `verification_codes` 1→absent.
+
+### A tooling bug found and fixed during verification
+
+`db-inventory.mjs` reported a dropped table as `0 rows` instead of absent. A
+`head: true` count request against a missing table returns **no error and a null count**
+— PostgREST has no body to send — and the script read that as zero. It now treats a null
+count as ABSENT, which is the distinction the whole script exists to make.
+
 ## NOT YET DONE — this is where you pick up
 
 Everything above is code-complete, built and linted. **Nothing has been run against any
