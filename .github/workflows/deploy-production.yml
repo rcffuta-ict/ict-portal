@@ -45,7 +45,23 @@ jobs:
               run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
             - name: Show what is about to be applied
-              run: supabase migration list
+              run: |
+                  {
+                      echo "## Production — \`$SUPABASE_PROJECT_ID\`"
+                      echo
+                      echo '```'
+                      supabase migration list
+                      echo '```'
+                  } >> "$GITHUB_STEP_SUMMARY"
 
             - name: Apply pending migrations
-              run: supabase db push
+              # pipefail matters here: without it the pipeline reports tee's exit code,
+              # so a migration that FAILED would show as a green deploy.
+              run: |
+                  set -o pipefail
+                  {
+                      echo "### Result"
+                      echo '```'
+                      supabase db push 2>&1 | tee /dev/stderr
+                      echo '```'
+                  } >> "$GITHUB_STEP_SUMMARY"

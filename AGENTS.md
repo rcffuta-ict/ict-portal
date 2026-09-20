@@ -50,9 +50,10 @@ pnpm db:inventory               # row counts across every table
 pnpm release                    # decide the version from what changed
 ```
 
-`supabase/migrations/` is the only SQL that runs. A push to `stage` or `dev/**` applies
-it to the staging project; a push to `main` applies it to production, behind an approval
-gate. `db/migrations/0001`–`0013` is the archived pre-handover series and is never
+`supabase/migrations/` is the only SQL that runs. A push to `stage` applies it to the
+staging project; a push to `main` applies it to production, behind an approval gate.
+`dev/**` deploys nothing — it only gets the from-scratch replay in CI, because a
+half-written migration applied to a shared database cannot be taken back. `db/migrations/0001`–`0013` is the archived pre-handover series and is never
 applied again — it is not self-contained and never was. Full runbook:
 **`docs/DATABASE-CICD.md`**.
 

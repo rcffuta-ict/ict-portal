@@ -1,11 +1,18 @@
 name: CI
 
+# Runs on every PR, and on direct pushes to the long-lived branches.
+#
+# dev/** is included deliberately: those branches never deploy, so this replay is the
+# only feedback a migration gets before it reaches `stage`. It builds the schema in a
+# throwaway Postgres inside the runner and never connects to a real project.
 on:
     pull_request:
     push:
         branches:
             - main
             - stage
+            - dev
+            - "dev/**"
 
 concurrency:
     group: ci-${{ github.ref }}
