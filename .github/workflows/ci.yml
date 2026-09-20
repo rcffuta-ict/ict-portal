@@ -26,6 +26,10 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
+            # No `version:` here on purpose — the action reads `packageManager`
+            # from package.json, so the pnpm that CI uses and the pnpm you use
+            # locally are pinned by one line in one file. Setting it here as well
+            # would create a second place for them to disagree.
             - uses: pnpm/action-setup@v4
 
             - uses: actions/setup-node@v4
@@ -72,9 +76,20 @@ jobs:
             # database, so it fails on exactly the class of error that cost us a
             # rolled-back production apply before: a DROP whose dependent view is
             # invisible to a TypeScript grep.
+            # --ignore-health-check because THE DATABASE IS THE ONLY SERVICE THIS JOB
+            # TESTS. The exclusion list below is honoured unevenly -- PostgREST has
+            # started and then failed its readiness probe on 127.0.0.1:54321 even when
+            # excluded, and that probe goes through Kong, which is also excluded, so it
+            # could never have answered. Failing the PR over an API gateway nobody asked
+            # for, in a job about SQL, is noise.
+            #
+            # This does NOT weaken the check. The next two steps are the real gate: if
+            # Postgres had not come up, `db reset` and the seed would fail immediately
+            # and loudly. A green run still means the migrations replayed from zero.
             - name: Build the schema from scratch
               run: >
                   supabase start
+                  --ignore-health-check
                   -x studio,imgproxy,inbucket,edge-runtime,functions,realtime,storage,analytics,vector,kong,rest,meta
 
             # `db reset` re-runs the whole series a second time on a fresh database.
