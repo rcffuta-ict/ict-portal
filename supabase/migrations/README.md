@@ -38,3 +38,33 @@ generated and how both projects were told it is already applied.
 There is deliberately no `seed.sql` here. Supabase only runs seed files on preview
 branches, which the Free plan does not have, and seed data is never merged to
 production. Bootstrap data stays in `db/seed/default.sql`, applied on purpose.
+
+
+## Rehearse on Postgres 17, not whatever you have locally
+
+`supabase/config.toml` pins `[db] major_version = 17` because production and staging
+both run `17.6.1.063`. Rehearsing a migration on a different major version can pass and
+still fail on deploy.
+
+This has already happened once here, and the difference was a single statement:
+
+```sql
+DROP POLICY IF EXISTS "x" ON public.some_dropped_table;
+```
+
+`IF EXISTS` covers a missing POLICY, not a missing TABLE. On **PostgreSQL 16** that is a
+NOTICE and the migration continues. On **PostgreSQL 17** it is
+`ERROR: relation ... does not exist (SQLSTATE 42P01)` and the migration aborts. A
+rehearsal on 16 went green; the push to staging failed on the same file.
+
+The right local database is the one the CLI already pulls:
+
+```bash
+docker run -d --name pg17 -e POSTGRES_PASSWORD=x supabase/postgres:17.6.1.063
+docker exec pg17 psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f /tmp/<migration>.sql
+```
+
+Use the `postgres` database inside it, not a fresh one — it comes with the `graphql`,
+`vault`, `extensions` and `auth` schemas the baseline expects.
+
+CI is already correct: `supabase start` reads `major_version` from `config.toml`.
