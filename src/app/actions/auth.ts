@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { getSessionProfileId, revokeCurrentSession } from "@/lib/auth/session";
+import { getSessionProfileId, revokeCurrentSession, clearSessionCookie } from "@/lib/auth/session";
 import { getProfileContext } from "@/lib/auth/profile-context";
 import { attachAccessibleModules } from "@/lib/module-access";
 
@@ -26,6 +26,19 @@ export async function verifySession() {
         console.error("Session verification failed:", error);
         return { success: false, error: error.message || "Session verification failed" };
     }
+}
+
+/**
+ * Discard a session cookie that no longer resolves to a session.
+ *
+ * Separate from `logoutAction` on purpose: logging out is something a person does and
+ * is worth auditing, whereas this is housekeeping for a cookie that already stopped
+ * meaning anything. There is no row to revoke, so there is no `logout` event to write —
+ * recording one would put a logout in the audit trail that nobody performed.
+ */
+export async function endInvalidSessionAction() {
+    await clearSessionCookie();
+    return { success: true as const };
 }
 
 /**
