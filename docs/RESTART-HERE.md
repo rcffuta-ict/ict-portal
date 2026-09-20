@@ -74,27 +74,56 @@ It also means the committed app code cannot run against production as it stands:
 `src/lib/positions.ts` selects `tier, is_protected`, and the transfers tab queries
 `unit_transfer_requests`.
 
-### Your two options
+### Decision: Option B, and it is already done
 
-**Option A — bring production to 0013 by hand, then dump.**
-Apply 0011, 0012, 0013 in the SQL editor, re-run `pnpm db:bootstrap -- --apply`. Fastest
-route to a baseline. But it is one more irreversible hand-edit to production with no
-backup and no review — the practice being retired.
+The baseline is taken from production **as it stands (0010)**, and 0011/0012/0013 are
+now real migrations that run after it:
 
-**Option B — baseline production as it is, and let the pipeline do the upgrade.**
-*Recommended.* Take the baseline at 0010 (its honest current state), then bring
-0011/0012/0013 into `supabase/migrations/` as real, timestamped migrations ahead of
-`20260920162209_tighten_office_catalogue.sql`. Staging gets built from
-baseline → 0011 → 0012 → 0013 → tighten and is **tested first**; production then gets
-the same four through the approval gate.
+```
+supabase/migrations/
+  20260101000000_0000_baseline.sql                      <- you still generate this
+  20260101000100_0011_frozen_catalogue_and_transfers.sql
+  20260101000200_0012_handover_intents.sql
+  20260101000300_0013_structural_cleanup.sql
+  20260920162209_tighten_office_catalogue.sql
+```
 
-Option B is more setup and strictly safer: production's upgrade becomes reviewable,
-repeatable and rehearsed, instead of pasted into a SQL editor. Note 0013 has a known
-failure mode — it tries to drop `question_flags`, which
-`event_questions_with_details` depends on — so rehearsing it on staging is worth real
-money here.
+So staging is built from baseline → 0011 → 0012 → 0013 → tighten → seed and is
+**rehearsed first**; production then takes the same four through the approval gate,
+instead of being hand-edited in the SQL editor.
 
-Whichever you pick, **take `pnpm backup` against production before touching it.**
+**Rehearsing it immediately found a defect in 0013.** Replayed against production's
+actual schema on a throwaway Postgres, `DROP COLUMN category` failed:
+
+```
+ERROR: cannot drop column category of table leadership_positions
+       because other objects depend on it
+```
+
+Three RLS policies on `question_flags`, `event_questions` and `question_references`
+still referenced `lp.category`. They are vestigial — they test `auth.uid()`, which has
+been NULL since Supabase Auth was retired, on tables that are service-role-only with
+RLS forced and no policies — so they granted nothing to anyone. But they were enough to
+block the column drop, and every environment would have hit it. 0013 now drops them
+explicitly first (not `DROP COLUMN ... CASCADE`, which would remove unnamed dependents
+and set up the next surprise).
+
+**Correction to what I said earlier:** I claimed 0013 had a known failure mode around
+`question_flags`. That was wrong — the committed 0013 deliberately *keeps*
+`question_flags` and says so at length. The real defect was the three policies above,
+and it was only findable by running the thing.
+
+Verified end to end on Postgres 16: baseline → 0011 → 0012 → 0013 → tighten → seed all
+apply clean; `category`, `is_default` and `is_central` are gone; `tier`, `is_protected`
+and `grants_login` are present; 36 offices, 25 units, 13 ledger rows; `gen-sec` and
+`fin-sec` honorary with no login, everything else with one.
+
+> The ledger is 0013's job, not the baseline's. 0013 creates `public.schema_migrations`
+> and backfills 0001–0012 with better notes than the bootstrap script could invent, so
+> the script no longer appends its own rows when the source is pre-0013 — it would be
+> inserting into a table the next migration is about to create.
+
+**Still take `pnpm backup` against production before the first `main` deploy.**
 
 ---
 
