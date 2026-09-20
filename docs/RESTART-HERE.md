@@ -27,6 +27,77 @@ to clean up. Delete the empty files whenever you like; they are ignored.
 
 ---
 
+## ⚠ Read this first — the baseline is blocked
+
+`pnpm db:bootstrap` now gets as far as the audit and **stops**, correctly. Two findings
+came out of that run, and the second is a decision only you can make.
+
+### 1. The filter was broken. Fixed.
+
+`supabase db dump` quotes every identifier — `"public"."rw_orders"`, never
+`public.rw_orders` — and three separate checks in `bootstrap-supabase.mjs` matched only
+the unquoted form. They therefore matched *nothing*, and reported clean.
+
+Measured against production's actual dump: **115 foreign objects would have been written
+into the baseline** — 24 indexes on ReadWrite tables, 30 comments, 61 grants. The indexes
+would have made `db push` fail on a fresh project, which is the *lucky* outcome; the
+unlucky one is a baseline that applies fine and quietly carries another application's
+objects into every environment built from it. `findDanglingReferences()` said "no
+dangling references" for the same reason.
+
+Two audit checks were also passing falsely — `leadership_positions has no category` was
+green while production's `category` column was sitting right there in the dump.
+
+All fixed, and re-verified against the real dump: 115 leaks → 0, kept blocks 533 → 418,
+every portal table and all three hand-made Q&A objects still present. **The lesson worth
+keeping: the synthetic fixture this was originally tested against used unquoted
+identifiers. Real pg_dump output does not.**
+
+### 2. Production is at 0010, not 0013
+
+This is the blocker. Production's `leadership_positions` still looks like this:
+
+```
+"category" "text" NOT NULL,          <- 0013 drops this
+"is_default" boolean NOT NULL,       <- 0013 drops this
+"is_central" boolean NOT NULL,
+```
+
+no `tier`, no `is_protected`, and these four tables do not exist at all:
+`schema_migrations`, `unit_transfer_requests`, `handover_intents`, `handover_events`.
+
+**Migrations 0011, 0012 and 0013 were never applied to production.** They went to the
+old dev project and stopped there — which is exactly the failure mode this whole CI
+effort exists to end.
+
+It also means the committed app code cannot run against production as it stands:
+`src/lib/positions.ts` selects `tier, is_protected`, and the transfers tab queries
+`unit_transfer_requests`.
+
+### Your two options
+
+**Option A — bring production to 0013 by hand, then dump.**
+Apply 0011, 0012, 0013 in the SQL editor, re-run `pnpm db:bootstrap -- --apply`. Fastest
+route to a baseline. But it is one more irreversible hand-edit to production with no
+backup and no review — the practice being retired.
+
+**Option B — baseline production as it is, and let the pipeline do the upgrade.**
+*Recommended.* Take the baseline at 0010 (its honest current state), then bring
+0011/0012/0013 into `supabase/migrations/` as real, timestamped migrations ahead of
+`20260920162209_tighten_office_catalogue.sql`. Staging gets built from
+baseline → 0011 → 0012 → 0013 → tighten and is **tested first**; production then gets
+the same four through the approval gate.
+
+Option B is more setup and strictly safer: production's upgrade becomes reviewable,
+repeatable and rehearsed, instead of pasted into a SQL editor. Note 0013 has a known
+failure mode — it tries to drop `question_flags`, which
+`event_questions_with_details` depends on — so rehearsing it on staging is worth real
+money here.
+
+Whichever you pick, **take `pnpm backup` against production before touching it.**
+
+---
+
 ## Track A — build the staging database
 
 ### A1. Pull the one Docker image
