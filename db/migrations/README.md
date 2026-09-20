@@ -1,3 +1,9 @@
+> **Update — 0011, 0012 and 0013 are no longer archived.**
+> They were never applied to production; they reached the old dev project and
+> stopped there. They now live in `supabase/migrations/` with timestamps, and CI
+> applies them to staging and then to production. 0001–0010 remain archived and
+> are folded into the baseline.
+
 # db/migrations — ARCHIVED, does not run
 
 These thirteen files are the history of the database up to the v1.0.0 handover. They

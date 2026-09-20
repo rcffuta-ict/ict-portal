@@ -49,7 +49,7 @@
  * you can read the baseline before anything is written anywhere.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
     ROOT, c, heading, section, table, kv, ok, warn, fail, info, step, blank,
@@ -253,47 +253,87 @@ function findDanglingReferences(kept, dropped) {
 // ---------------------------------------------------------------------------
 
 /**
- * Confirm the source really is at 0013's end state before it becomes the baseline
- * every future environment is built from. A dump taken from the wrong project, or one
- * where 0013 never landed, looks perfectly valid as SQL.
+ * Objects that migrations 0011-0013 create. A baseline taken from a source that has
+ * not had them applied will not contain these, and that is CORRECT -- the migrations
+ * that follow the baseline add them.
  */
-function auditBaseline(kept) {
+const CREATED_AFTER_0010 = [
+    "schema_migrations",
+    "unit_transfer_requests",
+    "handover_intents",
+    "handover_events",
+];
+
+/**
+ * The migrations that must sit between the baseline and everything else when the
+ * source is pre-0013. Checked by FILENAME, because a missing one is not a SQL error --
+ * it is an environment that quietly never gets the frozen catalogue.
+ */
+const FOLLOW_ON_MIGRATIONS = [
+    "20260101000100_0011_frozen_catalogue_and_transfers.sql",
+    "20260101000200_0012_handover_intents.sql",
+    "20260101000300_0013_structural_cleanup.sql",
+];
+
+/**
+ * How far along the source actually is.
+ *
+ * Worth detecting rather than assuming. The first version of this audit assumed the
+ * source was at 0013 and hard-failed otherwise, which read as "you picked the wrong
+ * project" when the real answer was "0011-0013 never reached production". Those are
+ * very different problems and deserve different messages.
+ */
+function detectStage(names, leadershipPositions) {
+    const hasCategory =
+        Boolean(leadershipPositions) && /^\s+"?category"?\s/m.test(leadershipPositions.text);
+    if (hasCategory || !names.has("schema_migrations")) return "pre-0013";
+    return "post-0013";
+}
+
+/**
+ * Confirm the dump is the schema we think it is before it becomes the baseline every
+ * future environment is built from. A dump from the wrong project, or one missing an
+ * object that exists in no migration, is perfectly valid SQL and fails much later.
+ *
+ * Two acceptable shapes:
+ *
+ *   pre-0013   production as it stands. 0011-0013 must then be queued as migrations
+ *              AFTER the baseline, so every environment converges on the same schema.
+ *   post-0013  a source that already has them. Nothing more to apply.
+ *
+ * Anything else is a wrong source project.
+ */
+function auditBaseline(kept, { migrationsPresent = [] } = {}) {
     const names = new Set(kept.flatMap((b) => headerIdentifiers(b.name)));
     const leadershipPositions = kept.find(
         (b) => b.type === "TABLE" && headerIdentifiers(b.name).includes("leadership_positions"),
     );
+    const stage = detectStage(names, leadershipPositions);
+    const pre = stage === "pre-0013";
 
-    return [
-        {
-            check: "public.schema_migrations exists",
-            pass: names.has("schema_migrations"),
-            why: "the ledger 0013 created; without it the new project cannot report its own state",
-        },
+    // At 0010 these four do not exist yet, and demanding them would be demanding the
+    // source be something it is not.
+    const expectedTables = pre
+        ? PORTAL_TABLES.filter((t) => !CREATED_AFTER_0010.includes(t))
+        : PORTAL_TABLES;
+    const missing = expectedTables.filter((t) => !names.has(t));
+
+    const checks = [
         {
             check: "question_flags KEPT",
             pass: names.has("question_flags"),
-            why: "event_questions_with_details depends on it — 0013 tried to drop it and failed",
-        },
-        {
-            check: "leadership_positions has no `category`",
-            pass: Boolean(leadershipPositions) && !/^\s+"?category"?\s/m.test(leadershipPositions.text),
-            why: "0013 dropped it; it is derived by rcf_position_kind() now",
-        },
-        {
-            check: "leadership_positions has no `is_default`",
-            pass: Boolean(leadershipPositions) && !/^\s+"?is_default"?\s/m.test(leadershipPositions.text),
-            why: "0013 dropped it in favour of tier + is_protected",
+            why: "event_questions_with_details depends on it -- 0013 deliberately keeps it",
         },
         {
             check: "rcf_profile_context present",
             pass: names.has("rcf_profile_context"),
-            why: "the auth RPC — the portal cannot log anyone in without it",
+            why: "the auth RPC -- the portal cannot log anyone in without it",
         },
+        // These three are in NO migration at all. They were created by hand in the SQL
+        // editor and exist only in the live database, which is precisely why the
+        // baseline is a dump rather than a replay of db/migrations/ -- rebuild from
+        // those files and the Q&A feature dies with no error anywhere.
         {
-            // These three are in NO migration at all. They were created by hand in the
-            // SQL editor and exist only in the live database, which is precisely why
-            // the baseline is a dump rather than a replay of db/migrations/ -- rebuild
-            // from those files and the Q&A feature dies with no error anywhere.
             check: "event_questions_with_details view present",
             pass: names.has("event_questions_with_details"),
             why: "exists in no migration; src/lib/qa.ts reads it directly",
@@ -309,11 +349,28 @@ function auditBaseline(kept) {
             why: "exists in no migration; called via rpc() from src/lib/qa.ts",
         },
         {
-            check: "every portal table present",
-            pass: PORTAL_TABLES.every((t) => names.has(t)),
-            why: "missing: " + PORTAL_TABLES.filter((t) => !names.has(t)).join(", "),
+            check: `every table expected at ${pre ? "0010" : "0013"} present`,
+            pass: missing.length === 0,
+            why: "missing: " + missing.join(", "),
         },
     ];
+
+    if (pre) {
+        const absent = FOLLOW_ON_MIGRATIONS.filter((f) => !migrationsPresent.includes(f));
+        checks.push({
+            check: "0011-0013 queued as migrations after the baseline",
+            pass: absent.length === 0,
+            why: "missing from supabase/migrations/: " + absent.join(", "),
+        });
+    } else {
+        checks.push({
+            check: "public.schema_migrations exists",
+            pass: names.has("schema_migrations"),
+            why: "the ledger 0013 created; without it the project cannot report its own state",
+        });
+    }
+
+    return { stage, checks };
 }
 
 // ---------------------------------------------------------------------------
@@ -675,8 +732,15 @@ async function main() {
     ok("No dangling references");
 
     // --- Audit -------------------------------------------------------------
-    section("3. Is this really the post-0013 schema?");
-    const audit = auditBaseline(kept);
+    section("3. Is this the schema we think it is?");
+    const migrationsPresent = existsSync(MIGRATIONS_DIR) ? readdirSync(MIGRATIONS_DIR) : [];
+    const { stage, checks: audit } = auditBaseline(kept, { migrationsPresent });
+    info(
+        stage === "pre-0013"
+            ? c.grey("Source is at 0010. 0011-0013 follow the baseline as migrations.")
+            : c.grey("Source already has 0011-0013 applied."),
+    );
+    blank();
     table(
         audit.map((a) => ({
             result: a.pass ? c.green("PASS") : c.red("FAIL"),
@@ -689,8 +753,8 @@ async function main() {
     if (audit.some((a) => !a.pass)) {
         blank();
         throw new Error(
-            "The dump is not at 0013's end state. Check you picked the right SOURCE project\n" +
-            "  before letting this become the baseline every environment is built from.",
+            "The dump is not a schema this baseline can be built from. Check you picked the\n" +
+            "  right SOURCE project before letting it become the base every environment uses.",
         );
     }
 
@@ -700,7 +764,11 @@ async function main() {
         baselineHeader({ sourceRef, keptCount: kept.length, droppedCount: dropped.length, keepForeign }) +
         preamble +
         kept.map((b) => b.text).join("") +
-        ledgerBackfill();
+        // NO ledger rows appended here. When the source is pre-0013, public.schema_migrations
+        // does not exist yet -- 0013 creates it AND backfills 0001-0012, with better notes
+        // than this script could invent. Writing rows into a table that the next migration
+        // is about to create would simply fail.
+        (stage === "post-0013" ? ledgerBackfill() : "");
 
     const outPath = join(MIGRATIONS_DIR, BASELINE_NAME);
     if (apply) {
