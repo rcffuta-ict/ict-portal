@@ -101,6 +101,56 @@ because both were in use. The service-role KEY deliberately has no NEXT_PUBLIC f
 Verified: `tsc` clean, `pnpm build` clean, lint identical to baseline on every touched
 file (two files improved).
 
+## 14. Migration 0013 FIXED after a failed apply
+
+`question_flags` was NOT dead. Applying 0013 failed with:
+
+```
+ERROR: cannot drop table question_flags because other objects depend on it
+DETAIL: view event_questions_with_details depends on table question_flags
+        function search_questions(text,uuid) depends on type ...
+        view flagged_questions depends on table question_flags
+```
+
+**The lesson, now written into the migration itself:** grepping `src/` is not evidence
+a table is unused. Views, functions and triggers reference tables too, and none of them
+show up in a TypeScript search. `event_questions_with_details` is the view the whole Q&A
+feature reads through.
+
+Changes:
+* `question_flags` **stays.** The earlier claim was wrong.
+* New `pg_temp.drop_table_if_unused()` — refuses to drop anything with dependents, names
+  what depends on it, and **never uses CASCADE**. Also catches
+  `dependent_objects_still_exist` so a surprise reports instead of aborting the migration.
+* `question_references` still dropped, but through the same guard.
+* `db/db-schema.sql` restored `question_flags` (76 tables).
+
+**Verified against the live dev database: 0013 rolled back cleanly. Nothing partially
+applied.** `category`, `is_default`, `is_central`, `can_manage_unit`, `raffle_id` all
+still present; `schema_migrations` does not exist.
+
+## 15. Scripts rebuilt — interactive, with an environment picker
+
+New `scripts/lib/cli.mjs`: colour (dropped when not a TTY or `NO_COLOR`), headings,
+tables, key/value blocks, progress bars, arrow-key menus, and **environment discovery**.
+
+**The environment picker is the point.** This repo has `.env.local`,
+`.env.development` and `.env.production` side by side. Every script now lists them with
+the Supabase project each points at, marks production in red, and:
+
+* `seed-test.mjs` **will not even offer** a production environment.
+* Anything else requires you to **type the project ref** before it proceeds.
+
+Verified live: `.env.local` and `.env.development` both point at `kcyylplbizwgttqjdezf`;
+`.env.production` is a genuinely different project, `izofyqiaazidryoejsot`.
+
+**New `scripts/db-status.mjs`** — answers "has migration N been applied here?" by
+fingerprinting the SCHEMA, not just reading the ledger. The ledger is a claim; the schema
+is the fact, and it flags any disagreement between them.
+
+npm scripts added: `db:status`, `db:inventory`, `db:seed-test`, `db:purge-auth`,
+`db:gen-seed`, `release`.
+
 ## NOT YET DONE — this is where you pick up
 
 Everything above is code-complete, built and linted. **Nothing has been run against any
@@ -108,13 +158,16 @@ database.** In order:
 
 1. **Full system backup** — Settings -> System insurance. Not the handover one; a
    tenure-scoped file cannot restore a dropped column.
-2. `node scripts/db-inventory.mjs --json > before.json`
-3. Apply `db/migrations/0013_structural_cleanup.sql` in the Supabase SQL editor.
-   Watch for the RLS sweep's NOTICE — it names any table it had to lock down.
+2. `pnpm db:inventory --env local --json > before.json`
+3. `pnpm db:status` to confirm what is outstanding, then apply
+   `db/migrations/0013_structural_cleanup.sql` in the Supabase SQL editor. Watch the
+   NOTICEs: the RLS sweep names any table it locked down, and `drop_table_if_unused`
+   names anything it KEPT because something depended on it.
 4. Apply `db/seed/default.sql`.
-5. `node scripts/db-inventory.mjs --json > after.json` and diff. **No FOREIGN row count
-   may change.**
-6. Dev only: `node scripts/seed-test.mjs --i-understand-this-is-not-production --password '...'`
+5. `pnpm db:inventory --env local --json > after.json`, then
+   `pnpm db:inventory --env local --compare after.json` — it diffs and shouts if any
+   **FOREIGN** row count moved.
+6. Dev only: `pnpm db:seed-test --password '...'`  (production is not offered)
 7. `node scripts/release.mjs --major --commit --tag` -> v1.0.0
 
 Still open, needing your decision:

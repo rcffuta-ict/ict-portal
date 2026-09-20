@@ -350,21 +350,118 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.rcf_profile_context(uuid) FROM anon, authenticated;
 
 -- ----------------------------------------------------------------------------
--- 4. Drop what nothing references.
+-- 4. Drop what nothing references — CAREFULLY.
 --
--- Each of these was verified against the whole of src/ and the whole of db/migrations/
--- before being listed. This is the irreversible part of the migration, and the reason
--- the release is a MAJOR: take the full system backup first.
+-- This is the irreversible part of the migration and the reason the release is a MAJOR.
+-- Take the full system backup first.
+--
+-- A LESSON THAT COST A FAILED MIGRATION, recorded here so nobody repeats it:
+--   The first draft of this section listed `question_flags` as dead because it had zero
+--   references in src/ and zero in db/migrations/. Applying it failed:
+--
+--     ERROR: cannot drop table question_flags because other objects depend on it
+--     DETAIL: view event_questions_with_details depends on table question_flags
+--             function search_questions(text,uuid) depends on type ...
+--             view flagged_questions depends on table question_flags
+--
+--   Grepping the application is NOT sufficient evidence that a table is unused. Views,
+--   functions and triggers reference tables too, and none of them appear in a TypeScript
+--   search. `event_questions_with_details` is the view the whole Q&A feature reads from;
+--   dropping its dependency with CASCADE would have taken the feature down silently and
+--   left a restore as the only way back.
+--
+--   So: `question_flags` STAYS. It is load-bearing, and the earlier claim was wrong.
+--
+-- HOW THIS SECTION DROPS THINGS NOW
+--   `drop_table_if_unused()` below refuses to drop anything that another object depends
+--   on, and says loudly what depends on it. It never uses CASCADE. A cleanup migration
+--   that destroys an unexamined dependent object is not a cleanup, it is an outage.
 -- ----------------------------------------------------------------------------
+
+/**
+ * Drop a table only if nothing else in the database depends on it.
+ *
+ * Returns nothing; raises a NOTICE either way so the SQL editor output records what
+ * happened. Deliberately has no CASCADE option — if a dependency exists, a human needs
+ * to look at it, which is exactly what happened with question_flags.
+ */
+CREATE OR REPLACE FUNCTION pg_temp.drop_table_if_unused(p_table text)
+RETURNS void
+LANGUAGE plpgsql
+AS $fn$
+DECLARE
+    v_oid        oid;
+    v_dependents text[];
+BEGIN
+    SELECT c.oid INTO v_oid
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND c.relname = p_table AND c.relkind = 'r';
+
+    IF v_oid IS NULL THEN
+        RAISE NOTICE 'drop: public.% is already absent.', p_table;
+        RETURN;
+    END IF;
+
+    -- Every view, function, constraint or index in another object that refers to this
+    -- table. Excludes the table's own internal dependencies (its indexes, its columns'
+    -- defaults, its own constraints), which are dropped with it.
+    SELECT array_agg(DISTINCT format('%s %s', dep.relkind_label, dep.name))
+      INTO v_dependents
+      FROM (
+          SELECT DISTINCT
+              CASE cl.relkind
+                  WHEN 'v' THEN 'view'
+                  WHEN 'm' THEN 'materialized view'
+                  WHEN 'r' THEN 'table'
+                  ELSE 'object'
+              END AS relkind_label,
+              cl.relname::text AS name
+            FROM pg_depend d
+            JOIN pg_rewrite rw ON rw.oid = d.objid
+            JOIN pg_class   cl ON cl.oid = rw.ev_class
+           WHERE d.refobjid = v_oid
+             AND d.deptype = 'n'
+             AND cl.oid <> v_oid
+      ) dep;
+
+    IF v_dependents IS NOT NULL AND array_length(v_dependents, 1) > 0 THEN
+        RAISE NOTICE '*** KEPT public.% — % object(s) depend on it: % ***',
+            p_table, array_length(v_dependents, 1), array_to_string(v_dependents, ', ');
+        RAISE NOTICE '    It is NOT unused. Review those before considering a drop.';
+        RETURN;
+    END IF;
+
+    -- The check above tracks view/rule dependencies via pg_rewrite, which covers the
+    -- chain that actually bit us. It does NOT see every possible referrer — a plpgsql
+    -- function body, for instance, is just text to Postgres and is tracked nowhere. So
+    -- the DROP itself is the final authority, and a surprise is reported rather than
+    -- allowed to abort the whole migration.
+    BEGIN
+        EXECUTE format('DROP TABLE public.%I', p_table);
+        RAISE NOTICE 'drop: public.% removed (nothing depended on it).', p_table;
+    EXCEPTION WHEN dependent_objects_still_exist THEN
+        RAISE NOTICE '*** KEPT public.% — Postgres refused the drop: % ***', p_table, SQLERRM;
+        RAISE NOTICE '    Something depends on it that the dependency scan did not see.';
+    END;
+END
+$fn$;
+
 
 -- `verification_codes` — email verification. The portal sends no mail; the feature was
 -- removed by decision, and this table has been dead since.
-DROP TABLE IF EXISTS public.verification_codes;
+SELECT pg_temp.drop_table_if_unused('verification_codes');
 
--- `question_flags` / `question_references` — built alongside the Q&A feature, never
--- wired to any UI. `question_stars` IS used and stays.
-DROP TABLE IF EXISTS public.question_flags;
-DROP TABLE IF EXISTS public.question_references;
+-- `question_references` — built alongside the Q&A feature, never wired to any UI.
+-- Guarded like the rest: if a view turns out to read it, it stays and says so.
+SELECT pg_temp.drop_table_if_unused('question_references');
+
+-- `question_flags` is DELIBERATELY NOT LISTED. The `event_questions_with_details` view
+-- — which the entire Q&A feature reads through, see src/lib/qa.ts — depends on it, as
+-- do `flagged_questions` and `search_questions()`. The flagging UI was never built, but
+-- the table is wired into the schema regardless. Removing it is a Q&A schema change, not
+-- a cleanup, and belongs in its own release with the view rewritten first.
+--
+-- `question_stars` IS used by the app directly and also stays.
 
 -- `leadership.can_manage_unit` — the pre-0006 permission flag, wholly superseded by
 -- the EXCO privilege tag. Zero readers.
@@ -448,7 +545,8 @@ $$;
 -- ----------------------------------------------------------------------------
 INSERT INTO public.schema_migrations (id, version, name, applied_at, applied_by, notes)
 VALUES ('0013', '1.0.0', 'structural_cleanup', now(), current_user,
-        'Dropped verification_codes, question_flags, question_references, '
+        'Dropped verification_codes and question_references (question_flags KEPT — the '
+        || 'event_questions_with_details view depends on it), '
         || 'leadership.can_manage_unit, event_registrations.raffle_id, and '
         || 'leadership_positions.is_central/category/is_default. category is now derived '
         || 'by rcf_position_kind(); rcf_profile_context rewritten and VP Admin matched '

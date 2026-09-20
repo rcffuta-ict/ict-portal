@@ -12,16 +12,19 @@
  *     seed-test.mjs  people filling them        development ONLY
  *
  * Usage:
- *   node scripts/seed-test.mjs --i-understand-this-is-not-production
- *   node scripts/seed-test.mjs --i-understand-this-is-not-production --reset
- *   node scripts/seed-test.mjs --i-understand-this-is-not-production --password 'Passw0rd!'
+ *   node scripts/seed-test.mjs                      # pick an environment, then confirm
+ *   node scripts/seed-test.mjs --env local
+ *   node scripts/seed-test.mjs --reset
+ *   node scripts/seed-test.mjs --password 'Passw0rd!'
  *
  * Flags:
+ *   --env NAME   choose the environment without the prompt (e.g. `local`)
  *   --reset      delete every previously seeded member first, then re-seed
  *   --reset-only delete and stop
  *   --password   give every seeded LEADER this password so you can log in as them.
  *                Without it they get a NULL hash and go through set-password-on-first-
  *                login, which is what really happens when someone is appointed.
+ *   --yes        skip the interactive confirmation (for scripted runs)
  *
  * EVERY seeded profile's email ends in `@rcffuta.test`. That is not cosmetic: it is the
  * only handle `--reset` uses, and `.test` is an RFC 2606 reserved TLD, so none of these
@@ -33,29 +36,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomBytes, scrypt as _scrypt } from "node:crypto";
 import { promisify } from "node:util";
-import { readFileSync } from "node:fs";
+import {
+    c, heading, section, table, kv, ok, warn, info, step, blank, progress,
+    chooseEnvironment, confirm, flagValue, hasFlag, die,
+} from "./lib/cli.mjs";
 
 const scrypt = promisify(_scrypt);
 const KEYLEN = 64;
 const TEST_DOMAIN = "@rcffuta.test";
-
-// --- minimal .env.local loader (no dependency), mirroring bootstrap-admin.mjs ---
-function loadEnv() {
-    try {
-        const raw = readFileSync(new URL("../.env.local", import.meta.url), "utf8");
-        for (const line of raw.split("\n")) {
-            const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-            if (!m) continue;
-            let val = m[2].trim();
-            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-                val = val.slice(1, -1);
-            }
-            if (!(m[1] in process.env)) process.env[m[1]] = val;
-        }
-    } catch {
-        /* fall back to real env */
-    }
-}
 
 async function hashPassword(password) {
     const secret = process.env.SESSION_SECRET;
@@ -70,54 +58,32 @@ async function hashPassword(password) {
 // ---------------------------------------------------------------------------
 
 /**
- * Refuse to touch anything that might be production.
+ * The last line of defence, after the environment picker has already refused to offer
+ * production at all.
  *
- * Three independent checks, because any one of them can be wrong. The explicit flag
- * stops an absent-minded run; PRODUCTION_SUPABASE_URL stops the classic mistake of a
- * stale .env.local pointing somewhere real; and the data check stops the case where
- * both of those were configured carelessly but the database plainly has a history.
+ * A database with real administrative history is not a scratch database. The audit log
+ * is the best signal available: it only gains rows when a System Admin edits someone's
+ * record or downloads a backup, neither of which happens on a fresh dev database.
  */
-async function assertNotProduction(db, url) {
-    if (!process.argv.includes("--i-understand-this-is-not-production")) {
-        throw new Error(
-            "Refusing to run without --i-understand-this-is-not-production.\n" +
-            "This script writes ~110 fake members. Read the header before using it.",
-        );
-    }
-
-    const prod = process.env.PRODUCTION_SUPABASE_URL?.trim();
-    if (prod && url.trim().replace(/\/+$/, "") === prod.replace(/\/+$/, "")) {
-        throw new Error(
-            `REFUSING: SUPABASE_URL matches PRODUCTION_SUPABASE_URL (${prod}).\n` +
-            "This is the production database. Nothing was written.",
-        );
-    }
-    if (!prod) {
-        console.warn(
-            "  ! PRODUCTION_SUPABASE_URL is not set, so the URL check was skipped.\n" +
-            "    Set it in .env.local to make this guard real.",
-        );
-    }
-
-    // A database with real administrative history is not a scratch database. The audit
-    // log is the best signal available: it only gets rows when a System Admin edits
-    // someone's record or downloads a backup, neither of which happens on a fresh dev DB.
+async function assertScratchDatabase(db) {
     const { count, error } = await db
         .from("admin_audit_log")
         .select("id", { count: "exact", head: true });
 
     if (error) {
         // Migration 0010 may not be applied on a brand-new scratch project. That is
-        // itself evidence it is not production, so this is not fatal — but say so.
-        console.warn(`  ! Could not read admin_audit_log (${error.message}) — treating as a fresh database.`);
+        // itself evidence it is not production, so this is not fatal - but say so.
+        warn(`Could not read admin_audit_log (${error.message})`);
+        info(c.grey("  Treating this as a fresh database."));
         return;
     }
     if ((count ?? 0) > 0) {
         throw new Error(
-            `REFUSING: admin_audit_log already has ${count} row(s), so this database has real\n` +
-            "administrative history. If it genuinely is a scratch copy, clear that table first.",
+            `This database has ${count} row(s) of administrative history in admin_audit_log,\n` +
+            "  so it is not a scratch copy. Clear that table first if you are certain.",
         );
     }
+    ok("No administrative history - this is a scratch database.");
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +176,7 @@ async function resetSeed(db) {
 
     const ids = (profiles ?? []).map((p) => p.id);
     if (ids.length === 0) {
-        console.log("  Reset: nothing to remove.");
+        info("Nothing to remove.");
         return 0;
     }
 
@@ -223,13 +189,13 @@ async function resetSeed(db) {
     ]) {
         const { error: delErr } = await db.from(table).delete().in(column, ids);
         // A table may not exist yet on a partially-migrated scratch DB; keep going.
-        if (delErr) console.warn(`  ! ${table}: ${delErr.message}`);
+        if (delErr) warn(`${table}: ${delErr.message}`);
     }
 
     const { error: profErr } = await db.from("profiles").delete().in("id", ids);
     if (profErr) throw new Error(`Could not delete seeded profiles: ${profErr.message}`);
 
-    console.log(`  Reset: removed ${ids.length} seeded member(s).`);
+    ok(`Removed ${ids.length} seeded member(s).`);
     return ids.length;
 }
 
@@ -237,21 +203,43 @@ async function resetSeed(db) {
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
-    loadEnv();
+    const resetOnly = hasFlag("reset-only");
+    heading(
+        resetOnly ? "Remove the test seed" : "Test seed",
+        "development only - never production",
+    );
 
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    const db = createClient(url, key);
+    // The picker does not even OFFER a production environment for this script.
+    const env = await chooseEnvironment({
+        purpose: "seed",
+        refuseProduction: true,
+        envFlag: flagValue("env"),
+    });
+    const db = createClient(env.url, env.vars.SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false },
+    });
 
-    console.log(`\nTarget: ${url}`);
-    await assertNotProduction(db, url);
-    console.log("  Guards passed — this is not production.\n");
+    section("Safety checks");
+    await assertScratchDatabase(db);
 
-    if (process.argv.includes("--reset") || process.argv.includes("--reset-only")) {
+    if (!hasFlag("yes")) {
+        blank();
+        const what = resetOnly
+            ? `delete every @rcffuta.test member from ${c.bold(env.ref ?? env.file)}`
+            : `write ~110 fake members into ${c.bold(env.ref ?? env.file)}`;
+        if (!await confirm(`This will ${what}. Continue?`)) {
+            info("Nothing was done.");
+            return;
+        }
+    }
+
+    if (hasFlag("reset") || resetOnly) {
+        section("Reset");
         await resetSeed(db);
-        if (process.argv.includes("--reset-only")) {
-            console.log("\nDone (reset only).\n");
+        if (resetOnly) {
+            blank();
+            ok("Done.");
+            blank();
             return;
         }
     }
@@ -269,7 +257,16 @@ async function main() {
             "computed from the active session, so there is nothing to compute against yet.",
         );
     }
-    console.log(`Active tenure: ${tenure.name} (${tenure.session})`);
+    section("Active tenure");
+    kv([
+        ["Name", tenure.name],
+        ["Session", tenure.session],
+    ]);
+
+    section("Generations");
+    info(c.grey("Entry years are derived from the session above, never hardcoded -"));
+    info(c.grey("level is computed, so a fixed year would go wrong on the next rollover."));
+    blank();
 
     // --- generations ---
     const generations = generationsFor(tenure.session);
@@ -284,7 +281,7 @@ async function main() {
         if (existing) {
             // Reuse rather than duplicate — "Army of Light" is already real data.
             classSetIds[g.level] = existing.id;
-            console.log(`  ${g.level.padEnd(10)} ${g.entryYear}  reusing "${existing.family_name}"`);
+            info(`${g.level.padEnd(10)} ${g.entryYear}  ${c.grey("reusing")} ${existing.family_name}`);
         } else {
             const { data: created, error } = await db
                 .from("class_sets")
@@ -293,7 +290,7 @@ async function main() {
                 .single();
             if (error) throw new Error(`class_sets ${g.entryYear}: ${error.message}`);
             classSetIds[g.level] = created.id;
-            console.log(`  ${g.level.padEnd(10)} ${g.entryYear}  created "${g.familyName}"`);
+            info(`${g.level.padEnd(10)} ${g.entryYear}  ${c.green("created")} ${g.familyName}`);
         }
     }
 
@@ -349,8 +346,14 @@ async function main() {
         .select("id, email, gender, class_set_id");
     if (memberErr) throw new Error(`Could not insert members: ${memberErr.message}`);
 
-    console.log(`\nMembers: ${inserted.length} (${generations.length} × 20 placed, 10 unplaced)`);
-    console.log(`  with photos: ${members.filter((m) => m.avatar_url).length}`);
+    section("Members");
+    kv([
+        ["Created", String(inserted.length)],
+        ["Placed in a generation", `${generations.length} x 20`],
+        ["No generation yet", "10  (for testing register / update)"],
+        ["With a photo", String(members.filter((m) => m.avatar_url).length)],
+        ["Email domain", c.grey("@rcffuta.test  (RFC 2606 reserved - can never receive mail)")],
+    ]);
 
     // --- leadership ---
     // Without real outgoing leaders the handover's access-revocation step shows an empty
@@ -372,9 +375,8 @@ async function main() {
         );
     } else {
         const finalists = inserted.filter((m) => m.class_set_id === classSetIds["500 Level"]);
-        const passwordHash = process.argv.includes("--password")
-            ? await hashPassword(process.argv[process.argv.indexOf("--password") + 1])
-            : null;
+        const passwordFlag = flagValue("password");
+        const passwordHash = passwordFlag ? await hashPassword(passwordFlag) : null;
 
         const rows = [];
         const logins = [];
@@ -402,19 +404,27 @@ async function main() {
         const { error: loginErr } = await db.from("profile_login").insert(logins);
         if (loginErr) throw new Error(`Could not provision logins: ${loginErr.message}`);
 
-        console.log(`\nLeadership: ${rows.length} appointments, ${logins.length} logins provisioned`);
-        console.log(
-            passwordHash
-                ? "  Password set — you can log in as any of them."
-                : "  No password set: each goes through set-password-on-first-login (pass --password to change).",
+        section("Leadership");
+        info(`${rows.length} appointments, ${logins.length} logins provisioned.`);
+        blank();
+        table(
+            positions.map((p) => ({ title: p.title, slug: c.grey(p.slug) })),
+            [{ key: "title", label: "OFFICE" }, { key: "slug", label: "SLUG" }],
         );
-        for (const pos of positions) console.log(`    ${pos.title}`);
+        blank();
+        if (passwordHash) {
+            ok("Password set - you can log in as any of them.");
+        } else {
+            info(c.grey("No password set: each goes through set-password-on-first-login,"));
+            info(c.grey("which is what really happens on appointment. Pass --password to change."));
+        }
     }
 
-    console.log(`\nDone. Remove it all with:  node scripts/seed-test.mjs --i-understand-this-is-not-production --reset-only\n`);
+    section("Done");
+    ok(`Seeded ${c.bold(env.file)} ${c.grey(`(${env.ref})`)}`);
+    info(c.grey("Remove it all again with:"));
+    info(`  ${c.cyan(`node scripts/seed-test.mjs --env ${env.file.replace(".env.", "")} --reset-only`)}`);
+    blank();
 }
 
-main().catch((e) => {
-    console.error(`\n${e.message}\n`);
-    process.exit(1);
-});
+main().catch(die);
