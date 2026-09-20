@@ -109,7 +109,19 @@ async function main() {
     let done = 0;
     for (const name of names) {
         const { count, error } = await db.from(name).select("*", { count: "exact", head: true });
-        results.push({ table: name, ...classify(name), count: error ? null : (count ?? 0), error: error?.message ?? null });
+
+        // A `head: true` request against a table that does not exist comes back with NO
+        // error and a null count — PostgREST has nothing to send a body for. Reading that
+        // as a row count of zero would report a dropped table as "present but empty",
+        // which is exactly the distinction this script exists to make. Null count with no
+        // error means ABSENT.
+        const absent = Boolean(error) || count === null;
+        results.push({
+            table: name,
+            ...classify(name),
+            count: absent ? null : count,
+            error: error?.message ?? (absent ? "table not found" : null),
+        });
         if (!json) progress(++done, names.length, name);
     }
 
