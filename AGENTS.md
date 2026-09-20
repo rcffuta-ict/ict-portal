@@ -50,6 +50,19 @@ pnpm db:inventory               # row counts across every table
 pnpm release                    # decide the version from what changed
 ```
 
+**Two seeds, and they are not interchangeable:**
+
+- **Structure** — `db/seed/default.sql`, generated from `src/config/*.ts` by
+  `pnpm db:gen-seed`. Units, offices, privileges, module access. **Runs in
+  production.** Additive and re-runnable; it restores an edited title or a
+  deactivated office and never deletes anything or touches a person.
+- **Data** — `pnpm db:seed-staging`. An active tenure, its generations, and a
+  System Admin, so a freshly built project is actually usable. **Refuses
+  production.** `-- --reset` first clears every data table back to empty; it never
+  touches the structure tables or `schema_migrations`, and it uses DELETE rather
+  than `TRUNCATE ... CASCADE` because four other applications hold foreign keys
+  pointing at `public.profiles`.
+
 `supabase/migrations/` is the only SQL that runs. A push to `stage` applies it to the
 staging project; a push to `main` applies it to production, behind an approval gate.
 `dev/**` deploys nothing — it only gets the from-scratch replay in CI, because a
