@@ -22,13 +22,14 @@
 -- privilege, `exco-choir` the position, `choir` the unit. Titles and aliases are
 -- free to change; changing a slug moves permissions and is never done here.
 --
--- Depends on migrations 0001-0013. Apply those first.
+-- Depends on supabase/migrations being applied first — in particular the
+-- grants_login column from 20260920162209_tighten_office_catalogue.sql.
 -- ============================================================================
 
 BEGIN;
 
 -- ----------------------------------------------------------------------------
--- 1. Units and teams (20: 19 units, 1 team).
+-- 1. Units and teams (25: 18 units, 7 team).
 --
 -- A member belongs to exactly ONE unit (the enforce_single_unit_membership
 -- trigger from 0001) but to any number of teams. That is the whole distinction:
@@ -52,117 +53,149 @@ VALUES
     ('prayer', 'Prayer Unit', 'UNIT', 'Carries the fellowship''s prayer life and intercession.', true),
     ('hall-reps', 'Hall Reps Unit', 'UNIT', 'Represents the fellowship in each hall of residence.', true),
     ('drama', 'Drama Unit', 'UNIT', 'Ministers through drama and stage presentation.', true),
-    ('sport', 'Sport Unit', 'UNIT', 'Organises the fellowship''s sporting life and fixtures.', true),
     ('welfare', 'Welfare Unit', 'UNIT', 'Sees to the practical needs and wellbeing of members.', true),
+    ('sport', 'Sports Team', 'TEAM', 'Organises the fellowship''s sporting life and fixtures.', true),
     ('sisters', 'Sisters'' Unit', 'UNIT', 'Ministers to the sisters of the fellowship.', true),
     ('bible-study', 'Bible Study Unit', 'UNIT', 'Plans and leads the fellowship''s study of the scriptures.', true),
     ('organizing', 'Organizing Unit', 'UNIT', 'Sets up, arranges and runs the logistics of every gathering.', true),
     ('evangelism', 'Evangelism Unit', 'UNIT', 'Leads outreach and soul-winning on and off campus.', true),
-    ('ict', 'Information and Communications Unit', 'UNIT', 'Runs the portal, the fellowship''s systems and its communications.', true)
+    ('brothers', 'Brothers'' Unit', 'UNIT', 'Ministers to the brothers of the fellowship.', true),
+    ('commerce', 'Commerce Team', 'TEAM', 'Runs the fellowship''s trade, sales and commercial ventures.', true),
+    ('secretariat', 'Secretariat', 'TEAM', 'Keeps the fellowship''s office, its records and its correspondence.', true),
+    ('protocol', 'Protocol Team', 'TEAM', 'Receives and attends to guests, ministers and dignitaries.', true),
+    ('transport', 'Transport Team', 'TEAM', 'Arranges movement for fellowship programmes and outreaches.', true),
+    ('ict', 'Information and Communications Team', 'TEAM', 'Runs the infrastructure, and manages the fellowship''s systems and its communications.', true)
 ON CONFLICT (slug) DO UPDATE
     SET name        = EXCLUDED.name,
         type        = EXCLUDED.type,
         description = EXCLUDED.description;
 
 -- ----------------------------------------------------------------------------
--- 2. The frozen position catalogue (29 offices).
+-- 2. The frozen position catalogue (36 offices).
 --
 -- `category` is NOT set: migration 0013 dropped the column and the kind is now
 -- derived from the privilege tags below by rcf_position_kind().
 --
 -- is_protected = true marks these as catalogue rows, which the
 -- enforce_frozen_position_catalogue trigger (0011) refuses to DELETE.
+--
+-- grants_login says whether appointment to the office comes with a PORTAL
+-- LOGIN. Most of the fellowship's offices are here as a record of service and
+-- administer nothing in the portal, so they grant none. It is set on INSERT
+-- only: once the row exists the column belongs to the VP Admin, and re-running
+-- this seed must not overrule an access decision they made deliberately.
 -- ----------------------------------------------------------------------------
 INSERT INTO public.leadership_positions
-    (slug, title, alias, description, tier, is_active, is_protected)
+    (slug, title, alias, description, tier, is_active, is_protected, grants_login)
 VALUES
     ('president', 'President', 'President',
      'Head of the fellowship. Sees every module including Settings, and is globally write-blocked.',
-     'PRESIDENT', true, true),
+     'PRESIDENT', true, true, true),
     ('vp-admin', 'Vice President Administration', 'VP Admin',
      'Administrative head. Appoints leaders, approves unit transfers, and runs the handover.',
-     'VP', true, true),
+     'VP', true, true, true),
     ('vp-church-growth', 'Vice President Church Growth', 'VP Church Growth',
      'Growth and outreach head. Church-wide read access.',
-     'VP', true, true),
+     'VP', true, true, true),
+    ('gen-sec', 'General Secretary', 'Gen Sec',
+     'Keeps the fellowship''s minutes, records and correspondence. Honorary in the portal — no access unless the VP Admin grants it.',
+     'EXECUTIVE', true, true, false),
+    ('fin-sec', 'Financial Secretary', 'Fin Sec',
+     'Keeps the fellowship''s accounts. Honorary in the portal — the finances are not held here, so no access unless the VP Admin grants it.',
+     'EXECUTIVE', true, true, false),
     ('ict-coord', 'ICT Coordinator', 'ICT Coord',
      'System Admin, and Executive of the Information and Communications Unit. Full read and write everywhere, including Settings and the Oracle.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-follow-up-and-counselling', 'Executive — Follow-up & Counselling Unit', 'Follow-up Coord',
      'Leads Follow-up & Counselling Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-media-and-ambience', 'Executive — Media and Ambience Unit', 'Media Coord',
      'Leads Media and Ambience Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-sanctuary-keeping', 'Executive — Sanctuary Keeping Unit', 'Sanctuary Coord',
      'Leads Sanctuary Keeping Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-library', 'Executive — Library', 'Librarian',
      'Leads Library. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-alumni-relations', 'Executive — Alumni Relations', 'Alumni Relations Officer',
      'Leads Alumni Relations. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-editorial', 'Executive — Editorial Unit', 'Editor',
      'Leads Editorial Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-academic', 'Executive — Academic Unit', 'Academic Coord',
      'Leads Academic Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-academic-counselling', 'Executive — Academic Counselling Team', 'Academic Counsellor',
      'Leads Academic Counselling Team. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-ushering', 'Executive — Ushering Unit', 'Chief Usher',
      'Leads Ushering Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-choir', 'Executive — Choir Unit', 'Choir Coord',
      'Leads Choir Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
-    ('exco-prayer', 'Executive — Prayer Unit', 'Prayer Coord',
+     'EXECUTIVE', true, true, true),
+    ('exco-prayer', 'Executive — Prayer Unit', 'Prayer Secretary',
      'Leads Prayer Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-hall-reps', 'Executive — Hall Reps Unit', 'Hall Reps Coord',
      'Leads Hall Reps Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-drama', 'Executive — Drama Unit', 'Drama Coord',
      'Leads Drama Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
-    ('exco-sport', 'Executive — Sport Unit', 'Sports Coord',
-     'Leads Sport Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-welfare', 'Executive — Welfare Unit', 'Welfare Coord',
      'Leads Welfare Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
+    ('exco-sport', 'Executive — Sports Team', 'Director of Sports',
+     'Leads Sports Team. Adds and removes its members directly.',
+     'EXECUTIVE', true, true, true),
     ('exco-sisters', 'Executive — Sisters'' Unit', 'Sisters'' Coord',
      'Leads Sisters'' Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
-    ('exco-bible-study', 'Executive — Bible Study Unit', 'Bible Study Coord',
+     'EXECUTIVE', true, true, true),
+    ('exco-bible-study', 'Executive — Bible Study Unit', 'Bible Study Secretary',
      'Leads Bible Study Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-organizing', 'Executive — Organizing Unit', 'Organizing Secretary',
      'Leads Organizing Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
     ('exco-evangelism', 'Executive — Evangelism Unit', 'Evangelism Coord',
      'Leads Evangelism Unit. Adds and removes its members directly.',
-     'EXECUTIVE', true, true),
+     'EXECUTIVE', true, true, true),
+    ('exco-brothers', 'Executive — Brothers'' Unit', 'Brothers'' Coord',
+     'Leads Brothers'' Unit. Adds and removes its members directly.',
+     'EXECUTIVE', true, true, true),
+    ('exco-commerce', 'Executive — Commerce Team', 'Director of Commerce',
+     'Leads Commerce Team. Adds and removes its members directly.',
+     'EXECUTIVE', true, true, true),
+    ('exco-secretariat', 'Executive — Secretariat', 'Secretariat Keeper',
+     'Leads Secretariat. Adds and removes its members directly.',
+     'EXECUTIVE', true, true, true),
+    ('exco-protocol', 'Executive — Protocol Team', 'Protocol Officer',
+     'Leads Protocol Team. Adds and removes its members directly.',
+     'EXECUTIVE', true, true, true),
+    ('exco-transport', 'Executive — Transport Team', 'Transport Secretary',
+     'Leads Transport Team. Adds and removes its members directly.',
+     'EXECUTIVE', true, true, true),
     ('level-coord-pds-uabs', 'Level Coordinator — PDS/UABS', 'PDS/UABS Coord',
      'Coordinates PDS/UABS. Authority is limited to that generation.',
-     'COORDINATOR', true, true),
+     'COORDINATOR', true, true, true),
     ('level-coord-100', 'Level Coordinator — 100 Level', '100 Level Coord',
      'Coordinates 100 Level. Authority is limited to that generation.',
-     'COORDINATOR', true, true),
+     'COORDINATOR', true, true, true),
     ('level-coord-200', 'Level Coordinator — 200 Level', '200 Level Coord',
      'Coordinates 200 Level. Authority is limited to that generation.',
-     'COORDINATOR', true, true),
+     'COORDINATOR', true, true, true),
     ('level-coord-300', 'Level Coordinator — 300 Level', '300 Level Coord',
      'Coordinates 300 Level. Authority is limited to that generation.',
-     'COORDINATOR', true, true),
+     'COORDINATOR', true, true, true),
     ('level-coord-400', 'Level Coordinator — 400 Level', '400 Level Coord',
      'Coordinates 400 Level. Authority is limited to that generation.',
-     'COORDINATOR', true, true),
+     'COORDINATOR', true, true, true),
     ('level-coord-all', 'Level Coordinator — 500 Level', '500 Level Coord',
      'Coordinates the finalists, and holds coordinator authority over EVERY level in the fellowship.',
-     'COORDINATOR', true, true)
+     'COORDINATOR', true, true, true)
 ON CONFLICT (slug) DO UPDATE
     SET title        = EXCLUDED.title,
         alias        = EXCLUDED.alias,
@@ -237,10 +270,10 @@ INSERT INTO public.position_privileges (position_id, privilege, scope)
 SELECT id, 'EXCO', 'drama' FROM public.leadership_positions WHERE slug = 'exco-drama'
 ON CONFLICT DO NOTHING;
 INSERT INTO public.position_privileges (position_id, privilege, scope)
-SELECT id, 'EXCO', 'sport' FROM public.leadership_positions WHERE slug = 'exco-sport'
+SELECT id, 'EXCO', 'welfare' FROM public.leadership_positions WHERE slug = 'exco-welfare'
 ON CONFLICT DO NOTHING;
 INSERT INTO public.position_privileges (position_id, privilege, scope)
-SELECT id, 'EXCO', 'welfare' FROM public.leadership_positions WHERE slug = 'exco-welfare'
+SELECT id, 'EXCO', 'sport' FROM public.leadership_positions WHERE slug = 'exco-sport'
 ON CONFLICT DO NOTHING;
 INSERT INTO public.position_privileges (position_id, privilege, scope)
 SELECT id, 'EXCO', 'sisters' FROM public.leadership_positions WHERE slug = 'exco-sisters'
@@ -253,6 +286,21 @@ SELECT id, 'EXCO', 'organizing' FROM public.leadership_positions WHERE slug = 'e
 ON CONFLICT DO NOTHING;
 INSERT INTO public.position_privileges (position_id, privilege, scope)
 SELECT id, 'EXCO', 'evangelism' FROM public.leadership_positions WHERE slug = 'exco-evangelism'
+ON CONFLICT DO NOTHING;
+INSERT INTO public.position_privileges (position_id, privilege, scope)
+SELECT id, 'EXCO', 'brothers' FROM public.leadership_positions WHERE slug = 'exco-brothers'
+ON CONFLICT DO NOTHING;
+INSERT INTO public.position_privileges (position_id, privilege, scope)
+SELECT id, 'EXCO', 'commerce' FROM public.leadership_positions WHERE slug = 'exco-commerce'
+ON CONFLICT DO NOTHING;
+INSERT INTO public.position_privileges (position_id, privilege, scope)
+SELECT id, 'EXCO', 'secretariat' FROM public.leadership_positions WHERE slug = 'exco-secretariat'
+ON CONFLICT DO NOTHING;
+INSERT INTO public.position_privileges (position_id, privilege, scope)
+SELECT id, 'EXCO', 'protocol' FROM public.leadership_positions WHERE slug = 'exco-protocol'
+ON CONFLICT DO NOTHING;
+INSERT INTO public.position_privileges (position_id, privilege, scope)
+SELECT id, 'EXCO', 'transport' FROM public.leadership_positions WHERE slug = 'exco-transport'
 ON CONFLICT DO NOTHING;
 INSERT INTO public.position_privileges (position_id, privilege, scope)
 SELECT id, 'LEVEL', 'pds-uabs' FROM public.leadership_positions WHERE slug = 'level-coord-pds-uabs'

@@ -12,8 +12,10 @@ import {
     RefreshCw,
     Lock,
     Sparkles,
+    KeyRound,
+    Award,
 } from "lucide-react";
-import { getCatalogueAction, syncCatalogueAction } from "../actions";
+import { getCatalogueAction, syncCatalogueAction, setPositionLoginAction } from "../actions";
 import { PrivilegePills } from "./privilege-pills";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 
@@ -33,7 +35,7 @@ const TIER_META: Record<string, { label: string; icon: any; blurb: string }> = {
     EXECUTIVE: {
         label: "Executives",
         icon: Users,
-        blurb: "One per unit and team. Adds and removes their own members directly.",
+        blurb: "One per unit and team, plus the central secretaries. Most manage their own members; some are on record only.",
     },
     COORDINATOR: {
         label: "Level Coordinators",
@@ -66,6 +68,8 @@ export function CataloguePanel({ canEdit }: { canEdit: boolean }) {
     const [error, setError] = useState<string | null>(null);
     const [syncing, setSyncing] = useState(false);
     const [reloadKey, setReloadKey] = useState(0);
+    /** The position whose access toggle is mid-flight — disables just that one row. */
+    const [togglingId, setTogglingId] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -97,6 +101,26 @@ export function CataloguePanel({ canEdit }: { canEdit: boolean }) {
         setReloadKey((k) => k + 1);
     };
 
+    /**
+     * Turn portal access on or off for one office.
+     *
+     * Retroactive, so the confirmation matters: switching an office off signs out
+     * whoever holds it (unless they hold another office that grants access), and the
+     * action reports how many people that was.
+     */
+    const toggleAccess = async (position: any) => {
+        setTogglingId(position.id);
+        const res = await setPositionLoginAction(position.id, !position.grants_login);
+        setTogglingId(null);
+
+        if (!res.success) {
+            showAlert({ type: "error", title: "Could not change access", message: res.error || "Unknown error." });
+            return;
+        }
+        showAlert({ type: "success", message: res.message ?? "Access updated." });
+        setReloadKey((k) => k + 1);
+    };
+
     return (
         <>
             <AlertModal isOpen={isOpen} onClose={closeAlert} {...alertConfig} />
@@ -107,7 +131,9 @@ export function CataloguePanel({ canEdit }: { canEdit: boolean }) {
                         <h3 className="font-bold text-slate-900">Leadership Structure</h3>
                         <p className="text-xs text-slate-500">
                             The same every tenure — handing over changes who sits in each seat,
-                            not the seats.
+                            not the seats. Holding an office is a record of service;{" "}
+                            <span className="font-semibold text-slate-600">portal access is separate</span>{" "}
+                            and set per office.
                         </p>
                     </div>
 
@@ -202,6 +228,13 @@ export function CataloguePanel({ canEdit }: { canEdit: boolean }) {
                                                         {p.description}
                                                     </p>
                                                 )}
+
+                                                <AccessRow
+                                                    position={p}
+                                                    canEdit={canEdit}
+                                                    busy={togglingId === p.id}
+                                                    onToggle={() => toggleAccess(p)}
+                                                />
                                             </li>
                                         ))}
                                     </ul>
@@ -226,5 +259,74 @@ function isFinalistCoordinator(position: any): boolean {
         (position.privileges ?? []).some(
             (p: any) => p.tag === "LEVEL" && (p.scope === null || p.scope === "all"),
         )
+    );
+}
+
+/**
+ * The access line for one office — the distinction this whole screen turns on.
+ *
+ * Holding an office is a record of service. Being able to sign in is a separate
+ * decision, made per office by the VP Admin, because most of the fellowship's offices
+ * administer nothing in this portal and an account nobody needs is an account nobody
+ * watches.
+ *
+ * Its own row rather than another pill in the wrapping header: at 360px that header
+ * already carries the title, the lock, the tags and sometimes a badge, and the one
+ * control on the card that CHANGES something should not be the item that wraps last
+ * and gets tapped by accident.
+ */
+function AccessRow({
+    position,
+    canEdit,
+    busy,
+    onToggle,
+}: {
+    position: any;
+    canEdit: boolean;
+    busy: boolean;
+    onToggle: () => void;
+}) {
+    const granted = Boolean(position.grants_login);
+    // vp-admin and ict-coord keep access permanently: a VP Admin who revokes their own
+    // office locks the fellowship out of this very screen. Refused by the server and by
+    // a database trigger too — this only keeps the UI honest about it.
+    const locked = position.slug === "vp-admin" || position.slug === "ict-coord";
+
+    return (
+        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+            <span
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    granted
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-slate-100 text-slate-500"
+                }`}
+            >
+                {granted ? (
+                    <KeyRound className="h-2.5 w-2.5" aria-hidden="true" />
+                ) : (
+                    <Award className="h-2.5 w-2.5" aria-hidden="true" />
+                )}
+                {granted ? "Portal access" : "Honorary — no login"}
+            </span>
+
+            {canEdit && !locked && (
+                <button
+                    type="button"
+                    onClick={onToggle}
+                    disabled={busy}
+                    className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-bold text-rcf-navy transition-colors hover:border-rcf-navy focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy disabled:opacity-60"
+                >
+                    {busy && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
+                    {granted ? "Disable login" : "Enable login"}
+                    <span className="sr-only"> for {position.title}</span>
+                </button>
+            )}
+
+            {canEdit && locked && (
+                <span className="ml-auto text-[10px] text-slate-400">
+                    Always enabled
+                </span>
+            )}
+        </div>
     );
 }

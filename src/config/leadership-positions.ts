@@ -8,7 +8,7 @@
  *
  * Two kinds of entry:
  *
- *   FIXED    — the four church-wide offices. Exactly one lead each, per tenure.
+ *   FIXED    — the six church-wide offices. Exactly one lead each, per tenure.
  *   DERIVED  — generated from data that legitimately grows: one Executive per unit
  *              or team, one Coordinator per level. Creating a unit mints its
  *              Executive position automatically (see createUnitAction), so the
@@ -65,6 +65,35 @@ export interface PositionSpec {
     tier: PositionTier;
     description: string;
     privileges: Privilege[];
+    /**
+     * Whether holding this office comes with a PORTAL LOGIN.
+     *
+     * Holding an office and being able to sign in are two different things, and the
+     * catalogue exists mainly for the first. Every office in the fellowship's own list
+     * belongs here so that the member's service is on record under their name — the
+     * Transport Secretary is a real office and should read as one on the cabinet
+     * screen — but the Transport Secretary has nothing to administer in this portal,
+     * and an account nobody needs is an account nobody watches.
+     *
+     * Omitted means: derived from `privileges`. A position that carries at least one
+     * privilege tag has something to manage, so it gets a login; a position with no
+     * tags is honorary and gets none. Expressing it that way rather than repeating a
+     * boolean on thirty entries means the two can never disagree.
+     *
+     * This is only the DEFAULT. The stored `leadership_positions.grants_login` column
+     * is what the app actually reads, and the VP Admin turns it on and off per office
+     * from the cabinet screen (setPositionLoginAction). Turning it off revokes the
+     * holders' access; turning it on provisions it.
+     */
+    grantsLogin?: boolean;
+}
+
+/**
+ * Whether appointment to this office should come with a portal login, by default.
+ * See {@link PositionSpec.grantsLogin} — tags mean there is something to administer.
+ */
+export function defaultGrantsLogin(spec: PositionSpec): boolean {
+    return spec.grantsLogin ?? spec.privileges.length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +140,28 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         tier: "VP",
         description: "Growth and outreach head. Church-wide read access.",
         privileges: [{ tag: "CENTRAL", scope: null }],
+    },
+    {
+        // Present in the fellowship's office list, absent from the portal until now.
+        // No privilege tag, so no portal login by default: the General Secretary keeps
+        // the fellowship's records, which is not something this portal holds. The VP
+        // Admin can grant access from the cabinet screen if that changes.
+        slug: "gen-sec",
+        title: "General Secretary",
+        alias: "Gen Sec",
+        tier: "EXECUTIVE",
+        description:
+            "Keeps the fellowship's minutes, records and correspondence. Honorary in the portal — no access unless the VP Admin grants it.",
+        privileges: [],
+    },
+    {
+        slug: "fin-sec",
+        title: "Financial Secretary",
+        alias: "Fin Sec",
+        tier: "EXECUTIVE",
+        description:
+            "Keeps the fellowship's accounts. Honorary in the portal — the finances are not held here, so no access unless the VP Admin grants it.",
+        privileges: [],
     },
     {
         slug: "ict-coord",
@@ -231,6 +282,19 @@ export function buildCatalogue(
  * unprotect it.
  */
 export const UNDISABLEABLE_POSITION_SLUGS = ["vp-admin", "ict-coord"] as const;
+
+/**
+ * The same two offices, for the same reason, applied to portal ACCESS: neither may
+ * have its login revoked. A VP Admin who switches off their own office's access locks
+ * the fellowship out of the screen that would switch it back on, and an ICT
+ * Coordinator without a login is a System Admin who cannot reach the system.
+ *
+ * Enforced in both places it can be reached: setPositionLoginAction here, and the
+ * `enforce_login_granting_offices` trigger in the database.
+ */
+export function isUndisableableLogin(slug: string | null | undefined): boolean {
+    return isUndisableablePosition(slug);
+}
 
 /** Whether this position may never be disabled. */
 export function isUndisableablePosition(slug: string | null | undefined): boolean {

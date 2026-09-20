@@ -116,6 +116,16 @@ Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more th
   public route requires updating that list too, or anonymous users get redirected to
   `/login` incorrectly. Note it matches `pathname` EXACTLY — sub-paths need their own
   `startsWith` rule (as `/events/` and `/lo-app/` have).
+- **Holding an office is not the same as having a login.** The catalogue
+  (`src/config/leadership-positions.ts`) carries every office in the fellowship so a
+  member's service is on record, but `leadership_positions.grants_login` decides
+  whether appointment to it provisions `profile_login`. Most offices grant nothing.
+  The VP Admin owns that column per office (`setPositionLoginAction`), the change is
+  retroactive, and `vp-admin`/`ict-coord` can never be switched off. So never assume
+  "is a leader" implies "can sign in" — check the office.
+- **One lead per office per tenure**, enforced by the partial unique index
+  `leadership_one_lead_per_position`, not just by the app's check-then-insert.
+  Assistants (`leadership.is_lead = false`) are unlimited.
 - **Lo! member recognition is NOT authentication** (`src/lib/lo-member.ts`). Lo! is
   open without a login, but only members may post testimonies, and only leaders have
   `profile_login` rows — so a visitor confirms themselves against the `profiles`
