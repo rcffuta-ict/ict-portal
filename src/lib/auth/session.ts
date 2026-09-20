@@ -84,6 +84,25 @@ export async function getSessionProfileId(): Promise<string | null> {
 }
 
 /**
+ * Delete the session cookie and nothing else.
+ *
+ * For a cookie that points at a session the database no longer has — expired, revoked,
+ * or belonging to a database that has since been reset. There is no row to revoke and
+ * no logout to audit; the cookie is simply stale.
+ *
+ * CLEARING IT IS NOT COSMETIC. `src/proxy.ts` decides redirect-vs-allow on the mere
+ * PRESENCE of this cookie (by design — it is a UX layer, not an authorization
+ * boundary). So a stale cookie puts the app in a redirect loop: the dashboard finds no
+ * valid session and sends the user to /login, the proxy sees a cookie and sends them
+ * back to /dashboard, forever. The user sees a loading screen that never resolves.
+ * Removing the cookie is what breaks that cycle.
+ */
+export async function clearSessionCookie(): Promise<void> {
+    const cookieStore = await cookies();
+    cookieStore.delete(SESSION_COOKIE);
+}
+
+/**
  * Revoke the current session (logout) and clear the cookie.
  * Returns the profile id that owned the session, for audit logging.
  */

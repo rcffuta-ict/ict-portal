@@ -16,7 +16,7 @@ export default function DashboardLayout({
 }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
-    const { user, userId } = useProfileStore();
+    const { user, userId, authStatus } = useProfileStore();
 
     // Handle hydration mismatch
     useEffect(() => {
@@ -38,18 +38,37 @@ export default function DashboardLayout({
         };
     }, [isMobileMenuOpen]);
 
-    // Show preloader while hydrating or if no user data
-    // But Render StoreInitializer in the background if mounted
+    // Three states, not two. A finished check that found nobody is not the same as a
+    // check still running — showing "Dashboard Loading..." for both is what made an
+    // ordinary expired session look like the app had hung.
     if (!mounted || (!user && !userId)) {
+        const signedOut = mounted && authStatus === "unauthenticated";
+
         return (
             <>
                 {mounted && <StoreInitializer />}
                 <Preloader
-                    title="Dashboard Loading..."
-                    subtitle="Preparing your workspace"
+                    title={signedOut ? "Signing you out…" : "Dashboard Loading..."}
+                    subtitle={
+                        signedOut
+                            ? "Your session has expired. Taking you to the login page."
+                            : "Preparing your workspace"
+                    }
                     showUserIcon={true}
                     variant="default"
                 />
+                {signedOut && (
+                    // A way out that does not depend on the redirect working. If the
+                    // proxy and this page ever disagree again, the user can still leave.
+                    <div className="fixed inset-x-0 bottom-0 flex justify-center p-6 safe-bottom">
+                        <a
+                            href="/login"
+                            className="inline-flex h-11 items-center justify-center rounded-lg bg-rcf-navy px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-rcf-navy-light focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy focus-visible:ring-offset-2"
+                        >
+                            Go to login
+                        </a>
+                    </div>
+                )}
             </>
         );
     }

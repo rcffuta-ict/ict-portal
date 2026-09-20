@@ -15,6 +15,16 @@ interface ProfileState {
     isLoading: boolean;
     lastRefresh: number | null; // Timestamp of last session refresh
     accessibleModules: string[]; // Tool modules this user may read (sidebar gating)
+    /**
+     * Whether the server has been asked about this session yet, and what it said.
+     *
+     * "unknown" and "unauthenticated" are NOT the same thing, and conflating them is
+     * what made an expired session look like a hang: the dashboard shell could only
+     * ask "is there a user?", so a finished check that found nobody was indistinguishable
+     * from a check still in flight, and it showed the loading screen for both.
+     */
+    authStatus: "unknown" | "authenticated" | "unauthenticated";
+    setAuthStatus: (status: "unknown" | "authenticated" | "unauthenticated") => void;
 
     // Core Actions
     setUser: (user: StoredUser) => void;
@@ -36,6 +46,7 @@ export const useProfileStore = create<ProfileState>()(
         // 1. Initialize all state values
         user: null,
         userId: null,
+        authStatus: "unknown" as const,
         isLoading: true,
         lastRefresh: null,
         accessibleModules: [],
@@ -43,7 +54,10 @@ export const useProfileStore = create<ProfileState>()(
         // 2. Actions
         setUserId: (userId) => set({ userId, isLoading: false }, false, "SET_USER_ID"),
 
+        setAuthStatus: (authStatus) => set({ authStatus }, false, "SET_AUTH_STATUS"),
+
         setUser: (user) => set({
+            authStatus: "authenticated" as const,
             user,
             userId: user.profile.id, // <--- CRITICAL: Sync ID with Profile
             accessibleModules: user.accessibleModules ?? [], // resolved server-side
@@ -52,6 +66,7 @@ export const useProfileStore = create<ProfileState>()(
         }, false, "SET_USER"),
 
         clearUser: () => set({
+            authStatus: "unauthenticated" as const,
             user: null,
             userId: null, // <--- CRITICAL: Clear ID on logout
             accessibleModules: [],

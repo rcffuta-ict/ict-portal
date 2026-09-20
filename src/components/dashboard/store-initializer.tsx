@@ -2,13 +2,41 @@
 
 import { useEffect, useRef } from "react";
 import { useProfileStore } from "../../lib/stores/profile.store";
-import { verifySession } from "@/app/actions/auth";
+import { verifySession, endInvalidSessionAction } from "@/app/actions/auth";
 import { useLoginRedirect } from "@/lib/hooks/useLoginRedirect";
 
 // Check session every 5 minutes
 const SESSION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
 // Refresh if session hasn't been checked in 10 minutes
 const SESSION_REFRESH_THRESHOLD = 10 * 60 * 1000; // 10 minutes
+
+
+/**
+ * Give up on the current session, properly.
+ *
+ * The cookie has to go FIRST. `src/proxy.ts` decides redirect-vs-allow on the mere
+ * presence of `rcf-session` — deliberately, since it is a UX layer and not an
+ * authorization boundary — so redirecting to /login while a stale cookie is still set
+ * makes the proxy bounce straight back to /dashboard, which lands here again. That is
+ * an infinite loop, and because this component renders nothing, all the user sees is a
+ * loading screen that never finishes.
+ *
+ * Clearing the cookie is what ends it. The redirect only works once the proxy agrees
+ * there is nothing to protect.
+ */
+async function abandonSession(
+    clearUser: () => void,
+    redirectToLogin: () => void,
+) {
+    try {
+        await endInvalidSessionAction();
+    } catch {
+        // Even if the server call fails, still clear local state and try to leave —
+        // being stuck on a dead dashboard is worse than a redirect that may bounce.
+    }
+    clearUser();
+    redirectToLogin();
+}
 
 export function StoreInitializer() {
     const user = useProfileStore((state) => state.user);
@@ -43,19 +71,17 @@ export function StoreInitializer() {
                         hasChecked.current = true;
                         return;
                     } else {
-                        // NO VALID SESSION FOUND
+                        // NO VALID SESSION FOUND — the cookie outlived its session.
                         console.error("No valid session found:", result.error);
-
-                        // User Request: "if there is No valid session found,clear all states and then take me to login"
-                        clearUser();
-                        redirectToLogin();
+                        hasChecked.current = true;
+                        await abandonSession(clearUser, redirectToLogin);
                         return;
                     }
                 } catch (error) {
                     console.error("Initial session check error:", error);
                     // On hard error, also safer to clear and redirect
-                    clearUser();
-                    redirectToLogin();
+                    hasChecked.current = true;
+                    await abandonSession(clearUser, redirectToLogin);
                 } finally {
                     isCheckingRef.current = false;
                 }
@@ -87,8 +113,7 @@ export function StoreInitializer() {
                     } else {
                         // Session invalid, logout
                         console.error("Session verification failed:", result.error);
-                        clearUser();
-                        redirectToLogin();
+                        await abandonSession(clearUser, redirectToLogin);
                     }
                 } catch (error) {
                     console.error("Session check error:", error);
