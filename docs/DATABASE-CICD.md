@@ -112,9 +112,10 @@ from the portal (Settings → System insurance).
 
 ### 3. Match the Postgres version
 
-Run `SHOW server_version;` in the production SQL editor and set `major_version` in
-`supabase/config.toml` to match. Otherwise the CI replay tests a different Postgres
-than the one you deploy to.
+`supabase/config.toml` says `major_version = 17`, and production reports
+`17.6.1.063` — already matching, verified 2026-09-20. Re-check with
+`SHOW server_version;` if Supabase upgrades the project, otherwise the CI replay
+starts testing a different Postgres than the one you deploy to.
 
 ### 4. Build the baseline and the new project
 
@@ -250,10 +251,26 @@ the token's visible projects before attempting to link. Read that step's output:
   Organizations (Read) — but in practice, if both `projects list` and `link` refuse,
   stop tuning permissions and use a classic token. Scoped tokens are public alpha.
 - **The list itself fails** some other way. The token is invalid, expired or revoked.
-- **The list looks right but `link` still 403s on API keys.** Known Supabase bug with
-  scoped tokens — `supabase link` reveals project API keys and scoped tokens are
-  refused, even on the Full access preset
-  (github.com/supabase/supabase/issues/50244). Use a classic token.
+- **`link` 403s even though the token clearly works.** This is the one that cost us an
+  afternoon, so here is the evidence rather than the theory. Tested against this
+  account's own scoped token:
+
+  | Management API call | Result |
+  |---|---|
+  | `GET /v1/projects` | 403 |
+  | `GET /v1/organizations` | 403 |
+  | `GET /v1/projects/{ref}` | **200** |
+  | `GET /v1/projects/{ref}/api-keys?reveal=false` | **200** |
+  | `GET /v1/projects/{ref}/api-keys?reveal=true` | 403 |
+
+  `supabase link` calls that last one. The token had every project-level permission it
+  needed and was correctly scoped to both projects — revealing API keys is the single
+  thing it could not do, and it is not a permission you can grant
+  ([supabase#50244](https://github.com/supabase/supabase/issues/50244), open).
+
+  **No amount of scope tuning fixes this. Use a classic token.** Note it in the
+  handover: classic tokens never expire and cover every project the account can reach,
+  so whoever takes over should reissue one and revoke yours.
 
 Check locally before touching the repository settings again:
 
