@@ -9,6 +9,8 @@
         "lint": "eslint",
         "db:status": "node scripts/db-status.mjs",
         "db:bootstrap": "node scripts/bootstrap-supabase.mjs",
+        "db:ict-coord": "node scripts/ict-coord.mjs",
+        "backup": "node scripts/backup.mjs",
         "db:inventory": "node scripts/db-inventory.mjs",
         "db:seed-test": "node scripts/seed-test.mjs",
         "db:purge-auth": "node scripts/purge-auth-users.mjs",
@@ -42,5 +44,8 @@
         "eslint": "^9",
         "eslint-config-next": "16.1.1",
         "typescript": "^5"
+    },
+    "engines": {
+        "node": ">=22.18"
     }
 }

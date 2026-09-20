@@ -150,6 +150,32 @@ export async function ask(question, { default: fallback = "" } = {}) {
     }
 }
 
+/**
+ * Ask for something that must not be echoed, or land in a scrollback buffer.
+ *
+ * readline has no native masking, so the documented approach is to override the
+ * interface's own write method: let the prompt through, swallow everything after it.
+ * Nothing is echoed at all rather than showing asterisks — asterisks leak the length.
+ */
+export async function askSecret(question) {
+    assertInteractive("This prompt");
+    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    let muted = false;
+    rl._writeToOutput = (str) => {
+        if (!muted) process.stdout.write(str);
+    };
+    try {
+        const answer = await new Promise((res) => {
+            rl.question(`  ${question}: `, res);
+            muted = true;
+        });
+        process.stdout.write("\n");
+        return answer;
+    } finally {
+        rl.close();
+    }
+}
+
 /** Yes/no. Defaults to NO — a destructive script should need a deliberate "y". */
 export async function confirm(question, { default: fallback = false } = {}) {
     const hint = fallback ? "Y/n" : "y/N";

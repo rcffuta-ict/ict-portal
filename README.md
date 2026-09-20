@@ -19,6 +19,8 @@ polish — see [AGENTS.md](./AGENTS.md) for the full UI/UX rules.
 | Forms | react-hook-form + zod |
 | Data | Supabase (Postgres) via `@supabase/supabase-js`, service-role only (`src/lib/db.ts`) |
 | Migrations | `supabase/migrations/`, applied by GitHub Actions — see [`docs/DATABASE-CICD.md`](./docs/DATABASE-CICD.md) |
+| Rebuilding from nothing | [`docs/FRESH-START.md`](./docs/FRESH-START.md) — fresh Supabase account to working portal |
+| Backups | `pnpm backup` — System Admin sign-in required; `--encrypt` for a `.rcfvault` |
 | Package manager | **pnpm only** — never npm/yarn |
 
 ## Getting started
