@@ -10,6 +10,7 @@
         "db:status": "node scripts/db-status.mjs",
         "db:bootstrap": "node scripts/bootstrap-supabase.mjs",
         "db:ict-coord": "node scripts/ict-coord.mjs",
+        "db:seed-staging": "node scripts/seed-staging.mjs",
         "backup": "node scripts/backup.mjs",
         "db:inventory": "node scripts/db-inventory.mjs",
         "db:seed-test": "node scripts/seed-test.mjs",
