@@ -21,6 +21,7 @@ import {
 } from "@/lib/access-control";
 import { ensureLoginProvisioned, resetLoginPassword } from "@/lib/auth/provision";
 import { computeLevel } from "@/lib/levels";
+import { isGenderCategoryUnit } from "@/config/fellowship-units";
 
 // ============================================================================
 // DATA LOADER (session/context driven — no more email guessing)
@@ -41,6 +42,21 @@ export async function getUnitModuleData() {
             leadershipRole: l.title,
         }))
         .filter((u) => !!u.id);
+
+    // The context carries the POSITION's slug (`exco-sisters`), not the unit's, and the
+    // unit slug is what says whether the roster is editable. One lookup rather than
+    // deriving it by stripping "exco-", which would silently be wrong for any office
+    // that is not named after its unit.
+    if (managedUnits.length > 0) {
+        const { data: slugs } = await db
+            .from("units")
+            .select("id, slug")
+            .in("id", managedUnits.map((u) => u.id as string));
+        const bySlug = new Map((slugs ?? []).map((u: any) => [u.id, u.slug]));
+        for (const u of managedUnits) {
+            (u as any).slug = bySlug.get(u.id as string) ?? null;
+        }
+    }
 
     // Managed levels (generations) — resolve their class_set details for display.
     const levelLeaderships = ctx.leadership.filter((l) => l.category === "LEVEL" && l.classSetId);
@@ -125,10 +141,22 @@ export async function addWorkerAction(formData: FormData) {
 
         const { data: target } = await db
             .from("units")
-            .select("id, name, type")
+            .select("id, name, type, slug")
             .eq("id", unitId)
             .maybeSingle();
         if (!target) return { success: false, error: "That unit no longer exists." };
+
+        // The Brothers' and Sisters' units have no roster to add to -- membership IS
+        // gender (see genderCategory in src/config/fellowship-units.ts). Refused here
+        // and not merely hidden in the UI, because a stored row would create a second,
+        // disagreeing answer to "is she in the Sisters' Unit?".
+        if (isGenderCategoryUnit(target.slug)) {
+            return {
+                success: false,
+                error: `${target.name} has no roster — every member is in it already, by gender. `
+                    + "To correct someone's membership, correct their gender on their profile.",
+            };
+        }
 
         // Teams are unconstrained — there is nothing to arbitrate.
         if (target.type === "TEAM") {
@@ -202,6 +230,15 @@ export async function addWorkerAction(formData: FormData) {
 export async function removeWorkerAction(membershipId: string) {
     try {
         await requireContext(); // any leader/admin; membership ownership checked by UI scope
+        // A derived member carries no membership id, so there is nothing to remove and
+        // nothing that would stay removed.
+        if (!membershipId) {
+            return {
+                success: false,
+                error: "This unit's membership follows gender — there is nothing to remove. "
+                    + "Correct the member's gender on their profile instead.",
+            };
+        }
         await removeWorker(membershipId);
         revalidatePath("/dashboard/units");
         return { success: true };

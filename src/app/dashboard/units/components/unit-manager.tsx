@@ -3,7 +3,8 @@
 
 import { useState } from "react";
 import { addWorkerAction, removeWorkerAction } from "../actions";
-import { Search, UserPlus, Trash2, Mail, Phone, User } from "lucide-react";
+import { Search, UserPlus, Trash2, Mail, Phone, User, Info } from "lucide-react";
+import { isGenderCategoryUnit } from "@/config/fellowship-units";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 
 export function UnitManager({
@@ -13,6 +14,11 @@ export function UnitManager({
     onSuccess,
 }: any) {
     const [members, setMembers] = useState<any[]>(initialMembers);
+    // Brothers'/Sisters': the roster is computed from gender, so there is nothing here
+    // to add to or remove from. Hiding the controls is the honest thing to show -- the
+    // server refuses either way, and offering a button that always fails is worse than
+    // offering none.
+    const isDerived = isGenderCategoryUnit(unit.slug);
     const [search, setSearch] = useState("");
     const [isAdding, setIsAdding] = useState(false);
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
@@ -66,35 +72,51 @@ export function UnitManager({
         <div className="space-y-6">
             <AlertModal isOpen={isOpen} onClose={closeAlert} {...alertConfig} />
 
-            {/* Add Form */}
-            <form
-                onSubmit={handleAdd}
-                className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex gap-3 items-end"
-            >
-                <div className="flex-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">
-                        Add New Worker
-                    </label>
-                    <input
-                        name="email"
-                        type="email"
-                        required
-                        placeholder="Enter member email..."
-                        className="w-full h-10 mt-1 px-3 rounded-lg border border-slate-300 text-sm outline-none focus:border-rcf-navy"
-                    />
+            {isDerived ? (
+                <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                    <div className="text-xs leading-relaxed text-blue-900">
+                        <p className="font-bold">This list is not edited — it is counted.</p>
+                        <p className="mt-1 text-blue-800">
+                            Every member of the fellowship is in {unit.name} by gender, so
+                            there is no induction and no roster to curate. To correct
+                            somebody&apos;s membership, correct their gender on their profile.
+                        </p>
+                    </div>
                 </div>
-                <button
-                    disabled={isAdding}
-                    className="h-10 bg-rcf-navy text-white px-5 rounded-lg font-bold text-xs hover:bg-opacity-90 flex items-center gap-2"
-                >
-                    <UserPlus className="h-4 w-4" />{" "}
-                    {isAdding ? "Adding..." : "Add"}
-                </button>
-            </form>
+            ) : (
+                <>
+                    {/* Add Form */}
+                    <form
+                        onSubmit={handleAdd}
+                        className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex gap-3 items-end"
+                    >
+                        <div className="flex-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase">
+                        Add New Worker
+                            </label>
+                            <input
+                                name="email"
+                                type="email"
+                                required
+                                placeholder="Enter member email..."
+                                className="w-full h-10 mt-1 px-3 rounded-lg border border-slate-300 text-sm outline-none focus:border-rcf-navy"
+                            />
+                        </div>
+                        <button
+                            disabled={isAdding}
+                            className="h-10 bg-rcf-navy text-white px-5 rounded-lg font-bold text-xs hover:bg-opacity-90 flex items-center gap-2"
+                        >
+                            <UserPlus className="h-4 w-4" />{" "}
+                            {isAdding ? "Adding..." : "Add"}
+                        </button>
+                    </form>
+                </>
+            )}
 
             {/* List Header */}
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                <h3 className="font-bold text-slate-700">Workforce List</h3>
+                <h3 className="font-bold text-slate-700">{isDerived ? "Members" : "Workforce List"}</h3>
                 <div className="relative w-64">
                     <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                     <input
@@ -110,7 +132,7 @@ export function UnitManager({
             <div className="space-y-2">
                 {filtered.map((m: any) => (
                     <div
-                        key={m.membershipId}
+                        key={m.membershipId || m.id}
                         className="flex items-center justify-between p-3 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors group"
                     >
                         <div className="flex items-center gap-3">
@@ -143,12 +165,14 @@ export function UnitManager({
                             <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">
                                 {m.role}
                             </span>
-                            <button
-                                onClick={() => handleRemove(m.membershipId)}
-                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </button>
+                            {!m.derived && (
+                                <button
+                                    onClick={() => handleRemove(m.membershipId)}
+                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
+                            )}
                         </div>
                     </div>
                 ))}
@@ -156,7 +180,9 @@ export function UnitManager({
                 {filtered.length === 0 && (
                     <div className="py-12 text-center text-slate-400 text-sm border-2 border-dashed border-slate-100 rounded-xl">
                         <User className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                        No members found in this unit.
+                        {isDerived
+                            ? "No member is recorded with this gender yet."
+                            : "No members found in this unit."}
                     </div>
                 )}
             </div>

@@ -10,6 +10,7 @@
  * authorization of its own. Callers must check permissions first.
  */
 import { db } from "@/lib/db";
+import { genderForUnitSlug } from "@/config/fellowship-units";
 
 // ---------------------------------------------------------------------------
 // Units
@@ -23,9 +24,18 @@ export interface UnitOverview {
     description: string | null;
     is_workforce: boolean;
     memberCount: number;
+    /** Membership is computed from gender; there is no roster to edit. */
+    isGenderCategory?: boolean;
 }
 
-/** Every unit and team, with how many members each holds (across all tenures). */
+/**
+ * Every unit and team, with how many members each holds (across all tenures).
+ *
+ * The Brothers' and Sisters' units are counted from `profiles.gender` instead of from
+ * `membership_units`, because nobody is inducted into them -- see `genderCategory` in
+ * src/config/fellowship-units.ts. Their membership row count is always zero, and
+ * reporting that would put "0 members" beside a unit that contains half the fellowship.
+ */
 export async function getAllUnitsOverview(): Promise<UnitOverview[]> {
     const { data, error } = await db
         .from("units")
@@ -33,16 +43,37 @@ export async function getAllUnitsOverview(): Promise<UnitOverview[]> {
         .order("name");
     if (error) throw new Error(error.message);
 
-    return (data ?? []).map((u) => ({
-        ...u,
-        // PostgREST returns an aggregate as a one-element array: [{ count: n }].
-        memberCount: u.members?.[0]?.count ?? 0,
-    })) as UnitOverview[];
+    const rows = data ?? [];
+    const genderCounts = rows.some((u) => genderForUnitSlug(u.slug))
+        ? await countProfilesByGender()
+        : { male: 0, female: 0 };
+
+    return rows.map((u) => {
+        const gender = genderForUnitSlug(u.slug);
+        return {
+            ...u,
+            isGenderCategory: gender !== null,
+            // PostgREST returns an aggregate as a one-element array: [{ count: n }].
+            memberCount: gender ? genderCounts[gender] : (u.members?.[0]?.count ?? 0),
+        };
+    }) as UnitOverview[];
+}
+
+/** How many profiles are recorded as each gender. */
+async function countProfilesByGender(): Promise<{ male: number; female: number }> {
+    const [male, female] = await Promise.all([
+        db.from("profiles").select("id", { count: "exact", head: true }).eq("gender", "male"),
+        db.from("profiles").select("id", { count: "exact", head: true }).eq("gender", "female"),
+    ]);
+    return { male: male.count ?? 0, female: female.count ?? 0 };
 }
 
 export interface UnitMember {
+    /** Empty for a derived member — there is no `membership_units` row to remove. */
     membershipId: string;
     role: string;
+    /** True when this member is here by gender rather than by induction. */
+    derived?: boolean;
     id: string;
     first_name: string;
     last_name: string;
@@ -52,8 +83,23 @@ export interface UnitMember {
     avatar_url: string | null;
 }
 
-/** Members of one unit in one tenure. Membership is tenure-scoped. */
+/**
+ * Members of one unit in one tenure. Membership is tenure-scoped.
+ *
+ * Except for the gender categories, which are not tenure-scoped at all: every sister is
+ * in the Sisters' Unit for as long as she is a sister, so the roster is a query against
+ * `profiles.gender` and the tenure is irrelevant to it.
+ */
 export async function getUnitMembers(unitId: string, tenureId: string): Promise<UnitMember[]> {
+    const { data: unit } = await db
+        .from("units")
+        .select("slug")
+        .eq("id", unitId)
+        .maybeSingle();
+
+    const gender = genderForUnitSlug(unit?.slug);
+    if (gender) return getMembersByGender(gender);
+
     const { data, error } = await db
         .from("membership_units")
         .select(`
@@ -71,6 +117,29 @@ export async function getUnitMembers(unitId: string, tenureId: string): Promise<
         const profile = Array.isArray(m.profile) ? m.profile[0] : m.profile;
         return { membershipId: m.id, role: m.role, ...profile };
     }) as UnitMember[];
+}
+
+/**
+ * The roster of a gender category, read straight off `profiles`.
+ *
+ * `membershipId` is empty and `derived` is true, which is what the UI keys off to hide
+ * the remove button -- there is no row to delete, and "remove her from the Sisters'
+ * Unit" is not a thing the system can honour anyway.
+ */
+async function getMembersByGender(gender: "male" | "female"): Promise<UnitMember[]> {
+    const { data, error } = await db
+        .from("profiles")
+        .select("id, first_name, last_name, email, phone_number, department, avatar_url")
+        .eq("gender", gender)
+        .order("first_name");
+    if (error) throw new Error(error.message);
+
+    return (data ?? []).map((p) => ({
+        membershipId: "",
+        role: "Member",
+        derived: true,
+        ...p,
+    })) as UnitMember[];
 }
 
 /**

@@ -17,7 +17,12 @@ function slugify(value: string): string {
 // --- VISIBILITY CARD (non-interactive) ---
 function StructureCard({ item }: { item: any }) {
     const isUnit = item.type === "UNIT";
-    const isLoose = isUnit && item.is_workforce === false; // "loose unit" (e.g. Sisters Unit)
+    // A gender category (Brothers'/Sisters') is not a unit anybody joins -- see
+    // genderCategory in src/config/fellowship-units.ts. Everything else with
+    // is_workforce === false is an ordinary "loose" unit whose members are not counted
+    // as workers.
+    const isGenderCategory = isUnit && !!item.isGenderCategory;
+    const isLoose = isUnit && item.is_workforce === false && !isGenderCategory;
     const mainLeader = item.leaders?.[0];
     const s = item.stats || { total: item.memberCount || 0, male: 0, female: 0 };
 
@@ -36,10 +41,25 @@ function StructureCard({ item }: { item: any }) {
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${theme.bg} ${theme.text} ${theme.border}`}>
                             {item.type}
                         </span>
+                        {isGenderCategory && (
+                            <span
+                                tabIndex={0}
+                                title="Gender category: every member is in it by gender. There is no induction and no roster to edit, and it does not count toward the workforce."
+                                className="group relative inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider bg-violet-50 text-violet-600 border-violet-100 cursor-help outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+                            >
+                                By gender <Info className="h-3 w-3" />
+                                <span
+                                    role="tooltip"
+                                    className="pointer-events-none absolute right-0 top-full z-10 mt-1 w-56 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-medium normal-case tracking-normal text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                                >
+                                    Everyone is in this one already — the count follows gender, so there is nothing to induct and no roster to edit.
+                                </span>
+                            </span>
+                        )}
                         {isLoose && (
                             <span
                                 tabIndex={0}
-                                title="Loose unit: members belong here but do NOT count toward the workforce (e.g. Sisters Unit). Teams never count either."
+                                title="Loose unit: members belong here but do NOT count toward the workforce. Teams never count either."
                                 className="group relative inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider bg-slate-100 text-slate-500 border-slate-200 cursor-help outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
                             >
                                 Loose <Info className="h-3 w-3" />
@@ -47,7 +67,7 @@ function StructureCard({ item }: { item: any }) {
                                     role="tooltip"
                                     className="pointer-events-none absolute right-0 top-full z-10 mt-1 w-56 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-medium normal-case tracking-normal text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                                 >
-                                    Members belong here but don&apos;t count toward the workforce (e.g. Sisters Unit).
+                                    Members belong here but don&apos;t count toward the workforce.
                                 </span>
                             </span>
                         )}
