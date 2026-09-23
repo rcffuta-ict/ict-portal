@@ -24,6 +24,7 @@ import {
 import type { Privilege } from "@/lib/modules";
 import { setFamilyName } from "@/lib/fellowship";
 import { revalidatePath } from "next/cache";
+import { addToGenderTally, emptyGenderTally, tallyGender, type GenderTally } from "@/lib/gender";
 
 // ============================================================================
 // DATA FETCHING
@@ -90,19 +91,18 @@ export async function getAdminData() {
             allProfiles.map((p: any) => [p.id, p.gender]),
         );
 
-        // Empty gender tally helper.
-        const tally = () => ({ total: 0, male: 0, female: 0 });
-        const addGender = (acc: any, gender: string | null | undefined) => {
-            acc.total += 1;
-            if (gender === 'male') acc.male += 1;
-            else if (gender === 'female') acc.female += 1;
-        };
+        // Gender tallies come from @/lib/gender so that male + female + unspecified
+        // always equals total. The previous helper counted only the two known values,
+        // so a unit with three members whose gender was never recorded reported
+        // "12 members, 5 brothers, 4 sisters" and left the reader to wonder.
+        const tally = emptyGenderTally;
+        const addGender = (acc: GenderTally, gender: unknown) => addToGenderTally(acc, gender);
 
         // Per-unit stats from memberships.
         const unitStats = new Map<string, ReturnType<typeof tally>>();
         for (const m of memberships as any[]) {
             if (!unitStats.has(m.unit_id)) unitStats.set(m.unit_id, tally());
-            addGender(unitStats.get(m.unit_id), genderById.get(m.profile_id));
+            addGender(unitStats.get(m.unit_id)!, genderById.get(m.profile_id));
         }
 
         const units = (unitsRes.data || []).map((u: any) => {
@@ -122,7 +122,7 @@ export async function getAdminData() {
         for (const p of allProfiles as any[]) {
             if (!p.class_set_id) continue;
             if (!famStats.has(p.class_set_id)) famStats.set(p.class_set_id, tally());
-            addGender(famStats.get(p.class_set_id), p.gender);
+            addGender(famStats.get(p.class_set_id)!, p.gender);
         }
 
         const families = (familiesRes.data || []).map((f: any) => {
@@ -148,11 +148,13 @@ export async function getAdminData() {
                 .filter((m) => workforceUnitIds.has(m.unit_id))
                 .map((m) => m.profile_id),
         );
+        const churchWide = tallyGender(allProfiles as any[], (p) => p.gender);
         const sessionStats = {
             totalMembers: allProfiles.length,
             totalWorkers: workerIds.size,
-            totalMale: allProfiles.filter((p: any) => p.gender === 'male').length,
-            totalFemale: allProfiles.filter((p: any) => p.gender === 'female').length,
+            totalMale: churchWide.male,
+            totalFemale: churchWide.female,
+            totalUnspecified: churchWide.unspecified,
             totalUnits: (unitsRes.data || []).filter((u: any) => u.type === 'UNIT').length,
             totalTeams: (unitsRes.data || []).filter((u: any) => u.type === 'TEAM').length,
             totalGenerations: (familiesRes.data || []).length,

@@ -72,9 +72,28 @@ psql "$DATABASE_URL" -f db/seed/default.sql      # or paste into the SQL editor
 # 2. someone who can log in
 node scripts/bootstrap-admin.mjs <email> <password> [firstName] [lastName]
 
-# 3. development only — ~110 fake members to test the handover against
-node scripts/seed-test.mjs --i-understand-this-is-not-production --password 'dev-pass'
+# 3. development only — 110 fake members to test the handover against
+pnpm db:seed-test -- --password 'dev-pass'
 ```
+
+**Resetting a staging or dev project** back to a known state — one command:
+
+```bash
+pnpm db:reset-staging
+```
+
+It clears every data table, recreates the active tenure and its five generations,
+provisions a System Admin, and seeds 110 members (20 per generation, ten brothers and
+ten sisters each, plus ten not yet placed). Structure — units, offices, privileges,
+module access — and `schema_migrations` and `residential_zones` are preserved, because
+wiping those would make it a rebuild rather than a reset.
+
+It cannot reach production: the environment picker never offers a production `.env`,
+the confirmation makes you type the project ref in full rather than `y/N`, and the
+clear uses `DELETE` rather than `TRUNCATE ... CASCADE` so a foreign key from one of the
+four other applications sharing the database raises an error instead of cascading.
+Full detail, including the flags for running the pieces separately, is in
+[docs/DATABASE-CICD.md](docs/DATABASE-CICD.md#resetting-staging).
 
 `db/seed/default.sql` is **generated** from `src/config/fellowship-units.ts` and
 `src/config/leadership-positions.ts`. Edit those, then:

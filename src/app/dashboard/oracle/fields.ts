@@ -1,3 +1,4 @@
+import { GENDERS } from "@/lib/gender";
 /**
  * The Oracle FIELD REGISTRY — the single whitelist of everything the System Admin can
  * see, filter, sort and edit about a member.
@@ -94,7 +95,9 @@ export const ORACLE_FIELDS: OracleField[] = [
         group: "Bio",
         column: "gender",
         kind: "enum",
-        options: ["male", "female"],
+        // From @/lib/gender, so the raw-column editor can only ever offer values
+        // profiles_gender_check will accept.
+        options: [...GENDERS],
         filterable: true,
         sortable: true,
         editable: true,

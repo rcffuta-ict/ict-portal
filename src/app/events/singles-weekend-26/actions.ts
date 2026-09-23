@@ -2,6 +2,7 @@
 'use server'
 
 import { db } from "@/lib/db"; // Using your initialized client
+import { parseGender, type Gender } from "@/lib/gender";
 
 const EVENT_SLUG = "singles-weekend-26";
 
@@ -99,7 +100,8 @@ export async function registerAgapeAction(input: FormData | RegistrationData) {
     last_name: string;
     email: string;
     phone_number: string;
-    gender: string;
+    /** Normalised on the way in; null when the registrant did not pick one. */
+    gender: Gender | null;
     level: string;
     relationship_status: string;
     referral_source: string;
@@ -123,7 +125,7 @@ export async function registerAgapeAction(input: FormData | RegistrationData) {
       last_name: input.get("lastname") as string,
       email,
       phone_number: phone,
-      gender: input.get("gender") as string,
+      gender: parseGender(input.get("gender")),
       level: input.get("level") as string,
       relationship_status: input.get("relationship_status") as string || "",
       referral_source: input.get("referral_source") as string || "",
@@ -146,7 +148,7 @@ export async function registerAgapeAction(input: FormData | RegistrationData) {
       last_name: input.last_name,
       email,
       phone_number: phone,
-      gender: input.gender,
+      gender: parseGender(input.gender),
       level: input.level,
       relationship_status: input.relationship_status || "",
       referral_source: input.referral_source || "",

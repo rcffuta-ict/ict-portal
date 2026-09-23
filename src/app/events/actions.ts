@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { checkIsAdminByEmail } from "@/utils/action";
+import { parseGender } from "@/lib/gender";
 
 // Position-based admin check (VP Admin / ICT Coordinator / PRESIDENT scope).
 async function isUserAdmin(email: string | null | undefined): Promise<boolean> {
@@ -238,7 +239,9 @@ export async function registerForEvent(data: {
         last_name: data.last_name,
         email: data.email,
         phone_number: data.phone_number,
-        gender: data.gender,
+        // event_registrations.gender has NO check constraint, so whatever arrives is
+        // what gets stored and every reader downstream has to cope. Normalise here.
+        gender: parseGender(data.gender),
         level: data.level,
         department: data.department,
         matric_number: data.matric_number,

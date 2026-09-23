@@ -11,6 +11,7 @@
         "db:bootstrap": "node scripts/bootstrap-supabase.mjs",
         "db:ict-coord": "node scripts/ict-coord.mjs",
         "db:seed-staging": "node scripts/seed-staging.mjs",
+        "db:reset-staging": "node scripts/seed-staging.mjs --reset --with-members",
         "backup": "node scripts/backup.mjs",
         "db:inventory": "node scripts/db-inventory.mjs",
         "db:seed-test": "node scripts/seed-test.mjs",

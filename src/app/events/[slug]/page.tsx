@@ -26,6 +26,7 @@ import { useProfileStore } from "@/lib/stores/profile.store";
 import { isProfileAdmin } from "@/lib/auth-roles";
 import { GenericFooter } from "@/components/events/footer";
 import { LoLogo } from "@/components/lo-app/LoLogo";
+import { parseGender } from "@/lib/gender";
 import {
     EVENT_TIME_ZONE_LABEL,
     EventRecord,
@@ -414,7 +415,7 @@ export default function EventDetailsPage() {
                                                     <span
                                                         key={`${r.first_name}-${i}`}
                                                         className={`flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white ${
-                                                            r.gender === "male"
+                                                            parseGender(r.gender) === "male"
                                                                 ? "bg-rcf-navy"
                                                                 : "bg-rcf-navy-light"
                                                         }`}

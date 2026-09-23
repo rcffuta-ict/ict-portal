@@ -1,5 +1,6 @@
 import React from "react";
 import { Badge, BadgeProps } from "./badge";
+import { formatGender, parseGender } from "@/lib/gender";
 
 export interface BadgeGroupProps {
     children: React.ReactNode;
@@ -109,15 +110,21 @@ export function MembershipBadge({
     );
 }
 
-export function GenderBadge({ gender, ...props }: { gender: string } & Omit<BadgeProps, 'text' | 'icon'>) {
-    const isMale = gender?.toLowerCase() === 'male';
+/**
+ * Three states, not two. `gender` is nullable on `profiles` and unconstrained on
+ * `event_registrations`, so "not male" and "female" are different things -- the badge
+ * used to render a member with no recorded gender as a pink 👩 "Sister", which is a
+ * wrong fact about a real person stated with full confidence.
+ */
+export function GenderBadge({ gender, ...props }: { gender?: string | null } & Omit<BadgeProps, 'text' | 'icon'>) {
+    const parsed = parseGender(gender);
 
     return (
         <Badge
-            variant={isMale ? "info" : "pink"}
+            variant={parsed === 'male' ? "info" : parsed === 'female' ? "pink" : "default"}
             size="sm"
-            text={gender}
-            icon={isMale ? '👨' : '👩'}
+            text={formatGender(gender)}
+            icon={parsed === 'male' ? '👨' : parsed === 'female' ? '👩' : '👤'}
             {...props}
         />
     );

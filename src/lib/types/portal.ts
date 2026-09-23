@@ -15,6 +15,8 @@
  * Client-safe: types only, no imports, nothing at runtime.
  */
 
+import type { Gender } from "@/lib/gender";
+
 // ---------------------------------------------------------------------------
 // Database rows — snake_case, exactly as PostgREST returns them
 // ---------------------------------------------------------------------------
@@ -131,7 +133,13 @@ export interface BioData {
     middleName?: string | null;
     email?: string;
     phoneNumber?: string | null;
-    gender?: string | null;
+    /**
+     * Already normalised — run the raw form field through `parseGender()` from
+     * `@/lib/gender` before it gets here. Typed as `Gender` rather than `string` so
+     * that an unselected `<select>`'s `""`, which the database's check constraint
+     * rejects, cannot reach a write without the compiler objecting.
+     */
+    gender?: Gender | null;
     dob?: string | null;
     avatarUrl?: string | null;
 }

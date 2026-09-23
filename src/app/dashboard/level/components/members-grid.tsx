@@ -13,11 +13,13 @@ import {
     Venus,
     Briefcase,
     UserMinus,
+    UserRound,
     AlertCircle,
 } from "lucide-react";
 import { getLevelMembersAction, getLevelStatsAction } from "../actions";
 import { ExportPanel } from "./export-panel";
 import { Skeleton, SkeletonCard, SkeletonRegion } from "@/components/ui/skeleton";
+import { GENDER_UNSPECIFIED_LABEL, parseGender } from "@/lib/gender";
 
 const PAGE_SIZE = 24;
 
@@ -203,9 +205,11 @@ function MemberCard({ classSetId, member }: { classSetId: string; member: any })
             <span
                 aria-hidden
                 className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                    member.gender === "female"
+                    parseGender(member.gender) === "female"
                         ? "bg-pink-50 text-pink-600"
-                        : "bg-emerald-50 text-emerald-700"
+                        : parseGender(member.gender) === "male"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-slate-100 text-slate-600"
                 }`}
             >
                 {member.first_name?.[0]}
@@ -249,6 +253,19 @@ function StatsStrip({ stats }: { stats: Stats }) {
         { label: "Workers", value: stats.workers, icon: Briefcase, tone: "text-emerald-600 bg-emerald-50" },
         { label: "Non-workers", value: stats.nonWorkers, icon: UserMinus, tone: "text-amber-600 bg-amber-50" },
     ];
+
+    // Only when there is something to show. Male + Female not adding up to Total is a
+    // question the generation's coordinator will ask, and the honest answer is "these
+    // N have not recorded one" -- but a permanent "0" on a complete roster is noise on
+    // a screen that is already five cards wide on a phone.
+    if (stats.unspecified > 0) {
+        items.push({
+            label: GENDER_UNSPECIFIED_LABEL,
+            value: stats.unspecified,
+            icon: UserRound,
+            tone: "text-slate-600 bg-slate-100",
+        });
+    }
     return (
         <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
             {items.map((s) => (

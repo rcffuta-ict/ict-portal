@@ -47,6 +47,7 @@ pnpm lint     # ESLint (eslint-config-next core-web-vitals + typescript)
 supabase migration new <name>   # create a correctly-named migration
 pnpm db:status                  # reconcile the schema against the ledger
 pnpm db:inventory               # row counts across every table
+pnpm db:reset-staging           # stage/dev only: wipe, reseed, 110 members
 pnpm release                    # decide the version from what changed
 ```
 
@@ -61,7 +62,11 @@ pnpm release                    # decide the version from what changed
   production.** `-- --reset` first clears every data table back to empty; it never
   touches the structure tables or `schema_migrations`, and it uses DELETE rather
   than `TRUNCATE ... CASCADE` because four other applications hold foreign keys
-  pointing at `public.profiles`.
+  pointing at `public.profiles`. `-- --with-members` chains `scripts/seed-test.mjs`,
+  which adds 110 fake members. **`pnpm db:reset-staging` is all three in one command**
+  and is the normal way to put a stage or dev project back to a known state — it is
+  never offered a production `.env`, and it makes you type the project ref in full
+  rather than answering `y/N`. See `docs/DATABASE-CICD.md` → *Resetting staging*.
 
 `supabase/migrations/` is the only SQL that runs. A push to `stage` applies it to the
 staging project; a push to `main` applies it to production, behind an approval gate.

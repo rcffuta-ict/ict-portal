@@ -22,6 +22,7 @@ import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
 import { AvatarUpload } from "@/components/ui/avatar-upload";
 import { computeLevel } from "@/lib/levels";
+import { GENDER_OPTIONS } from "@/lib/gender";
 import {
     validateInviteAction,
     submitRegistrationAction,
@@ -475,8 +476,9 @@ function RegistrationForm({
                                     <Field label="Gender" error={errors.gender?.message}>
                                         <FormSelect {...register("gender", { required: "Gender is required" })}>
                                             <option value="">Select</option>
-                                            <option value="male">Male</option>
-                                            <option value="female">Female</option>
+                                            {GENDER_OPTIONS.map((o) => (
+                                                <option key={o.value} value={o.value}>{o.label}</option>
+                                            ))}
                                         </FormSelect>
                                     </Field>
                                 </div>

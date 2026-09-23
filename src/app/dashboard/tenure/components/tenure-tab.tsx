@@ -14,6 +14,7 @@ import {
     UsersRound,
     Mars,
     Venus,
+    UserRound,
     CalendarCheck,
     Edit3,
     X,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import FormInput from "@/components/ui/FormInput";
+import { GENDER_UNSPECIFIED_LABEL } from "@/lib/gender";
 
 export function TenureTab({ data, onSuccess }: any) {
     const [isEditing, setIsEditing] = useState(false);
@@ -111,6 +113,22 @@ export function TenureTab({ data, onSuccess }: any) {
                         <MetricCard label="Male" value={stats?.totalMale ?? 0} icon={Mars} color="text-sky-600" bg="bg-sky-50" />
                         <MetricCard label="Female" value={stats?.totalFemale ?? 0} icon={Venus} color="text-pink-600" bg="bg-pink-50" />
                     </div>
+
+                    {/* Shown only when it is not zero: Male + Female short of Total is
+                        a discrepancy somebody will try to explain, and this is the
+                        explanation. */}
+                    {!!stats?.totalUnspecified && (
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            <MetricCard
+                                label={`Gender ${GENDER_UNSPECIFIED_LABEL.toLowerCase()}`}
+                                value={stats.totalUnspecified}
+                                icon={UserRound}
+                                color="text-slate-600"
+                                bg="bg-slate-100"
+                                small
+                            />
+                        </div>
+                    )}
 
                     <div className="grid gap-4 sm:grid-cols-3">
                         <MetricCard label="Units" value={stats?.totalUnits ?? 0} icon={Users} color="text-indigo-600" bg="bg-indigo-50" small />

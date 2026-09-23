@@ -1,6 +1,7 @@
 import { DepartmentUtils } from "@/lib/departments";
 import type { FullUserProfile, LeadershipRole, UnitMembership } from "@/lib/types/portal";
 import clsx from "clsx";
+import { formatGender } from "@/lib/gender";
 
 export type ExtractedUserProfile = {
     fullName: string;
@@ -128,7 +129,7 @@ export function extractUserProfileInfo(userData: FullUserProfile): ExtractedUser
         // Nullable on the profile — coalesce for display rather than letting a null
         // reach the UI, which renders as a blank field with no explanation.
         phone: profile.phoneNumber || "Not Set",
-        gender: profile.gender || "Not Set",
+        gender: formatGender(profile.gender),
         dob: formatDate(profile.dob ?? undefined) || "Not Set",
         avatarUrl: profile.avatarUrl ?? undefined,
 

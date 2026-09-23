@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { tallyGender } from "@/lib/gender";
 
 const EVENT_SLUG = "singles-weekend-26";
 
@@ -29,9 +30,14 @@ export async function getAgapeStats() {
   const total = registrations.length;
   const checkedIn = registrations.filter(r => r.checked_in_at).length;
   
+  // `r.gender.toLowerCase()` threw outright on a registration with no gender --
+  // event_registrations.gender is nullable and unconstrained, so that is an ordinary
+  // row, and it took the whole demographics panel down with it.
+  const split = tallyGender(registrations, r => r.gender);
   const gender = {
-    brothers: registrations.filter(r => r.gender.toLowerCase() === 'male').length,
-    sisters: registrations.filter(r => r.gender.toLowerCase() === 'female').length
+    brothers: split.male,
+    sisters: split.female,
+    unrecorded: split.unspecified,
   };
 
   // Relationship status breakdown
