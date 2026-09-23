@@ -295,4 +295,9 @@ async function main() {
     process.exitCode = 1;
 }
 
-main().catch(die);
+// PostgREST errors arrive as objects, and `die` on a bare object prints
+// "[object Object]" -- which is what a `leadership_one_lead_per_position` collision
+// looked like from the outside. Unwrap to the message before handing it over.
+main().catch((e) => die(e?.message ? e : new Error(
+    typeof e === "object" ? JSON.stringify(e) : String(e),
+)));

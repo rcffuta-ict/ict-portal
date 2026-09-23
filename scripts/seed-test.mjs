@@ -363,14 +363,28 @@ function generationsFor(session) {
  * Children first: several of these FKs are NOT ON DELETE CASCADE, so deleting profiles
  * up front would fail on a constraint and leave the seed half-removed.
  */
+/**
+ * The System Admin, who lives at this domain too and must survive a reset.
+ *
+ * `--reset` finds seeded members by their `@rcffuta.test` address, and
+ * scripts/ict-coord.mjs seeds `oracle@rcffuta.test` -- the same domain, for the same
+ * reason (RFC 2606, can never receive mail). So the reset used to delete the System
+ * Admin along with the roster, which on a `pnpm db:reset-staging` run then handed
+ * `ict-coord` to a random seeded finalist and left nobody able to sign in as an
+ * administrator.
+ */
+const PRESERVED_EMAILS = ["oracle@rcffuta.test"];
+
 async function resetSeed(db) {
     const { data: profiles, error } = await db
         .from("profiles")
-        .select("id")
+        .select("id, email")
         .like("email", `%${TEST_DOMAIN}`);
     if (error) throw new Error(`Reset lookup failed: ${error.message}`);
 
-    const ids = (profiles ?? []).map((p) => p.id);
+    const ids = (profiles ?? [])
+        .filter((p) => !PRESERVED_EMAILS.includes(String(p.email ?? "").toLowerCase()))
+        .map((p) => p.id);
     if (ids.length === 0) {
         info("Nothing to remove.");
         return 0;
@@ -724,9 +738,32 @@ async function main() {
         const passwordFlag = flagValue("password");
         const passwordHash = passwordFlag ? await hashPassword(passwordFlag) : null;
 
+        // Offices that ALREADY have a lead this tenure are left alone.
+        //
+        // `leadership_one_lead_per_position` is a partial unique index, so appointing a
+        // second lead does not overwrite -- it raises, and takes the whole insert with
+        // it. That matters because this script is normally reached through
+        // `pnpm db:reset-staging`, which seeds the System Admin into `ict-coord` a step
+        // BEFORE this one runs. Claiming it again failed the entire cabinet and left
+        // 110 members with no leadership at all.
+        const { data: alreadyLed } = await db
+            .from("leadership")
+            .select("position_id")
+            .eq("tenure_id", tenure.id)
+            .eq("is_lead", true);
+        const taken = new Set((alreadyLed ?? []).map((l) => l.position_id));
+
+        // Nor do we re-provision a login for somebody who has one: profile_login is
+        // unique per profile, and the System Admin already has theirs.
+        const { data: haveLogin } = await db.from("profile_login").select("profile_id");
+        const loginExists = new Set((haveLogin ?? []).map((l) => l.profile_id));
+
+        const vacant = positions.filter((pos) => !taken.has(pos.id));
+        const skipped = positions.length - vacant.length;
+
         const rows = [];
         const logins = [];
-        positions.forEach((pos, i) => {
+        vacant.forEach((pos, i) => {
             const holder = finalists[i % finalists.length];
             if (!holder) return;
             rows.push({
@@ -736,25 +773,35 @@ async function main() {
                 class_set_id: pos.slug.startsWith("level-coord-") ? classSetIds["500 Level"] : null,
                 is_lead: true,
             });
-            logins.push({
-                profile_id: holder.id,
-                password_hash: passwordHash,
-                is_active: true,
-                granted_by: holder.id,
-            });
+            if (!loginExists.has(holder.id)) {
+                loginExists.add(holder.id);
+                logins.push({
+                    profile_id: holder.id,
+                    password_hash: passwordHash,
+                    is_active: true,
+                    granted_by: holder.id,
+                });
+            }
         });
 
-        const { error: leadErr } = await db.from("leadership").insert(rows);
-        if (leadErr) throw new Error(`Could not seed leadership: ${leadErr.message}`);
+        if (rows.length > 0) {
+            const { error: leadErr } = await db.from("leadership").insert(rows);
+            if (leadErr) throw new Error(`Could not seed leadership: ${leadErr.message}`);
+        }
 
-        const { error: loginErr } = await db.from("profile_login").insert(logins);
-        if (loginErr) throw new Error(`Could not provision logins: ${loginErr.message}`);
+        if (logins.length > 0) {
+            const { error: loginErr } = await db.from("profile_login").insert(logins);
+            if (loginErr) throw new Error(`Could not provision logins: ${loginErr.message}`);
+        }
 
         section("Leadership");
         info(`${rows.length} appointments, ${logins.length} logins provisioned.`);
+        if (skipped > 0) {
+            info(c.grey(`${skipped} office(s) already had a lead and were left untouched.`));
+        }
         blank();
         table(
-            positions.map((p) => ({ title: p.title, slug: c.grey(p.slug) })),
+            vacant.map((p) => ({ title: p.title, slug: c.grey(p.slug) })),
             [{ key: "title", label: "OFFICE" }, { key: "slug", label: "SLUG" }],
         );
         blank();
