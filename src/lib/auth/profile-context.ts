@@ -90,7 +90,11 @@ export interface LoginContext {
     profileId: string;
     email: string | null;
     loginId: string;
-    passwordHash: string;
+    /**
+     * NULL when no password has been set — the first-login signal. Normalised in
+     * {@link getLoginContext}, so a blank hash never reaches the callers.
+     */
+    passwordHash: string | null;
     isActive: boolean;
     failedAttempts: number | null;
     lockedUntil: string | null;
@@ -100,6 +104,12 @@ export interface LoginContext {
 /**
  * Resolve the login gate + profile context by email in one round-trip.
  * Returns null when the email has no profile or no login record.
+ *
+ * A BLANK `password_hash` is normalised to null, because "not set yet" is what the
+ * login flow branches on and an empty string is the same thing wearing a disguise.
+ * Clearing the cell from the Supabase table editor writes `''` rather than NULL, and
+ * without this the leader is sent to the "enter your password" step with a hash that
+ * nothing can ever verify — locked out, with no way to reach set-password.
  */
 export async function getLoginContext(email: string): Promise<LoginContext | null> {
     const { data, error } = await db.rpc("rcf_login_context", {
@@ -109,5 +119,9 @@ export async function getLoginContext(email: string): Promise<LoginContext | nul
         if (error) console.error("rcf_login_context failed:", error.message);
         return null;
     }
-    return data as LoginContext;
+    const login = data as LoginContext;
+    return {
+        ...login,
+        passwordHash: login.passwordHash?.trim() ? login.passwordHash : null,
+    };
 }
