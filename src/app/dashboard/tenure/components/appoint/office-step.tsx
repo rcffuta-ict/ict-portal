@@ -117,7 +117,7 @@ export function OfficeStep({
                                     key={office.id}
                                     type="button"
                                     onClick={() => onPick(office)}
-                                    className="flex min-h-[44px] flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-rcf-navy/40 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy"
+                                    className="flex min-h-11 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-rcf-navy/40 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy"
                                 >
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="min-w-0">

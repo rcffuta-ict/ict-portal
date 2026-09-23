@@ -90,7 +90,7 @@ export function LevelStep({
                             key={generation.id}
                             type="button"
                             onClick={() => onPick(generation)}
-                            className={`flex min-h-[44px] flex-col gap-2 rounded-xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy ${
+                            className={`flex min-h-11 flex-col gap-2 rounded-xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy ${
                                 isExpected
                                     ? "border-rcf-navy bg-rcf-navy/5 hover:bg-rcf-navy/10"
                                     : "border-slate-200 bg-white hover:border-rcf-navy/40 hover:bg-slate-50"
