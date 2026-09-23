@@ -114,7 +114,7 @@ export async function getTenurePresidentName(tenureId: string | null): Promise<s
 
     const { data } = await db
         .from("leadership")
-        .select("profile:profiles(first_name, last_name), position:leadership_positions!inner(position_privileges!inner(privilege))")
+        .select("profile:profiles!leadership_profile_id_fkey(first_name, last_name), position:leadership_positions!inner(position_privileges!inner(privilege))")
         .eq("tenure_id", tenureId)
         .eq("position.position_privileges.privilege", "PRESIDENT")
         .limit(1);

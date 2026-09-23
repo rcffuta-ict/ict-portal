@@ -43,7 +43,8 @@
  *   node scripts/seed-staging.mjs --env local --reset --with-members
  *
  * --with-members chains scripts/seed-test.mjs afterwards, which adds 110 fake
- * members (20 per generation, evenly split, plus 10 not yet placed). Wired up as
+ * members (20 per generation, evenly split, plus 10 not yet placed). It fills no
+ * offices -- appointments are made by hand. Wired up as
  * `pnpm db:reset-staging`, which is the one command that takes a staging project
  * from whatever testing left behind back to a full, believable fellowship.
  */
@@ -393,10 +394,13 @@ async function main() {
         section("4. Members");
         info(c.grey("Delegated to scripts/seed-test.mjs, which also refuses production."));
         blank();
-        const args = [join(HERE, "seed-test.mjs"), "--yes", "--env", envName];
-        const password = flagValue("password");
-        if (password) args.push("--password", password);
-        execFileSync(process.execPath, args, { stdio: "inherit" });
+        // No --password: seed-test fills no offices, so there is nobody to give one to.
+        // The only seeded login is the System Admin's, from step 3 above.
+        execFileSync(
+            process.execPath,
+            [join(HERE, "seed-test.mjs"), "--yes", "--env", envName],
+            { stdio: "inherit" },
+        );
     }
 
     section("Done");

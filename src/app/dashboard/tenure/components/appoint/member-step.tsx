@@ -42,6 +42,10 @@ export function MemberStep({
         ? `${sittingLead.profile.first_name} ${sittingLead.profile.last_name}`
         : null;
 
+    // The President and the Vice Presidents are held by one person. There is no
+    // assistant to be, so the choice is not offered rather than offered and refused.
+    const singleHolderOffice = office?.tier === "PRESIDENT" || office?.tier === "VP";
+
     // No synchronous setState here: the parent gives this component `key={generation.id}`,
     // so switching generations REMOUNTS it and the initial state is already "loading".
     // Resetting the flags at the top of the effect instead would be a state write during
@@ -144,7 +148,10 @@ export function MemberStep({
                 </p>
             )}
 
-            <div className="space-y-2">
+            {/* Stacked on a phone, two or three across once there is room. A level is
+                twenty-odd people, and on a laptop a single tall column means scrolling
+                past names you can see the space for. */}
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {filtered.map((member) => {
                     const isSelected = selected?.id === member.id;
                     return (
@@ -152,7 +159,7 @@ export function MemberStep({
                             key={member.id}
                             type="button"
                             onClick={() => setSelected(isSelected ? null : member)}
-                            className={`flex w-full min-h-11 items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy ${
+                            className={`flex h-full w-full min-h-11 items-start gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy ${
                                 isSelected
                                     ? "border-rcf-navy bg-rcf-navy/5"
                                     : "border-slate-200 bg-white hover:border-rcf-navy/40 hover:bg-slate-50"
@@ -213,30 +220,37 @@ export function MemberStep({
                         as <span className="font-bold">{office.alias || office.title}</span>.
                     </p>
 
-                    <div className="mt-3 flex gap-2">
-                        {([
-                            [true, "Lead", "Holds the office."],
-                            [false, "Assistant", "Serves under the lead."],
-                        ] as const).map(([value, label, hint]) => {
-                            const blocked = value === true && !!holderName;
-                            return (
-                                <button
-                                    key={label}
-                                    type="button"
-                                    disabled={blocked}
-                                    onClick={() => setIsLead(value)}
-                                    title={blocked ? `${holderName} already leads this office.` : hint}
-                                    className={`min-h-11 flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                                        isLead === value && !blocked
-                                            ? "border-rcf-navy bg-rcf-navy text-white"
-                                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                    }`}
-                                >
-                                    {label}
-                                </button>
-                            );
-                        })}
-                    </div>
+                    {singleHolderOffice ? (
+                        <p className="mt-3 text-[11px] text-slate-500">
+                            {office.alias || office.title} is held by one person — there is no
+                            assistant to this office.
+                        </p>
+                    ) : (
+                        <div className="mt-3 flex gap-2">
+                            {([
+                                [true, "Lead", "Holds the office."],
+                                [false, "Assistant", "Serves under the lead."],
+                            ] as const).map(([value, label, hint]) => {
+                                const blocked = value === true && !!holderName;
+                                return (
+                                    <button
+                                        key={label}
+                                        type="button"
+                                        disabled={blocked}
+                                        onClick={() => setIsLead(value)}
+                                        title={blocked ? `${holderName} already leads this office.` : hint}
+                                        className={`min-h-11 flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                            isLead === value && !blocked
+                                                ? "border-rcf-navy bg-rcf-navy text-white"
+                                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                        }`}
+                                    >
+                                        {label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
 
                     {office.grants_login && (
                         <p className="mt-3 flex items-start gap-1.5 text-[11px] text-amber-700">
@@ -249,7 +263,7 @@ export function MemberStep({
                     <button
                         type="button"
                         disabled={submitting}
-                        onClick={() => onConfirm(selected, isLead)}
+                        onClick={() => onConfirm(selected, singleHolderOffice ? true : isLead)}
                         className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-rcf-navy px-4 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                     >
                         {submitting && (

@@ -58,12 +58,18 @@ export async function getAdminData() {
                 .order('tier').order('title'),
             // Fetch ALL leadership for the active tenure
             activeTenure
+                // `profiles!leadership_profile_id_fkey`, not plain `profiles`: migration
+                // 0014 added leadership.ended_by -> profiles, so there are now TWO
+                // foreign keys between these tables and PostgREST refuses to guess
+                // (PGRST201). An ambiguous embed does not degrade -- the whole query
+                // errors, which emptied the cabinet roster and made every office read
+                // as vacant.
                 ? db.from('leadership')
                     .select(`
                         id, is_lead, unit_id, units(name, type, is_workforce),
                         class_set_id, class_sets(family_name, entry_year),
                         position:leadership_positions(title, tier, slug, position_privileges(privilege, scope)),
-                        profile:profiles(id, first_name, last_name, avatar_url, department, phone_number, gender)
+                        profile:profiles!leadership_profile_id_fkey(id, first_name, last_name, avatar_url, department, phone_number, gender)
                     `)
                     .eq('tenure_id', activeTenure.id)
                     // Current cabinet only. Ended appointments are service history and
@@ -362,7 +368,7 @@ export async function getHandoverPreviewAction(incomingSession: string) {
         const { data: outgoing } = tenure
             ? await db
                 .from("leadership")
-                .select("profile_id, profile:profiles(first_name, last_name, email), position:leadership_positions(title)")
+                .select("profile_id, profile:profiles!leadership_profile_id_fkey(first_name, last_name, email), position:leadership_positions(title)")
                 .eq("tenure_id", tenure.id)
                 .is("ended_at", null)
             : { data: [] };
@@ -831,7 +837,7 @@ export async function getUnitDetails(unitId: string) {
         .select(`
             id,
             position:leadership_positions(title, tier),
-            profile:profiles(id, first_name, last_name, avatar_url, phone_number)
+            profile:profiles!leadership_profile_id_fkey(id, first_name, last_name, avatar_url, phone_number)
         `)
         .eq('unit_id', unitId)
         .is('ended_at', null)
@@ -1082,9 +1088,26 @@ export async function assignLeaderAction(formData: FormData) {
     const profileId = formData.get("profileId") as string;
     const positionId = formData.get("positionId") as string;
     // Sub-leaders (assistants) share the same position with is_lead = false.
-    const isLead = formData.get("isLead") !== "false";
+    let isLead = formData.get("isLead") !== "false";
 
     try {
+        // THE PRESIDENCY AND THE VICE PRESIDENCIES HAVE NO ASSISTANTS.
+        //
+        // There is no such thing as an assistant President — the office is one person,
+        // and "Assistant VP Administration" is not a thing the fellowship has. So this
+        // coerces rather than refuses: a request for an assistant to one of these is a
+        // request the form should never have been able to make, and turning it into the
+        // only valid reading is kinder than an error about a distinction that does not
+        // exist here.
+        const { data: targetPosition } = await db
+            .from("leadership_positions")
+            .select("tier")
+            .eq("id", positionId)
+            .maybeSingle();
+        if (targetPosition?.tier === "PRESIDENT" || targetPosition?.tier === "VP") {
+            isLead = true;
+        }
+
         // Scope now lives on the position's privileges, not the assignment — so a
         // President is single & unique: if the target position holds the PRESIDENT
         // privilege, block when any President is already appointed this tenure.

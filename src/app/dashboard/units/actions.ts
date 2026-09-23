@@ -561,7 +561,7 @@ export async function getUnitLeadershipAction(unitId: string, tenureId: string) 
         const positionIds = unitPositions.map((up: any) => up.position_id);
         const { data: leadership, error: lError } = await db
             .from("leadership")
-            .select(`id, position_id, profile:profiles(id, first_name, last_name, email, phone_number, avatar_url)`)
+            .select(`id, position_id, profile:profiles!leadership_profile_id_fkey(id, first_name, last_name, email, phone_number, avatar_url)`)
             .eq("tenure_id", tenureId)
             .eq("unit_id", unitId)
             .is("ended_at", null)
