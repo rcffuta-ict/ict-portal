@@ -119,7 +119,7 @@ export function MemberStep({
                             key={member.id}
                             type="button"
                             onClick={() => setSelected(isSelected ? null : member)}
-                            className={`flex w-full min-h-[44px] items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy ${
+                            className={`flex w-full min-h-11 items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy ${
                                 isSelected
                                     ? "border-rcf-navy bg-rcf-navy/5"
                                     : "border-slate-200 bg-white hover:border-rcf-navy/40 hover:bg-slate-50"
@@ -190,7 +190,7 @@ export function MemberStep({
                                 type="button"
                                 onClick={() => setIsLead(value)}
                                 title={hint}
-                                className={`min-h-[44px] flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
+                                className={`min-h-11 flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
                                     isLead === value
                                         ? "border-rcf-navy bg-rcf-navy text-white"
                                         : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -213,7 +213,7 @@ export function MemberStep({
                         type="button"
                         disabled={submitting}
                         onClick={() => onConfirm(selected, isLead)}
-                        className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-rcf-navy px-4 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                        className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-rcf-navy px-4 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                     >
                         {submitting && (
                             <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />

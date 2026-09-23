@@ -143,7 +143,7 @@ export default function NewOfficePage() {
             <div className="space-y-2 border-b border-slate-200 pb-6">
                 <Link
                     href="/dashboard/tenure"
-                    className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-rcf-navy"
+                    className="inline-flex min-h-11 items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-rcf-navy"
                 >
                     <ArrowLeft className="h-4 w-4" /> Tenure Manager
                 </Link>
@@ -177,7 +177,7 @@ export default function NewOfficePage() {
                     </p>
                     <Link
                         href="/dashboard/tenure"
-                        className="mt-6 inline-flex min-h-[44px] items-center rounded-lg bg-rcf-navy px-5 text-sm font-bold text-white hover:opacity-90"
+                        className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-rcf-navy px-5 text-sm font-bold text-white hover:opacity-90"
                     >
                         Back to the Cabinet
                     </Link>
@@ -204,7 +204,7 @@ export default function NewOfficePage() {
                                     key={unit.id}
                                     type="button"
                                     onClick={() => setSelected(isSelected ? null : unit)}
-                                    className={`flex min-h-[44px] items-start gap-3 rounded-xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy ${
+                                    className={`flex min-h-11 items-start gap-3 rounded-xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy ${
                                         isSelected
                                             ? "border-rcf-navy bg-rcf-navy/5"
                                             : "border-slate-200 bg-white hover:border-rcf-navy/40 hover:bg-slate-50"
@@ -260,7 +260,7 @@ export default function NewOfficePage() {
                                 type="button"
                                 disabled={creating}
                                 onClick={handleCreate}
-                                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-rcf-navy px-4 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-rcf-navy px-4 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                             >
                                 {creating && (
                                     <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
@@ -293,7 +293,7 @@ function Row({
             </dt>
             <dd className="min-w-0">
                 <span
-                    className={`block break-words font-medium text-slate-900 ${
+                    className={`block wrap-break-word font-medium text-slate-900 ${
                         mono ? "font-mono text-xs" : "text-sm"
                     }`}
                 >
