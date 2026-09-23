@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { ReactNode } from "react";
+import { ServiceHistory } from "@/components/dashboard/service-history";
 
 /** Presentational full-member detail. The server page fetches the profile context. */
 export function MemberDetailView({ detail }: { detail: any }) {
@@ -56,6 +57,14 @@ export function MemberDetailView({ detail }: { detail: any }) {
                     <DetailRow label="Leadership" value={(detail.roles || []).map((r: any) => r.title).join(", ")} />
                 </DetailSection>
             </div>
+
+            {/* Every office across every tenure, not just the current one. The
+                "Leadership" row above is this session only. */}
+            {p.id && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <ServiceHistory profileId={p.id} />
+                </div>
+            )}
         </div>
     );
 }

@@ -16,6 +16,11 @@ interface AlertModalProps {
     /** Label shown on the confirm button while an async `onConfirm` runs. */
     pendingText?: string;
     onConfirm?: () => void;
+    /**
+     * Extra controls rendered under the message — a checkbox that changes what the
+     * confirm does, for instance. Kept optional so every existing caller is unaffected.
+     */
+    children?: React.ReactNode;
 }
 
 export function AlertModal({
@@ -23,6 +28,7 @@ export function AlertModal({
     onClose,
     title,
     message,
+    children,
     type = "info",
     confirmText = "OK",
     pendingText = "Working…",
@@ -164,6 +170,7 @@ export function AlertModal({
                                 <p className="text-gray-700 leading-relaxed">
                                     {message}
                                 </p>
+                                {children && <div className="mt-4">{children}</div>}
                             </div>
 
                             {/* Footer */}

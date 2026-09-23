@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
     assignLeaderAction,
     togglePositionAction,
@@ -94,6 +94,37 @@ export function CabinetTab({ data, onSuccess }: any) {
     );
 }
 
+/**
+ * Whether ending the appointment keeps it on the member's service record.
+ *
+ * Checked by default, and the wording says what each choice MEANS rather than naming
+ * the mechanism: an admin ending a real appointment should not have to think, and the
+ * only reason to uncheck is the appointment that never should have existed.
+ */
+function KeepHistoryChoice({ onChange }: { onChange: (keep: boolean) => void }) {
+    const [keep, setKeep] = useState(true);
+    return (
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <input
+                type="checkbox"
+                checked={keep}
+                onChange={(e) => { setKeep(e.target.checked); onChange(e.target.checked); }}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-rcf-navy"
+            />
+            <span className="text-xs leading-relaxed text-slate-600">
+                <span className="font-bold text-slate-900">
+                    Keep this on their service record
+                </span>
+                <span className="mt-0.5 block">
+                    {keep
+                        ? "It will show on their profile as an office they served in, with the session."
+                        : "The appointment will be deleted outright, as though it never happened. Use this only for an appointment made by mistake."}
+                </span>
+            </span>
+        </label>
+    );
+}
+
 // --- SUB-COMPONENT 1: ROSTER ---
 function RosterView({ data, onSuccess, showAlert }: any) {
     const leaders = data?.leadership || [];
@@ -106,14 +137,24 @@ function RosterView({ data, onSuccess, showAlert }: any) {
             l.position.title.toLowerCase().includes(search.toLowerCase()),
     );
 
-    const handleRevoke = async (id: string) => {
+    // A ref, not state: `onConfirm` is a closure captured when the dialog opens, so it
+    // would otherwise read whatever the checkbox was set to BEFORE the admin touched it.
+    const keepHistoryRef = useRef(true);
+
+    const handleRevoke = async (leader: any) => {
+        keepHistoryRef.current = true;
+        const who = `${leader.profile.first_name} ${leader.profile.last_name}`;
+        const office = leader.position?.alias || leader.position?.title || "this office";
+
         showAlert({
             type: "warning",
-            title: "Revoke Leadership?",
-            message: "Are you sure? This cannot be undone.",
-            confirmText: "Revoke",
+            title: "End this appointment?",
+            message: `${who} will stop holding ${office} and lose any access it granted, `
+                + "effective immediately.",
+            confirmText: "End appointment",
+            children: <KeepHistoryChoice onChange={(v) => { keepHistoryRef.current = v; }} />,
             onConfirm: async () => {
-                const res = await removeUnitLeaderAction(id);
+                const res = await removeUnitLeaderAction(leader.id, keepHistoryRef.current);
                 if (res.success) onSuccess();
                 else showAlert({ type: "error", message: res.error });
             },
@@ -194,7 +235,7 @@ function RosterView({ data, onSuccess, showAlert }: any) {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <button
-                                        onClick={() => handleRevoke(l.id)}
+                                        onClick={() => handleRevoke(l)}
                                         className="text-slate-300 hover:text-red-500 transition-colors p-2"
                                         aria-label="Revoke leadership"
                                     >
@@ -230,6 +271,18 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
     const [submitting, setSubmitting] = useState(false);
 
     const step = !office ? 1 : !generation ? 2 : 3;
+
+    // Who already leads the chosen office, if anyone.
+    //
+    // assignLeaderAction REFUSES a second lead (and leadership_one_lead_per_position
+    // refuses it again in the database), so appointing over a sitting holder was never
+    // possible -- but you only found out after walking all three steps. Resolving it
+    // here means step 3 can say so up front and offer the thing that will actually work.
+    const sittingLead = office
+        ? (data?.leadership ?? []).find(
+            (l: any) => l.position_id === office.id && l.is_lead !== false,
+        )
+        : null;
 
     const handleConfirm = async (member: any, isLead: boolean) => {
         if (!data?.activeTenure) return;
@@ -316,6 +369,7 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
                     key={generation.id}
                     office={office}
                     generation={generation}
+                    sittingLead={sittingLead}
                     onConfirm={handleConfirm}
                     submitting={submitting}
                 />

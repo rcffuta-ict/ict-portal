@@ -168,7 +168,8 @@ async function resolveRelationalIds(
     if (c.field === "leadership") {
         let q = db
             .from("leadership")
-            .select("profile_id, position:leadership_positions(title)");
+            .select("profile_id, position:leadership_positions(title)")
+            .is("ended_at", null);
         if (tenureId) q = q.eq("tenure_id", tenureId);
         const { data } = await q;
         const ids = ((data ?? []) as any[])
@@ -378,7 +379,8 @@ async function decorate(rows: any[], columns: string[], tenureId: string | null)
         let lq = db
             .from("leadership")
             .select("profile_id, position:leadership_positions(title)")
-            .in("profile_id", ids);
+            .in("profile_id", ids)
+            .is("ended_at", null);
         if (tenureId) lq = lq.eq("tenure_id", tenureId);
         const { data: leads } = await lq;
         const by = new Map<string, string[]>();

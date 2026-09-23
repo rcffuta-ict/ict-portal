@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Loader2, GraduationCap, Phone, BadgeCheck, KeyRound } from "lucide-react";
+import { Search, Loader2, GraduationCap, Phone, BadgeCheck, KeyRound, AlertTriangle } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import { getGenerationRosterAction } from "../../actions";
 import { fellowshipTitle } from "@/lib/gender";
@@ -19,11 +19,13 @@ import { fellowshipTitle } from "@/lib/gender";
 export function MemberStep({
     office,
     generation,
+    sittingLead,
     onConfirm,
     submitting,
 }: {
     office: any;
     generation: any;
+    sittingLead?: any;
     onConfirm: (member: any, isLead: boolean) => void;
     submitting: boolean;
 }) {
@@ -32,7 +34,13 @@ export function MemberStep({
     const [error, setError] = useState<string | null>(null);
     const [query, setQuery] = useState("");
     const [selected, setSelected] = useState<any>(null);
-    const [isLead, setIsLead] = useState(true);
+    // Defaults to Assistant when the office is already led, because Lead is the one
+    // choice the server will refuse -- the default should be the thing that works.
+    const [isLead, setIsLead] = useState(!sittingLead);
+
+    const holderName = sittingLead?.profile
+        ? `${sittingLead.profile.first_name} ${sittingLead.profile.last_name}`
+        : null;
 
     // No synchronous setState here: the parent gives this component `key={generation.id}`,
     // so switching generations REMOUNTS it and the initial state is already "loading".
@@ -93,6 +101,31 @@ export function MemberStep({
                     {generation.levelLabel}.
                 </p>
             </div>
+
+            {holderName && (
+                // Said here, before the choice, rather than as an error after it. The
+                // reassuring half matters as much as the warning: appointing an
+                // assistant takes nothing away from the person already serving, and
+                // assistants hold the office's privileges too, because privileges come
+                // from the POSITION.
+                <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <div className="text-xs leading-relaxed text-amber-900">
+                        <p className="font-bold">
+                            {holderName} already leads {office.alias || office.title}.
+                        </p>
+                        <p className="mt-1">
+                            An office has one lead at a time, so whoever you pick will be added
+                            as an <span className="font-bold">assistant</span> — which carries
+                            the same privileges and takes nothing away from {holderName}.
+                        </p>
+                        <p className="mt-1">
+                            To hand the office over instead, remove {holderName} from it on the
+                            Roster first. Their service is kept on record.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             <FormInput
                 type="search"
@@ -184,21 +217,25 @@ export function MemberStep({
                         {([
                             [true, "Lead", "Holds the office."],
                             [false, "Assistant", "Serves under the lead."],
-                        ] as const).map(([value, label, hint]) => (
-                            <button
-                                key={label}
-                                type="button"
-                                onClick={() => setIsLead(value)}
-                                title={hint}
-                                className={`min-h-11 flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
-                                    isLead === value
-                                        ? "border-rcf-navy bg-rcf-navy text-white"
-                                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                }`}
-                            >
-                                {label}
-                            </button>
-                        ))}
+                        ] as const).map(([value, label, hint]) => {
+                            const blocked = value === true && !!holderName;
+                            return (
+                                <button
+                                    key={label}
+                                    type="button"
+                                    disabled={blocked}
+                                    onClick={() => setIsLead(value)}
+                                    title={blocked ? `${holderName} already leads this office.` : hint}
+                                    className={`min-h-11 flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                        isLead === value && !blocked
+                                            ? "border-rcf-navy bg-rcf-navy text-white"
+                                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
                     </div>
 
                     {office.grants_login && (
