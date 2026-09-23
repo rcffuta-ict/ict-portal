@@ -4,9 +4,10 @@
  * *** THIS MUST NEVER RUN AGAINST PRODUCTION. *** See the guards in assertNotProduction()
  * below; they are the most important code in this file.
  *
- * It creates generations, 110 members, and enough leadership for the handover wizard to
- * have something real to do. It is the counterpart to db/seed/default.sql, which is
- * bootstrap structure and DOES run in production. Two different things:
+ * It creates generations and 110 members -- people, and nothing they do. No offices are
+ * filled: an appointment is a decision somebody made, and inventing them makes the
+ * cabinet screen useless as a record of who actually leads. It is the counterpart to
+ * db/seed/default.sql, which is bootstrap structure and DOES run in production:
  *
  *     default.sql    offices and units          production + development
  *     seed-test.mjs  people filling them        development ONLY
@@ -16,15 +17,11 @@
  *   node scripts/seed-test.mjs --env local
  *   node scripts/seed-test.mjs --reset
  *   node scripts/seed-test.mjs --env local --dry-run
- *   node scripts/seed-test.mjs --password 'Passw0rd!'
  *
  * Flags:
  *   --env NAME   choose the environment without the prompt (e.g. `local`)
  *   --reset      delete every previously seeded member first, then re-seed
  *   --reset-only delete and stop
- *   --password   give every seeded LEADER this password so you can log in as them.
- *                Without it they get a NULL hash and go through set-password-on-first-
- *                login, which is what really happens when someone is appointed.
  *   --yes        skip the interactive confirmation (for scripted runs)
  *   --dry-run    generate the roster and print a sample; write nothing
  *
@@ -32,28 +29,16 @@
  * only handle `--reset` uses, and `.test` is an RFC 2606 reserved TLD, so none of these
  * addresses can resolve or receive mail even by accident.
  *
- * Reads SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and (for --password) SESSION_SECRET
- * from .env.local, the same way scripts/bootstrap-admin.mjs does.
+ * Reads SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from .env.local, the same way
+ * scripts/bootstrap-admin.mjs does.
  */
 import { createClient } from "@supabase/supabase-js";
-import { randomBytes, scrypt as _scrypt } from "node:crypto";
-import { promisify } from "node:util";
 import {
     c, heading, section, table, kv, ok, warn, info, blank,
     chooseEnvironment, confirm, flagValue, hasFlag, die,
 } from "./lib/cli.mjs";
 
-const scrypt = promisify(_scrypt);
-const KEYLEN = 64;
 const TEST_DOMAIN = "@rcffuta.test";
-
-async function hashPassword(password) {
-    const secret = process.env.SESSION_SECRET;
-    if (!secret) throw new Error("SESSION_SECRET is required for --password (must match the app).");
-    const salt = randomBytes(16);
-    const derived = await scrypt(`${password}${secret}`, salt, KEYLEN);
-    return `scrypt$${salt.toString("hex")}$${derived.toString("hex")}`;
-}
 
 // ---------------------------------------------------------------------------
 // THE GUARDS
@@ -715,103 +700,18 @@ async function main() {
     info(c.grey("Each member is built from one origin, so names, home state, department,"));
     info(c.grey("school, matric number and date of birth all agree with each other."));
 
-    // --- leadership ---
-    // Without real outgoing leaders the handover's access-revocation step shows an empty
-    // list and proves nothing, so seed a cabinet.
-    const { data: positions, error: posErr } = await db
-        .from("leadership_positions")
-        .select("id, slug, title")
-        .in("slug", [
-            "president", "vp-admin", "vp-church-growth", "ict-coord",
-            "level-coord-all", "level-coord-300",
-            "exco-choir", "exco-ushering", "exco-prayer", "exco-media-and-ambience",
-        ]);
-    if (posErr) throw new Error(`Could not read positions: ${posErr.message}`);
-
-    if (!positions?.length) {
-        console.warn(
-            "\n  ! No catalogue positions found. Apply db/seed/default.sql first, then\n" +
-            "    re-run with --reset to get a cabinet.",
-        );
-    } else {
-        const finalists = inserted.filter((m) => m.class_set_id === classSetIds["500 Level"]);
-        const passwordFlag = flagValue("password");
-        const passwordHash = passwordFlag ? await hashPassword(passwordFlag) : null;
-
-        // Offices that ALREADY have a lead this tenure are left alone.
-        //
-        // `leadership_one_lead_per_position` is a partial unique index, so appointing a
-        // second lead does not overwrite -- it raises, and takes the whole insert with
-        // it. That matters because this script is normally reached through
-        // `pnpm db:reset-staging`, which seeds the System Admin into `ict-coord` a step
-        // BEFORE this one runs. Claiming it again failed the entire cabinet and left
-        // 110 members with no leadership at all.
-        const { data: alreadyLed } = await db
-            .from("leadership")
-            .select("position_id")
-            .eq("tenure_id", tenure.id)
-            .eq("is_lead", true);
-        const taken = new Set((alreadyLed ?? []).map((l) => l.position_id));
-
-        // Nor do we re-provision a login for somebody who has one: profile_login is
-        // unique per profile, and the System Admin already has theirs.
-        const { data: haveLogin } = await db.from("profile_login").select("profile_id");
-        const loginExists = new Set((haveLogin ?? []).map((l) => l.profile_id));
-
-        const vacant = positions.filter((pos) => !taken.has(pos.id));
-        const skipped = positions.length - vacant.length;
-
-        const rows = [];
-        const logins = [];
-        vacant.forEach((pos, i) => {
-            const holder = finalists[i % finalists.length];
-            if (!holder) return;
-            rows.push({
-                tenure_id: tenure.id,
-                profile_id: holder.id,
-                position_id: pos.id,
-                class_set_id: pos.slug.startsWith("level-coord-") ? classSetIds["500 Level"] : null,
-                is_lead: true,
-            });
-            if (!loginExists.has(holder.id)) {
-                loginExists.add(holder.id);
-                logins.push({
-                    profile_id: holder.id,
-                    password_hash: passwordHash,
-                    is_active: true,
-                    granted_by: holder.id,
-                });
-            }
-        });
-
-        if (rows.length > 0) {
-            const { error: leadErr } = await db.from("leadership").insert(rows);
-            if (leadErr) throw new Error(`Could not seed leadership: ${leadErr.message}`);
-        }
-
-        if (logins.length > 0) {
-            const { error: loginErr } = await db.from("profile_login").insert(logins);
-            if (loginErr) throw new Error(`Could not provision logins: ${loginErr.message}`);
-        }
-
-        section("Leadership");
-        info(`${rows.length} appointments, ${logins.length} logins provisioned.`);
-        if (skipped > 0) {
-            info(c.grey(`${skipped} office(s) already had a lead and were left untouched.`));
-        }
-        blank();
-        table(
-            vacant.map((p) => ({ title: p.title, slug: c.grey(p.slug) })),
-            [{ key: "title", label: "OFFICE" }, { key: "slug", label: "SLUG" }],
-        );
-        blank();
-        if (passwordHash) {
-            ok("Password set - you can log in as any of them.");
-        } else {
-            info(c.grey("No password set: each goes through set-password-on-first-login,"));
-            info(c.grey("which is what really happens on appointment. Pass --password to change."));
-        }
-    }
+    // NO APPOINTMENTS ARE SEEDED, DELIBERATELY.
+    //
+    // This script used to fill a cabinet -- ten offices handed to ten seeded finalists --
+    // so the handover wizard's access-revocation step had names to show. That was a
+    // convenience bought at the price of a lie: an appointment is a DECISION somebody
+    // made, and a roster full of invented officers makes the cabinet screen unreadable
+    // as a record of who actually leads the fellowship. Worse, it collided with the
+    // System Admin seeded a step earlier and took the whole run down with it.
+    //
+    // Offices are filled by hand, through the portal, which is also the only way to
+    // exercise the appointment flow as a leader really meets it.
+    info(c.grey("No offices were filled -- appointments are made by hand, in the portal."));
 
     section("Done");
     ok(`Seeded ${c.bold(env.file)} ${c.grey(`(${env.ref})`)}`);
