@@ -1,11 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState } from "react";
 import {
-    searchMemberAction,
     assignLeaderAction,
-    createPositionAction,
     togglePositionAction,
     setPositionPrivilegesAction,
     removeUnitLeaderAction,
@@ -16,22 +14,20 @@ import {
     Settings,
     Plus,
     Power,
-    CheckCircle,
     List,
     Trash2,
-    Phone,
-    GraduationCap,
     Loader2,
-    ShieldCheck,
     Pencil,
     X,
-    Users,
+    ChevronRight,
 } from "lucide-react";
-import FormInput from "@/components/ui/FormInput";
-import FormSelect from "@/components/ui/FormSelect";
 import { AlertModal, useAlertModal } from "@/components/ui/alert-modal";
 import { PrivilegeBuilder } from "./privilege-builder";
+import Link from "next/link";
 import { PrivilegePills } from "./privilege-pills";
+import { OfficeStep } from "./appoint/office-step";
+import { LevelStep } from "./appoint/level-step";
+import { MemberStep } from "./appoint/member-step";
 import { normalizePrivileges } from "@/lib/privileges";
 import type { Privilege } from "@/lib/modules";
 
@@ -215,263 +211,120 @@ function RosterView({ data, onSuccess, showAlert }: any) {
 }
 
 // --- SUB-COMPONENT 2: APPOINT ---
+/**
+ * Appointment, in three steps: office -> generation -> member.
+ *
+ * The old flow went the other way -- search the whole fellowship, then choose from a
+ * dropdown of thirty-six offices. Two things were wrong with that. You had to know who
+ * you wanted before the screen told you what you were filling, and the search was a
+ * bare box over several hundred people with a 500ms debounce and a server round-trip
+ * per keystroke.
+ *
+ * Starting from the office lets every later step narrow itself: the generation grid
+ * knows which level to expect, and the member list knows which offices its candidates
+ * already hold.
+ */
 function AppointmentView({ data, onSuccess, showAlert }: any) {
-    const [query, setQuery] = useState("");
-    const [results, setResults] = useState<any[]>([]);
-    const [selectedUser, setSelectedUser] = useState<any>(null);
-    const [selectedPosId, setSelectedPosId] = useState("");
-    const [isSearching, setIsSearching] = useState(false);
+    const [office, setOffice] = useState<any>(null);
+    const [generation, setGeneration] = useState<any>(null);
     const [submitting, setSubmitting] = useState(false);
-    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    const selectedPosition = data?.positions?.find((p: any) => p.id === selectedPosId);
-    const activePositions = data?.positions?.filter((p: any) => p.is_active);
+    const step = !office ? 1 : !generation ? 2 : 3;
 
-    const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
-        setQuery(value);
-        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-        if (value.length > 2) {
-            setIsSearching(true);
-            searchTimeoutRef.current = setTimeout(async () => {
-                try {
-                    const res = await searchMemberAction(value);
-                    setResults(res);
-                } finally {
-                    setIsSearching(false);
-                }
-            }, 500);
-        } else {
-            setResults([]);
-            setIsSearching(false);
-        }
-    }, []);
-
-    const handleAssign = async (formData: FormData) => {
-        if (!selectedUser || !data?.activeTenure) return;
+    const handleConfirm = async (member: any, isLead: boolean) => {
+        if (!data?.activeTenure) return;
         setSubmitting(true);
-        formData.append("profileId", selectedUser.id);
+        const formData = new FormData();
+        formData.append("profileId", member.id);
+        formData.append("positionId", office.id);
         formData.append("tenureId", data.activeTenure.id);
+        formData.append("isLead", isLead ? "true" : "false");
+
         const res = await assignLeaderAction(formData);
         setSubmitting(false);
-        if (res.success) {
-            // Appointment also grants portal access, so say so — otherwise nobody knows
-            // to tell the appointee they can now sign in and set a password.
-            if (res.warning) {
-                showAlert({ type: "error", message: res.warning });
-            } else {
-                showAlert({
-                    type: "success",
-                    message: res.loginCreated
-                        ? "Leader appointed. They can now sign in and set their password."
-                        : "Leader appointed successfully!",
-                });
-            }
-            onSuccess();
-            setSelectedUser(null);
-            setQuery("");
-            setSelectedPosId("");
-        } else {
+
+        if (!res.success) {
             showAlert({ type: "error", message: res.error });
+            return;
         }
+        if (res.warning) {
+            showAlert({ type: "error", message: res.warning });
+        } else {
+            // Appointment also grants portal access, so say so -- otherwise nobody knows
+            // to tell the appointee they can now sign in and set a password.
+            showAlert({
+                type: "success",
+                message: res.loginCreated
+                    ? `${member.first_name} appointed. They can now sign in and set their password.`
+                    : `${member.first_name} appointed as ${office.alias || office.title}.`,
+            });
+        }
+        setOffice(null);
+        setGeneration(null);
+        onSuccess();
     };
 
     return (
-        <div className="max-w-3xl mx-auto px-4 sm:px-0 space-y-8 animate-in fade-in">
-            {!selectedUser ? (
-                <div className="space-y-6">
-                    <div className="space-y-2">
-                        <label className="text-sm font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2">
-                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs">
-                                1
-                            </span>
-                            Find Member
-                        </label>
-                        <FormInput
-                            type="text"
-                            placeholder="Search by name, email, or phone..."
-                            value={query}
-                            onChange={handleSearch}
-                            leftIcon={
-                                isSearching ? (
-                                    <Loader2 className="h-5 w-5 animate-spin text-rcf-navy" />
-                                ) : (
-                                    <Search className="h-5 w-5" />
-                                )
-                            }
-                            hideLabel
-                            className="h-14 text-lg"
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        {results.length > 0 && (
-                            <p className="text-xs font-bold text-slate-400 uppercase">
-                                {results.length} result{results.length === 1 ? "" : "s"}
-                            </p>
-                        )}
-
-                        {results.map((user) => (
-                            <button
-                                type="button"
-                                key={user.id}
-                                onClick={() => setSelectedUser(user)}
-                                className="group w-full text-left p-3 border border-slate-200 rounded-xl hover:border-rcf-navy hover:bg-slate-50 flex items-center gap-3 transition-all"
-                            >
-                                <div className="h-11 w-11 rounded-full bg-slate-100 border-2 border-white shadow-sm flex items-center justify-center overflow-hidden shrink-0">
-                                    {user.avatar_url ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
-                                    ) : (
-                                        <span className="text-xs font-bold text-slate-500">
-                                            {user.first_name?.[0]}
-                                            {user.last_name?.[0]}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <p className="font-bold text-slate-900 leading-tight truncate group-hover:text-rcf-navy">
-                                        {user.first_name} {user.last_name}
-                                    </p>
-                                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
-                                        <span className="inline-flex items-center gap-1">
-                                            <GraduationCap className="h-3 w-3" /> {user.level || "—"}
-                                        </span>
-                                        {user.units && (
-                                            <span className="inline-flex items-center gap-1 text-blue-600">
-                                                <Users className="h-3 w-3" /> {user.units}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            </button>
-                        ))}
-
-                        {query.length > 2 && results.length === 0 && !isSearching && (
-                            <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400">
-                                {`No member found matching "${query}"`}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            ) : (
-                <form action={handleAssign} className="space-y-8 animate-in slide-in-from-right-8">
-                    {/* Selected member */}
-                    <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                            <label className="text-sm font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2">
-                                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-700 text-xs">
-                                    ✓
-                                </span>
-                                Selected Member
-                            </label>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedUser(null)}
-                                className="text-xs font-bold text-red-500 hover:bg-red-50 px-3 py-1 rounded-md transition-colors"
-                            >
-                                Change
-                            </button>
-                        </div>
-
-                        <div className="p-5 bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl flex items-center gap-4 shadow-sm">
-                            <div className="h-16 w-16 rounded-full bg-blue-100 border-4 border-white shadow-md flex items-center justify-center text-xl font-bold text-blue-700 overflow-hidden shrink-0">
-                                {selectedUser.avatar_url ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={selectedUser.avatar_url} alt="" className="h-full w-full object-cover" />
-                                ) : (
-                                    `${selectedUser.first_name[0]}${selectedUser.last_name[0]}`
-                                )}
-                            </div>
-                            <div className="min-w-0">
-                                <h2 className="text-xl font-bold text-slate-900 truncate">
-                                    {selectedUser.first_name} {selectedUser.last_name}
-                                </h2>
-                                <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-medium text-slate-500">
-                                    <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-slate-200">
-                                        <GraduationCap className="h-3 w-3" /> {selectedUser.level || "—"}
-                                    </span>
-                                    {selectedUser.phone_number && (
-                                        <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-slate-200">
-                                            <Phone className="h-3 w-3" /> {selectedUser.phone_number}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Role */}
-                    <div className="space-y-4 pt-4 border-t border-slate-100">
-                        <label className="text-sm font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2">
-                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs">
-                                2
-                            </span>
-                            Assign Role
-                        </label>
-
-                        <FormSelect
-                            label="Position"
-                            name="positionId"
-                            required
-                            value={selectedPosId}
-                            onChange={(e) => setSelectedPosId(e.target.value)}
-                        >
-                            <option value="">-- Select Position --</option>
-                            {activePositions?.map((p: any) => (
-                                <option key={p.id} value={p.id}>
-                                    {p.title}
-                                </option>
-                            ))}
-                        </FormSelect>
-
-                        {selectedPosition && (
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                                    This role grants
-                                </p>
-                                <PrivilegePills
-                                    privileges={selectedPosition.position_privileges}
-                                    slug={selectedPosition.slug}
-                                    emptyLabel="No module access"
-                                />
-                            </div>
-                        )}
-
-                        <label className="flex items-start gap-2 text-sm text-slate-600 p-4 rounded-xl bg-slate-50 border border-slate-100">
-                            <input type="checkbox" name="isLead" value="false" className="mt-0.5" />
-                            <span>
-                                Appoint as <b>assistant / sub-leader</b> — shares the coordinator&apos;s
-                                privileges, but only the lead is recognised on the roster.
-                            </span>
-                        </label>
-
+        <div className="mx-auto max-w-4xl space-y-6 px-4 sm:px-0">
+            {/* Breadcrumb. Each completed step is a button, because changing your mind
+                about the office should not mean starting over. */}
+            <nav aria-label="Appointment progress" className="flex flex-wrap items-center gap-1 text-xs">
+                {([
+                    [1, office ? (office.alias || office.title) : "Office", () => { setOffice(null); setGeneration(null); }],
+                    [2, generation ? generation.levelLabel : "Generation", () => setGeneration(null)],
+                    [3, "Member", () => {}],
+                ] as const).map(([index, label, reset], i) => (
+                    <span key={index} className="flex items-center gap-1">
+                        {i > 0 && <ChevronRight className="h-3 w-3 text-slate-300" />}
                         <button
-                            disabled={submitting}
-                            className="w-full h-14 bg-rcf-navy text-white text-base rounded-xl font-bold shadow-xl shadow-rcf-navy/20 hover:bg-opacity-90 hover:-translate-y-0.5 transition-all flex justify-center items-center gap-3 disabled:opacity-60 disabled:hover:translate-y-0"
+                            type="button"
+                            disabled={index >= step}
+                            onClick={reset}
+                            className={`rounded px-2 py-1 font-bold transition-colors ${
+                                index === step
+                                    ? "bg-rcf-navy text-white"
+                                    : index < step
+                                        ? "text-rcf-navy hover:bg-slate-100"
+                                        : "text-slate-300"
+                            }`}
                         >
-                            {submitting ? (
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                            ) : (
-                                <CheckCircle className="h-5 w-5" />
-                            )}
-                            {submitting ? "Appointing…" : "Confirm Appointment"}
+                            {label}
                         </button>
-                    </div>
-                </form>
+                    </span>
+                ))}
+            </nav>
+
+            {step === 1 && (
+                <OfficeStep
+                    positions={data?.positions ?? []}
+                    leadership={data?.leadership ?? []}
+                    onPick={setOffice}
+                />
+            )}
+
+            {step === 2 && (
+                <LevelStep
+                    office={office}
+                    families={data?.families ?? []}
+                    session={data?.activeTenure?.session ?? null}
+                    onPick={setGeneration}
+                />
+            )}
+
+            {step === 3 && (
+                <MemberStep
+                    key={generation.id}
+                    office={office}
+                    generation={generation}
+                    onConfirm={handleConfirm}
+                    submitting={submitting}
+                />
             )}
         </div>
     );
 }
 
 // --- SUB-COMPONENT 3: ROLES / CONFIGURE ---
-function slugify(value: string): string {
-    return value
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-}
-
 function ConfigurationView({ data, onSuccess, showAlert }: any) {
     const units = (data?.units ?? []).map((u: any) => ({
         id: u.id,
@@ -480,34 +333,8 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
         slug: u.slug,
     }));
 
-    // Create-role form state.
-    const [alias, setAlias] = useState("");
-    const [slug, setSlug] = useState("");
-    const [slugTouched, setSlugTouched] = useState(false);
-    const [privileges, setPrivileges] = useState<Privilege[]>([]);
-    const [creating, setCreating] = useState(false);
-
     // Edit-privileges modal state.
     const [editing, setEditing] = useState<any | null>(null);
-
-    function onAliasChange(value: string) {
-        setAlias(value);
-        if (!slugTouched) setSlug(slugify(value));
-    }
-
-    async function handleCreate(formData: FormData) {
-        setCreating(true);
-        formData.set("privileges", JSON.stringify(privileges));
-        const res = await createPositionAction(formData);
-        setCreating(false);
-        if (res.success) {
-            setAlias("");
-            setSlug("");
-            setSlugTouched(false);
-            setPrivileges([]);
-            onSuccess();
-        } else showAlert({ type: "error", message: res.error });
-    }
 
     async function toggleStatus(id: string, currentStatus: boolean, posData: any) {
         showAlert({
@@ -524,58 +351,32 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
 
     return (
         <div className="grid gap-8 lg:grid-cols-3 animate-in slide-in-from-right-4 px-4 sm:px-0">
-            {/* Create role */}
+            {/* Creating an office lives on its own page now.
+                It adds a node to the administrative hierarchy and a row of privilege
+                tags -- a different kind of act from editing a roster, and one that
+                should not sit a misclick away from the screen used every week. */}
             <div className="lg:col-span-1">
-                <form
-                    action={handleCreate}
-                    className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4"
-                >
-                    <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                        <Plus className="h-4 w-4" /> Create New Role
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                    <h4 className="flex items-center gap-2 font-bold text-slate-900">
+                        <Plus className="h-4 w-4" /> New office
                     </h4>
-
-                    <FormInput name="title" label="Role Title" required placeholder="e.g. Media Head" />
-                    <FormInput
-                        name="alias"
-                        label="Alias (short name)"
-                        value={alias}
-                        onChange={(e) => onAliasChange(e.target.value)}
-                        placeholder="e.g. Media"
-                    />
-                    <div className="space-y-1">
-                        <FormInput
-                            name="slug"
-                            label="Slug (permanent)"
-                            value={slug}
-                            onChange={(e) => {
-                                setSlugTouched(true);
-                                setSlug(slugify(e.target.value));
-                            }}
-                            placeholder="e.g. media-head"
-                        />
-                        <p className="text-[10px] text-slate-400">
-                            Auto-filled from the alias. Stable handle used by access settings; can&apos;t
-                            change once created.
-                        </p>
-                    </div>
-
-                    <div className="space-y-2">
-                        <span className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
-                            <ShieldCheck className="h-4 w-4 text-rcf-navy" /> Privileges &amp; scope
-                        </span>
-                        <PrivilegeBuilder value={privileges} onChange={setPrivileges} units={units} />
-                    </div>
-
-                    <FormInput name="description" label="Description" placeholder="Role description..." />
-
-                    <button
-                        disabled={creating}
-                        className="btn-primary w-full text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+                    <p className="text-xs leading-relaxed text-slate-500">
+                        The catalogue is frozen: President, the Vice Presidents, the ICT
+                        Coordinator and the Level Coordinators are constant across tenures.
+                        The one office that can legitimately be missing is a new unit&rsquo;s
+                        Executive.
+                    </p>
+                    <Link
+                        href="/dashboard/tenure/offices/new"
+                        className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-rcf-navy px-4 text-sm font-bold text-white transition-opacity hover:opacity-90"
                     >
-                        {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-                        {creating ? "Creating…" : "Add to Master List"}
-                    </button>
-                </form>
+                        Create an Executive office
+                    </Link>
+                    <p className="text-[11px] text-slate-400">
+                        Privileges for an office that already exists are edited in the table
+                        beside this.
+                    </p>
+                </div>
             </div>
 
             {/* Positions table */}

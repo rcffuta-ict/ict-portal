@@ -1881,3 +1881,101 @@ export async function abandonHandoverIntentAction(intentId: string, reason?: str
         return { success: false as const, error: e.message };
     }
 }
+
+/**
+ * The members of one generation, for the appointment flow's level step.
+ *
+ * Gated on `requireModuleWrite("tenure")` -- the same gate as `assignLeaderAction`,
+ * because this list exists only to feed it. Deliberately NOT `getLevelMembersAction`
+ * from the units module: that one gates on `canManageLevel`, which asks whether the
+ * caller COORDINATES the level. A VP Admin appointing a Choir Exco coordinates no level
+ * at all, and would be refused the list they need to do their job.
+ *
+ * Returns the whole generation in one response rather than paging: a level is ~20-30
+ * members, so the roster is small enough to filter in the browser, and filtering in the
+ * browser is what makes the search feel instant instead of costing a round-trip per
+ * keystroke on a phone.
+ */
+export async function getGenerationRosterAction(classSetId: string) {
+    try {
+        await requireModuleWrite("tenure");
+        if (!classSetId) return { success: false, error: "No generation given.", data: [] };
+
+        const { data, error } = await db
+            .from("profiles")
+            .select("id, first_name, last_name, middle_name, email, phone_number, gender, department, matric_number, avatar_url")
+            .eq("class_set_id", classSetId)
+            .order("first_name");
+        if (error) throw new Error(error.message);
+
+        // Who in this generation already holds an office this tenure. Shown on the card
+        // so an appointer sees they are about to give somebody a second office before
+        // they do it, not after.
+        const { data: tenure } = await db
+            .from("tenures")
+            .select("id")
+            .eq("is_active", true)
+            .maybeSingle();
+
+        const held = new Map<string, string[]>();
+        if (tenure?.id && (data ?? []).length > 0) {
+            const { data: rows } = await db
+                .from("leadership")
+                .select("profile_id, is_lead, position:leadership_positions(title, alias)")
+                .eq("tenure_id", tenure.id)
+                .in("profile_id", (data ?? []).map((p: any) => p.id));
+
+            for (const row of (rows ?? []) as any[]) {
+                const position = Array.isArray(row.position) ? row.position[0] : row.position;
+                const label = position?.alias || position?.title;
+                if (!label) continue;
+                const list = held.get(row.profile_id) ?? [];
+                list.push(row.is_lead === false ? `${label} (assistant)` : label);
+                held.set(row.profile_id, list);
+            }
+        }
+
+        return {
+            success: true,
+            data: (data ?? []).map((p: any) => ({ ...p, offices: held.get(p.id) ?? [] })),
+        };
+    } catch (e: any) {
+        return { success: false, error: e.message, data: [] };
+    }
+}
+
+/**
+ * Units and teams that have NO active Exco office yet.
+ *
+ * This is the only legitimate reason to mint an office at runtime: a unit created after
+ * the catalogue was seeded has no Executive, and nothing else can give it one. Every
+ * other office in the fellowship is fixed in src/config/leadership-positions.ts and held
+ * there by the freeze trigger.
+ *
+ * Returning the eligible list (rather than letting the page offer every unit and fail
+ * on submit) is what lets the page show an honest empty state when there is nothing to
+ * create.
+ */
+export async function getUnitsWithoutExcoAction() {
+    try {
+        await requireVpAdmin();
+
+        const [unitsRes, positionsRes] = await Promise.all([
+            db.from("units").select("id, slug, name, type, description").order("name"),
+            db.from("leadership_positions").select("slug, is_active"),
+        ]);
+
+        const taken = new Set(
+            (positionsRes.data ?? [])
+                .filter((p: any) => p.is_active !== false)
+                .map((p: any) => p.slug),
+        );
+
+        return {
+            success: true,
+            data: (unitsRes.data ?? []).filter((u: any) => !taken.has(`exco-${u.slug}`)),
+        };
+    } catch (e: any) {
+        return { success: false, error: e.message, data: [] };
+    }
+}
