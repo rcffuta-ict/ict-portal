@@ -11,6 +11,7 @@ import {
     ShieldAlert,
     ArrowLeftRight,
     Network,
+    Loader2,
 } from "lucide-react";
 import { TenureTab } from "./components/tenure-tab";
 import { StructureTab } from "./components/structure-tab";
@@ -32,13 +33,32 @@ export default function TenureDashboard() {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [authorized, setAuthorized] = useState(true);
+    // Distinct from `loading`: the FIRST load has nothing to show, a refresh does.
+    const [refreshing, setRefreshing] = useState(false);
 
+    /**
+     * Re-read the console's data WITHOUT tearing the screen down.
+     *
+     * This used to `setLoading(true)`, and `loading` short-circuits the whole component
+     * to a full-page preloader -- so every successful action in the cabinet unmounted
+     * the tab, which threw away the mode you were in, the office you had selected, your
+     * search text and your scroll position. Appointing three people meant navigating
+     * back to the appointment screen three times.
+     *
+     * `refreshing` is a separate flag precisely so it can be rendered as something
+     * small and non-destructive. The stale data stays on screen for the half-second the
+     * round-trip takes, which is also the right thing on a slow connection: a brief
+     * out-of-date list beats a blank page.
+     */
     const refresh = async () => {
-        setLoading(true);
-        const res = await getAdminData();
-        if (res.authorized === false) setAuthorized(false);
-        else setData(res);
-        setLoading(false);
+        setRefreshing(true);
+        try {
+            const res = await getAdminData();
+            if (res.authorized === false) setAuthorized(false);
+            else setData(res);
+        } finally {
+            setRefreshing(false);
+        }
     };
 
     useEffect(() => {
@@ -80,9 +100,23 @@ export default function TenureDashboard() {
     return (
         <div className="space-y-8 animate-fade-in pb-20">
             <div className="flex flex-col gap-1 border-b border-slate-200 pb-6">
-                <h1 className="text-3xl font-bold text-rcf-navy">
-                    Tenure Manager
-                </h1>
+                <div className="flex items-center gap-3">
+                    <h1 className="text-3xl font-bold text-rcf-navy">
+                        Tenure Manager
+                    </h1>
+                    {/* Small, and beside the title rather than over the content: a
+                        refresh must never hide what you are looking at. aria-live so a
+                        screen reader hears that the figures are being updated. */}
+                    <span
+                        aria-live="polite"
+                        className={`flex items-center gap-1.5 text-xs font-medium text-slate-400 transition-opacity ${
+                            refreshing ? "opacity-100" : "opacity-0"
+                        }`}
+                    >
+                        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                        {refreshing ? "Updating…" : ""}
+                    </span>
+                </div>
                 <p className="text-slate-500">
                     Manage tenure configuration, structure, and appointments.
                 </p>

@@ -35,13 +35,32 @@ function readUnits() {
     const body = src.slice(src.indexOf("export const FELLOWSHIP_UNITS"));
     const units = [];
 
-    // Each entry is a { ... } object literal with the five known keys.
-    const entry = /\{\s*(?:\/\/[^\n]*\n\s*)*slug:\s*"([^"]+)",\s*name:\s*"([^"]+)",\s*type:\s*"(UNIT|TEAM)",\s*positionAlias:\s*"([^"]+)",\s*description:\s*\n?\s*"([^"]*)",?\s*\}/g;
+    // Each entry is a { ... } object literal with the five required keys, optionally
+    // followed by genderCategory on the Brothers' and Sisters' units.
+    const entry = /\{\s*(?:\/\/[^\n]*\n\s*)*slug:\s*"([^"]+)",\s*name:\s*"([^"]+)",\s*type:\s*"(UNIT|TEAM)",\s*positionAlias:\s*"([^"]+)",\s*description:\s*\n?\s*"([^"]*)",?\s*(?:genderCategory:\s*"(male|female)",?\s*)?\}/g;
     let m;
     while ((m = entry.exec(body)) !== null) {
-        units.push({ slug: m[1], name: m[2], type: m[3], positionAlias: m[4], description: m[5] });
+        units.push({
+            slug: m[1], name: m[2], type: m[3], positionAlias: m[4], description: m[5],
+            genderCategory: m[6] ?? null,
+        });
     }
-    if (units.length === 0) throw new Error("Parsed zero units — the config format changed.");
+
+    // Count the entries independently and insist the two agree.
+    //
+    // This regex matches whole object literals, so ANY unrecognised key makes an entry
+    // simply not match -- and the old guard only fired when NOTHING matched. Adding
+    // `genderCategory` therefore dropped exactly two units and their Exco offices out
+    // of a seed that runs in production, and the generator reported success. A parser
+    // that can half-read its input has to say so.
+    const declared = (body.match(/^\s*slug:\s*"/gm) ?? []).length;
+    if (units.length !== declared) {
+        throw new Error(
+            `Parsed ${units.length} units but the config declares ${declared}. ` +
+            "An entry has a key this parser does not know about — extend the pattern " +
+            "in readUnits() rather than letting units vanish from the seed.",
+        );
+    }
     return units;
 }
 
@@ -188,13 +207,20 @@ function render() {
     L.push("-- Matched on slug, so re-running restores an edited name without minting a");
     L.push("-- duplicate unit.");
     L.push("-- ----------------------------------------------------------------------------");
+    L.push("-- is_workforce is FALSE for the Brothers' and Sisters' units. They are gender");
+    L.push("-- categories rather than units anybody joins -- every member is in one of them");
+    L.push("-- already -- so counting them as workforce would make every member a worker and");
+    L.push("-- the \"who is serving?\" figure meaningless.");
     L.push("INSERT INTO public.units (slug, name, type, description, is_workforce)");
     L.push("VALUES");
-    L.push(units.map((u) => `    (${q(u.slug)}, ${q(u.name)}, ${q(u.type)}, ${q(u.description)}, true)`).join(",\n"));
+    L.push(units.map((u) => `    (${q(u.slug)}, ${q(u.name)}, ${q(u.type)}, ${q(u.description)}, ${u.genderCategory ? "false" : "true"})`).join(",\n"));
     L.push("ON CONFLICT (slug) DO UPDATE");
-    L.push("    SET name        = EXCLUDED.name,");
-    L.push("        type        = EXCLUDED.type,");
-    L.push("        description = EXCLUDED.description;");
+    L.push("    SET name         = EXCLUDED.name,");
+    L.push("        type         = EXCLUDED.type,");
+    L.push("        description  = EXCLUDED.description,");
+    // is_workforce was omitted here, so re-running the seed could never CORRECT the
+    // flag on a unit already in the database -- which is exactly what is needed now.
+    L.push("        is_workforce = EXCLUDED.is_workforce;");
     L.push("");
 
     // --- positions ---

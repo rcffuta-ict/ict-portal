@@ -38,6 +38,10 @@ BEGIN;
 -- Matched on slug, so re-running restores an edited name without minting a
 -- duplicate unit.
 -- ----------------------------------------------------------------------------
+-- is_workforce is FALSE for the Brothers' and Sisters' units. They are gender
+-- categories rather than units anybody joins -- every member is in one of them
+-- already -- so counting them as workforce would make every member a worker and
+-- the "who is serving?" figure meaningless.
 INSERT INTO public.units (slug, name, type, description, is_workforce)
 VALUES
     ('follow-up-and-counselling', 'Follow-up & Counselling Unit', 'UNIT', 'Follows up new and returning members, and coordinates pastoral counselling.', true),
@@ -55,20 +59,21 @@ VALUES
     ('drama', 'Drama Unit', 'UNIT', 'Ministers through drama and stage presentation.', true),
     ('welfare', 'Welfare Unit', 'UNIT', 'Sees to the practical needs and wellbeing of members.', true),
     ('sport', 'Sports Team', 'TEAM', 'Organises the fellowship''s sporting life and fixtures.', true),
-    ('sisters', 'Sisters'' Unit', 'UNIT', 'Ministers to the sisters of the fellowship.', true),
+    ('sisters', 'Sisters'' Unit', 'UNIT', 'Every sister in the fellowship. Membership follows gender, not induction.', false),
     ('bible-study', 'Bible Study Unit', 'UNIT', 'Plans and leads the fellowship''s study of the scriptures.', true),
     ('organizing', 'Organizing Unit', 'UNIT', 'Sets up, arranges and runs the logistics of every gathering.', true),
     ('evangelism', 'Evangelism Unit', 'UNIT', 'Leads outreach and soul-winning on and off campus.', true),
-    ('brothers', 'Brothers'' Unit', 'UNIT', 'Ministers to the brothers of the fellowship.', true),
+    ('brothers', 'Brothers'' Unit', 'UNIT', 'Every brother in the fellowship. Membership follows gender, not induction.', false),
     ('commerce', 'Commerce Team', 'TEAM', 'Runs the fellowship''s trade, sales and commercial ventures.', true),
     ('secretariat', 'Secretariat', 'TEAM', 'Keeps the fellowship''s office, its records and its correspondence.', true),
     ('protocol', 'Protocol Team', 'TEAM', 'Receives and attends to guests, ministers and dignitaries.', true),
     ('transport', 'Transport Team', 'TEAM', 'Arranges movement for fellowship programmes and outreaches.', true),
     ('ict', 'Information and Communications Team', 'TEAM', 'Runs the infrastructure, and manages the fellowship''s systems and its communications.', true)
 ON CONFLICT (slug) DO UPDATE
-    SET name        = EXCLUDED.name,
-        type        = EXCLUDED.type,
-        description = EXCLUDED.description;
+    SET name         = EXCLUDED.name,
+        type         = EXCLUDED.type,
+        description  = EXCLUDED.description,
+        is_workforce = EXCLUDED.is_workforce;
 
 -- ----------------------------------------------------------------------------
 -- 2. The frozen position catalogue (36 offices).

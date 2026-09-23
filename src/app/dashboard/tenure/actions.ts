@@ -25,6 +25,7 @@ import type { Privilege } from "@/lib/modules";
 import { setFamilyName } from "@/lib/fellowship";
 import { revalidatePath } from "next/cache";
 import { addToGenderTally, emptyGenderTally, tallyGender, type GenderTally } from "@/lib/gender";
+import { genderForUnitSlug } from "@/config/fellowship-units";
 
 // ============================================================================
 // DATA FETCHING
@@ -105,10 +106,26 @@ export async function getAdminData() {
             addGender(unitStats.get(m.unit_id)!, genderById.get(m.profile_id));
         }
 
+        // The church-wide split, needed before the unit list because the gender
+        // categories borrow from it.
+        const churchWide = tallyGender(allProfiles as any[], (p) => p.gender);
+
         const units = (unitsRes.data || []).map((u: any) => {
-            const s = unitStats.get(u.id) || tally();
+            const gender = genderForUnitSlug(u.slug);
+            // Brothers'/Sisters' hold no membership rows -- membership IS gender -- so
+            // reading their count from membership_units would print "0 members" beside
+            // a unit containing half the fellowship.
+            const s = gender
+                ? {
+                    total: churchWide[gender],
+                    male: gender === "male" ? churchWide.male : 0,
+                    female: gender === "female" ? churchWide.female : 0,
+                    unspecified: 0,
+                }
+                : (unitStats.get(u.id) || tally());
             return {
                 ...u,
+                isGenderCategory: gender !== null,
                 memberCount: s.total,
                 stats: s,
                 leaders: leaders
@@ -148,7 +165,6 @@ export async function getAdminData() {
                 .filter((m) => workforceUnitIds.has(m.unit_id))
                 .map((m) => m.profile_id),
         );
-        const churchWide = tallyGender(allProfiles as any[], (p) => p.gender);
         const sessionStats = {
             totalMembers: allProfiles.length,
             totalWorkers: workerIds.size,
