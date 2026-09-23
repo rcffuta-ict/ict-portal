@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { requireAccess } from "@/lib/access-control";
 import * as qa from "@/lib/qa";
 import { compareLevels, getRegistrationConfig, levelLabel } from "@/lib/event-utils";
+import { tallyGender } from "@/lib/gender";
 
 
 export interface LevelStat {
@@ -68,13 +69,15 @@ export async function getEventAdminStats(slug: string): Promise<EventAdminStats 
     const registrations = (regs || []) as Registration[];
     const total = registrations.length;
 
-    const genderOf = (r: Registration) => (r.gender || "").toLowerCase();
+    // `event_registrations.gender` has no check constraint, so this column really can
+    // hold "M", "Brother" or anything else a form or an import put there. tallyGender
+    // applies the same aliases everything else uses, so those land under male/female
+    // instead of being swept into "other" and counted as unrecorded.
+    const split = tallyGender(registrations, (r) => r.gender);
     const genderBreakdown = {
-        male: registrations.filter((r) => genderOf(r) === 'male').length,
-        female: registrations.filter((r) => genderOf(r) === 'female').length,
-        other: registrations.filter(
-            (r) => genderOf(r) !== 'male' && genderOf(r) !== 'female'
-        ).length,
+        male: split.male,
+        female: split.female,
+        other: split.unspecified,
     };
 
     // Level breakdown, split by member vs guest so the team can size logistics.

@@ -40,6 +40,12 @@
  *   node scripts/seed-staging.mjs --env local --session 2026/2027
  *   node scripts/seed-staging.mjs --env local --skip-coordinator
  *   node scripts/seed-staging.mjs --env local --reset          # DESTRUCTIVE
+ *   node scripts/seed-staging.mjs --env local --reset --with-members
+ *
+ * --with-members chains scripts/seed-test.mjs afterwards, which adds 110 fake
+ * members (20 per generation, evenly split, plus 10 not yet placed). Wired up as
+ * `pnpm db:reset-staging`, which is the one command that takes a staging project
+ * from whatever testing left behind back to a full, believable fellowship.
  */
 import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
@@ -124,6 +130,32 @@ const PRESERVED_BY_RESET = [
 const DATA_TABLES = PORTAL_TABLES.filter((t) => !PRESERVED_BY_RESET.includes(t));
 
 /**
+ * Is this the network failing, rather than the database refusing?
+ *
+ * The two need telling apart. A foreign key still pointing at a table is INFORMATION --
+ * it means delete something else first, and another pass will get it. A dropped
+ * connection is not information about the data at all, and treating it as though it
+ * were produces the worst possible report: twenty-five tables listed as "could not
+ * clear", which reads as a schema problem, with the one line that actually explains it
+ * buried underneath.
+ *
+ * supabase-js surfaces transport failures through the same `{ error }` channel as
+ * PostgREST errors, with undici's famously unhelpful "fetch failed" as the message, so
+ * the string is all there is to go on.
+ */
+const TRANSPORT_FAILURES = [
+    "fetch failed", "econnreset", "etimedout", "enotfound", "eai_again",
+    "socket hang up", "network", "timeout", "und_err",
+];
+
+function isTransportFailure(message) {
+    const text = String(message ?? "").toLowerCase();
+    return TRANSPORT_FAILURES.some((needle) => text.includes(needle));
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
  * Empty every data table.
  *
  * DELETE, never TRUNCATE ... CASCADE. In the production database four other
@@ -135,20 +167,36 @@ const DATA_TABLES = PORTAL_TABLES.filter((t) => !PRESERVED_BY_RESET.includes(t))
  * Order is discovered rather than declared. Repeated passes delete what they can until
  * a pass achieves nothing; children go first because their parents refuse to. That
  * beats a hand-maintained ordering, which is one schema change away from being wrong.
+ *
+ * A pass that achieves nothing normally means the remaining tables are genuinely stuck
+ * behind a foreign key, so the loop gives up. But a pass can also achieve nothing
+ * because the connection dropped for a second -- and a Supabase project on the Free
+ * plan that has been idle takes a moment to wake, which is exactly when somebody runs
+ * this. So a pass whose failures were ALL transport failures is retried with a growing
+ * pause rather than being taken as the answer.
  */
 async function clearData(db) {
     const remaining = new Set(DATA_TABLES);
     const cleared = [];
     let lastError = null;
+    let lastErrorWasTransport = false;
+
+    // Attempts spent waiting for the network, tracked separately from the passes that
+    // make progress so a flapping connection cannot loop forever.
+    const MAX_NETWORK_RETRIES = 4;
+    let networkRetries = 0;
 
     for (let pass = 1; pass <= DATA_TABLES.length + 1 && remaining.size; pass++) {
         let progressed = false;
+        let sawNonTransportError = false;
 
         for (const name of [...remaining]) {
             // Every portal table has a uuid `id` primary key; this matches all rows.
             const { error } = await db.from(name).delete().not("id", "is", null);
             if (error) {
                 lastError = `${name}: ${error.message}`;
+                lastErrorWasTransport = isTransportFailure(error.message);
+                if (!lastErrorWasTransport) sawNonTransportError = true;
                 continue;
             }
             remaining.delete(name);
@@ -156,10 +204,31 @@ async function clearData(db) {
             progressed = true;
         }
 
-        if (!progressed) break;
+        if (progressed) continue;
+
+        // Nothing moved. If every failure was the network, wait and go round again --
+        // the database never got the chance to tell us anything.
+        if (!sawNonTransportError && networkRetries < MAX_NETWORK_RETRIES) {
+            networkRetries += 1;
+            const waitMs = 2000 * networkRetries;
+            warn(`Could not reach ${c.bold("the database")} — retrying in ${waitMs / 1000}s `
+                + `(${networkRetries}/${MAX_NETWORK_RETRIES}).`);
+            info(c.grey(`  ${lastError}`));
+            await sleep(waitMs);
+            pass -= 1; // a retry is not one of the ordering passes
+            continue;
+        }
+
+        break;
     }
 
-    return { cleared, stuck: [...remaining], lastError };
+    return {
+        cleared,
+        stuck: [...remaining],
+        lastError,
+        /** True when the run ended because the database was unreachable, not because of the data. */
+        unreachable: remaining.size > 0 && lastErrorWasTransport,
+    };
 }
 
 async function main() {
@@ -174,6 +243,15 @@ async function main() {
     const db = createClient(env.url, env.vars.SUPABASE_SERVICE_ROLE_KEY, {
         auth: { autoRefreshToken: false, persistSession: false },
     });
+
+    // The environment the PICKER settled on, not the flag.
+    //
+    // The chained scripts below get `--env`, and reading it back off the command line
+    // means an interactive run -- where there is no `--env` to read -- falls back to a
+    // default. That default was "local", so choosing any other project at the prompt
+    // seeded the tenure into the one you picked and the System Admin and members into
+    // a different one. Deriving it from `env.file` keeps every step on one project.
+    const envName = env.file.replace(".env.", "");
 
     // --- 0. Reset -----------------------------------------------------------
     if (hasFlag("reset")) {
@@ -192,10 +270,27 @@ async function main() {
             }
         }
 
-        const { cleared, stuck, lastError } = await clearData(db);
+        const { cleared, stuck, lastError, unreachable } = await clearData(db);
         if (stuck.length) {
-            warn(`Could not clear: ${stuck.join(", ")}`);
+            // Name the actual cause. Listing the tables first makes a network outage
+            // look like a schema problem, and sends whoever is reading off to inspect
+            // foreign keys that were never involved.
+            if (unreachable) {
+                warn(`Could not reach ${c.bold(env.ref)}.`);
+                info(c.grey(`  ${lastError}`));
+                blank();
+                info("Nothing was deleted — the run stopped before the database answered.");
+                info(c.grey("A Supabase project on the Free plan sleeps when idle and takes a"));
+                info(c.grey("moment to wake. Check the dashboard says ACTIVE, then run this again:"));
+                info(`  ${c.cyan("pnpm db:reset-staging")}`);
+                throw new Error("The database was unreachable. Nothing was changed.");
+            }
+            warn(`Could not clear ${stuck.length} table(s): ${stuck.join(", ")}`);
             info(c.grey(`Last error — ${lastError}`));
+            blank();
+            info(c.grey("These are still blocked by a foreign key from something that was not"));
+            info(c.grey("deleted — most likely a row in another application's tables pointing at"));
+            info(c.grey("public.profiles. That is the DELETE guard working, not a bug."));
             throw new Error("Stopped with data still present. Nothing further was seeded.");
         }
         ok(`Cleared ${cleared.length} tables.`);
@@ -281,20 +376,42 @@ async function main() {
         section("3. System Admin");
         info(c.grey("Delegated to scripts/ict-coord.mjs, which owns this and refuses production."));
         blank();
-        const args = [join(HERE, "ict-coord.mjs"), "--seed", "--env", flagValue("env") ?? "local"];
+        const args = [join(HERE, "ict-coord.mjs"), "--seed", "--env", envName];
+        const password = flagValue("password");
+        if (password) args.push("--password", password);
+        execFileSync(process.execPath, args, { stdio: "inherit" });
+    }
+
+    // --- 4. Members (opt-in) -------------------------------------------------
+    //
+    // Delegated to scripts/seed-test.mjs rather than reimplemented here, because that
+    // script owns the roster and its own production guards. It has to run AFTER the
+    // tenure and generations exist: every member's level is computed from the active
+    // session, so there is nothing to attach them to before this point.
+    const withMembers = hasFlag("with-members");
+    if (withMembers) {
+        section("4. Members");
+        info(c.grey("Delegated to scripts/seed-test.mjs, which also refuses production."));
+        blank();
+        const args = [join(HERE, "seed-test.mjs"), "--yes", "--env", envName];
         const password = flagValue("password");
         if (password) args.push("--password", password);
         execFileSync(process.execPath, args, { stdio: "inherit" });
     }
 
     section("Done");
-    ok(`${env.ref} has an active tenure, its generations, and a System Admin.`);
+    ok(`${env.ref} has an active tenure, its generations, and a System Admin${withMembers ? ", and a roster" : ""}.`);
     blank();
     info("Next:  pnpm dev   — sign in with the address and password above.");
     blank();
-    info(c.grey("Not seeded, deliberately: residential zones and members. Zones are real"));
-    info(c.grey("fellowship geography and members are real people — both belong to whoever"));
-    info(c.grey("runs the tenure, not to a script."));
+    if (!withMembers) {
+        info(c.grey("No members were seeded. Add a test roster of 110 with:"));
+        info(`  ${c.cyan("pnpm db:seed-test")}`);
+        blank();
+    }
+    info(c.grey("Not seeded either way: residential zones, events and Lo! content. Zones are"));
+    info(c.grey("real fellowship geography and belong to whoever runs the tenure, not to a"));
+    info(c.grey("script."));
     blank();
     info(c.grey("Structure (units, offices, privileges) comes from db/seed/default.sql and"));
     info(c.grey("is untouched by this script, including by --reset."));

@@ -34,6 +34,7 @@ import {
   Lock,
 } from "lucide-react";
 import Link from "next/link";
+import { GENDER_OPTIONS } from "@/lib/gender";
 
 type RegistrationStep = "form" | "success" | "already-registered";
 
@@ -583,8 +584,11 @@ export default function SinglesWeekendRegistration() {
                                           <option value="">
                                               Select gender
                                           </option>
-                                          <option value="male">Brother</option>
-                                          <option value="female">Sister</option>
+                                          {GENDER_OPTIONS.map((o) => (
+                                              <option key={o.value} value={o.value}>
+                                                  {o.fellowshipLabel}
+                                              </option>
+                                          ))}
                                       </select>
                                   </div>
                               </div>

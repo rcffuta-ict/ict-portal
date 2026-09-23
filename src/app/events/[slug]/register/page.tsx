@@ -23,6 +23,7 @@ import { useProfileStore } from "@/lib/stores/profile.store";
 import { getEventBySlug, registerForEvent } from "../../actions";
 import { CompactPreloader } from "@/components/ui/preloader";
 import { Logo } from "@/components/ui/logo";
+import { GENDER_OPTIONS } from "@/lib/gender";
 import {
     EVENT_TIME_ZONE_LABEL,
     EventRecord,
@@ -487,8 +488,9 @@ function RegistrationView({ event, slug }: { event: EventRecord; slug: string })
                                             {...register("gender")}
                                         >
                                             <option value="">Select</option>
-                                            <option value="male">Brother</option>
-                                            <option value="female">Sister</option>
+                                            {GENDER_OPTIONS.map((o) => (
+                                                <option key={o.value} value={o.value}>{o.fellowshipLabel}</option>
+                                            ))}
                                         </select>
                                     </Field>
                                 )}

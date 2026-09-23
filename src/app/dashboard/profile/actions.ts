@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { updateLocationInfo } from "@/lib/fellowship";
 import { getSessionProfileId } from "@/lib/auth/session";
 import { requireSysAdmin } from "@/lib/access-control";
+import { parseGender } from "@/lib/gender";
 
 /**
  * Update a member's own profile.
@@ -43,7 +44,10 @@ export async function updateProfileAction(formData: FormData, targetId?: string)
             lastName: formData.get("lastName") as string,
             middleName: formData.get("middleName") as string,
             phoneNumber: formData.get("phoneNumber") as string,
-            gender: formData.get("gender") as any,
+            // parseGender, not the raw field: an unselected <select> submits "",
+            // which profiles_gender_check rejects outright -- so leaving gender
+            // unset failed the ENTIRE profile save with a constraint error.
+            gender: parseGender(formData.get("gender")),
             dob: formData.get("dob") as string,
         };
 
@@ -66,7 +70,7 @@ export async function updateProfileAction(formData: FormData, targetId?: string)
                 last_name: bioData.lastName,
                 middle_name: bioData.middleName,
                 phone_number: bioData.phoneNumber,
-                gender: bioData.gender,
+                gender: bioData.gender ?? null,
                 dob: bioData.dob || null,
                 // Only touch avatar columns when the editor submitted them.
                 ...(hasAvatarField

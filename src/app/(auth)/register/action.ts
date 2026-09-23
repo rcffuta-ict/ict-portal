@@ -3,6 +3,7 @@
 
 import { db } from "@/lib/db";
 import { getInviteByToken, consumeInvite, logInviteEvent } from "@/lib/invites";
+import { parseGender } from "@/lib/gender";
 
 /**
  * Invite-only registration.
@@ -133,7 +134,9 @@ function mapProfileColumns(p: RegistrationPayload) {
         middle_name: p.middleName?.trim() || null,
         email: p.email?.trim().toLowerCase(),
         phone_number: p.phoneNumber?.trim() || null,
-        gender: p.gender || null,
+        // Normalised rather than passed through: this is a PUBLIC endpoint, and
+        // profiles_gender_check rejects anything but male/female/NULL.
+        gender: parseGender(p.gender),
         dob: p.dob || null,
         matric_number: p.matricNumber?.trim() || null,
         department: p.department || null,

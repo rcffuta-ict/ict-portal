@@ -12,6 +12,7 @@ import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
 import { AvatarUpload } from "@/components/ui/avatar-upload";
+import { GENDER_OPTIONS } from "@/lib/gender";
 
 export function ProfileEdit() {
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
@@ -172,8 +173,9 @@ export function ProfileEdit() {
                         className="bg-slate-50"
                     >
                         <option value="">Select Gender...</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
+                        {GENDER_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
                     </FormSelect>
                 </div>
             </div>

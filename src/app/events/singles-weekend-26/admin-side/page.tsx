@@ -20,6 +20,7 @@ import {
   QuestionsTab 
 } from "./components";
 import { StatsData, RegistrantType, TabType, LinkItem } from "./types";
+import { parseGender } from "@/lib/gender";
 
 const EVENT_PATH = "/events/singles-weekend-26";
 
@@ -179,10 +180,10 @@ export default function AgapeAdmin() {
         matchesFilter = !!registrant.checked_in_at;
         break;
       case 'male':
-        matchesFilter = registrant.gender?.toLowerCase() === 'male';
+        matchesFilter = parseGender(registrant.gender) === 'male';
         break;
       case 'female':
-        matchesFilter = registrant.gender?.toLowerCase() === 'female';
+        matchesFilter = parseGender(registrant.gender) === 'female';
         break;
       case 'guests':
         matchesFilter = !registrant.is_rcf_member;

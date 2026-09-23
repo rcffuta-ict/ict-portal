@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { StatsData, RegistrantType } from "../types";
+import { fellowshipTitle, formatGender, parseGender } from "@/lib/gender";
 
 interface AttendeesTabProps {
   data: StatsData | null;
@@ -129,12 +130,14 @@ export default function AttendeesTab({
                         <div className="space-y-2">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              attendee.gender?.toLowerCase() === "male"
+                              parseGender(attendee.gender) === "male"
                                 ? "bg-blue-100 text-blue-700"
-                                : "bg-pink-100 text-pink-700"
+                                : parseGender(attendee.gender) === "female"
+                                  ? "bg-pink-100 text-pink-700"
+                                  : "bg-slate-100 text-slate-600"
                             }`}
                           >
-                            {attendee.gender?.toLowerCase() === "male" ? "Brother" : "Sister"}
+                            {fellowshipTitle(attendee.gender)}
                           </span>
                           <p className="text-slate-700 text-sm">{attendee.level}</p>
                         </div>
@@ -225,7 +228,7 @@ export default function AttendeesTab({
                                 <div className="text-sm space-y-1">
                                   <p><span className="text-slate-600">Email:</span> <span className="text-slate-900">{attendee.email}</span></p>
                                   <p><span className="text-slate-600">Phone:</span> <span className="text-slate-900">{attendee.phone_number}</span></p>
-                                  <p><span className="text-slate-600">Gender:</span> <span className="text-slate-900">{attendee.gender}</span></p>
+                                  <p><span className="text-slate-600">Gender:</span> <span className="text-slate-900">{formatGender(attendee.gender)}</span></p>
                                   <p><span className="text-slate-600">Level:</span> <span className="text-slate-900">{attendee.level || 'Not specified'}</span></p>
                                 </div>
                               </div>

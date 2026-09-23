@@ -18,6 +18,7 @@ import { EXPORT_FIELDS, MIN_EXPORT_FIELDS } from "./export-fields";
 // Shared with the Oracle export — the formula-injection guard in csvCell is not
 // something that should exist in two places.
 import { csvCell } from "@/lib/csv";
+import { addToGenderTally, emptyGenderTally, tallyGender, type GenderTally } from "@/lib/gender";
 
 /**
  * Level module — level (generation) member management for level coordinators.
@@ -69,8 +70,10 @@ function managedLevelIds(ctx: ProfileContext, sets: ClassSetRow[], session: stri
     return ids;
 }
 
-type GenderTally = { total: number; male: number; female: number };
-const emptyTally = (): GenderTally => ({ total: 0, male: 0, female: 0 });
+// Gender tallies live in @/lib/gender. The local pair here counted only male and
+// female, so a generation's split never added up to its member count whenever somebody
+// had not recorded a gender -- which is most newly-registered members.
+const emptyTally = emptyGenderTally;
 
 export async function getLevelModuleData() {
     try {
@@ -103,10 +106,7 @@ export async function getLevelModuleData() {
         for (const p of profs ?? []) {
             if (!p.class_set_id) continue;
             if (!stats.has(p.class_set_id)) stats.set(p.class_set_id, emptyTally());
-            const t = stats.get(p.class_set_id)!;
-            t.total += 1;
-            if (p.gender === "male") t.male += 1;
-            else if (p.gender === "female") t.female += 1;
+            addToGenderTally(stats.get(p.class_set_id)!, p.gender);
         }
 
         const generations = (sets ?? []).map((s: any) => ({
@@ -257,16 +257,15 @@ export async function getLevelStatsAction(classSetId: string) {
             }
         }
 
-        const male = rows.filter((m) => m.gender === "male").length;
-        const female = rows.filter((m) => m.gender === "female").length;
+        const split = tallyGender(rows, (m) => m.gender);
 
         return {
             success: true,
             stats: {
-                total: rows.length,
-                male,
-                female,
-                unspecified: rows.length - male - female,
+                total: split.total,
+                male: split.male,
+                female: split.female,
+                unspecified: split.unspecified,
                 workers: workerIds.size,
                 nonWorkers: rows.length - workerIds.size,
             },
