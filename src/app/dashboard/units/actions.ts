@@ -404,6 +404,7 @@ export async function appointLeaderAction(input: {
                 .from("leadership")
                 .select("id, position:leadership_positions!inner(position_privileges!inner(privilege))")
                 .eq("tenure_id", tenure.id)
+                .is("ended_at", null)
                 .eq("position.position_privileges.privilege", "PRESIDENT")
                 .maybeSingle();
             if (presErr) throw presErr;
@@ -563,6 +564,7 @@ export async function getUnitLeadershipAction(unitId: string, tenureId: string) 
             .select(`id, position_id, profile:profiles(id, first_name, last_name, email, phone_number, avatar_url)`)
             .eq("tenure_id", tenureId)
             .eq("unit_id", unitId)
+            .is("ended_at", null)
             .in("position_id", positionIds);
         if (lError) throw lError;
 

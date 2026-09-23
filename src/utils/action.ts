@@ -71,7 +71,9 @@ export const checkIsAdminByEmail = async (email: string) => {
         const { data: rows, error } = await db
             .from("leadership")
             .select("id, position:leadership_positions(position_privileges(privilege))")
-            .eq("profile_id", profile.id);
+            .eq("profile_id", profile.id)
+            // Ended appointments confer nothing -- see migration 0014.
+            .is("ended_at", null);
 
         if (error) {
             console.error("checkIsAdminByEmail: leadership lookup failed:", error.message);

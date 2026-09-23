@@ -66,6 +66,9 @@ export async function getAdminData() {
                         profile:profiles(id, first_name, last_name, avatar_url, department, phone_number, gender)
                     `)
                     .eq('tenure_id', activeTenure.id)
+                    // Current cabinet only. Ended appointments are service history and
+                    // belong on the member's profile, not on the roster.
+                    .is('ended_at', null)
                     .order('created_at', { ascending: false })
                 : { data: [] },
             // All profiles (id/gender/class_set) — drives church-wide + generation stats.
@@ -361,6 +364,7 @@ export async function getHandoverPreviewAction(incomingSession: string) {
                 .from("leadership")
                 .select("profile_id, profile:profiles(first_name, last_name, email), position:leadership_positions(title)")
                 .eq("tenure_id", tenure.id)
+                .is("ended_at", null)
             : { data: [] };
 
         const one = (v: any) => (Array.isArray(v) ? v[0] : v);
@@ -486,7 +490,8 @@ export async function handoverTenureAction(formData: FormData) {
 
         // Who held a position on the way out — captured before anything changes.
         const { data: outgoingLeaders } = outgoingTenure
-            ? await db.from('leadership').select('profile_id').eq('tenure_id', outgoingTenure.id)
+            ? await db.from('leadership').select('profile_id')
+                .eq('tenure_id', outgoingTenure.id).is('ended_at', null)
             : { data: [] };
         const outgoingIds = Array.from(new Set((outgoingLeaders ?? []).map((l: any) => l.profile_id)));
 
@@ -829,6 +834,7 @@ export async function getUnitDetails(unitId: string) {
             profile:profiles(id, first_name, last_name, avatar_url, phone_number)
         `)
         .eq('unit_id', unitId)
+        .is('ended_at', null)
         .eq('tenure_id', active.id);
 
     return { leaders };
@@ -1094,6 +1100,7 @@ export async function assignLeaderAction(formData: FormData) {
                 .from("leadership")
                 .select("id, position:leadership_positions!inner(position_privileges!inner(privilege))")
                 .eq("tenure_id", tenureId)
+                .is("ended_at", null)
                 .eq("position.position_privileges.privilege", "PRESIDENT")
                 .maybeSingle();
             if (existingPresident) {
@@ -1109,6 +1116,8 @@ export async function assignLeaderAction(formData: FormData) {
                 .eq("tenure_id", tenureId)
                 .eq("position_id", positionId)
                 .eq("is_lead", true)
+                // A predecessor who stepped down does not block their successor.
+                .is("ended_at", null)
                 .maybeSingle();
             if (existingLead) {
                 return { success: false, error: "This role already has a lead. Add them as an assistant instead." };
@@ -1196,17 +1205,51 @@ export async function addUnitLeaderAction(formData: FormData) {
 /**
  * Removes a leadership assignment
  */
-export async function removeUnitLeaderAction(id: string) {
-    await requireModuleWrite("tenure");
+/**
+ * Remove a leader from an office.
+ *
+ * @param keepHistory  true (the default) ENDS the appointment and keeps the row, so it
+ *                     shows on the member's service record as
+ *                     "Welfare Coordinator (2025/2026)". false deletes it outright.
+ *
+ * The default is to keep, because the record IS the point: a fellowship's memory of who
+ * served is asked for at handovers, for references, and years later — and it used to be
+ * destroyed by the same click that ended the appointment.
+ *
+ * The delete is kept for the genuine mistake, appointed-the-wrong-person-two-minutes-ago.
+ * A service record that includes appointments which never happened is worse than none,
+ * so the admin decides, and the safe option is the one that needs no thought.
+ *
+ * ENDING REVOKES. `ended_at` is not a display flag: migration 0014 teaches
+ * `rcf_profile_context` and every "is this person still serving?" query to ignore ended
+ * rows, so an ended appointment carries no privileges and frees the office for a
+ * successor. See the migration's header for the six places that had to change together.
+ */
+export async function removeUnitLeaderAction(id: string, keepHistory: boolean = true) {
+    const ctx = await requireModuleWrite("tenure");
     try {
-        // Read the occupant BEFORE deleting — afterwards there is no row to ask.
+        // Read the occupant BEFORE the write — after a delete there is no row to ask.
         const { data: row } = await db
             .from('leadership')
             .select('profile_id')
             .eq('id', id)
             .maybeSingle();
 
-        await db.from('leadership').delete().eq('id', id);
+        if (keepHistory) {
+            const { error: endErr } = await db
+                .from('leadership')
+                .update({
+                    ended_at: new Date().toISOString(),
+                    ended_by: ctx.profile.id,
+                })
+                .eq('id', id)
+                // Ending an already-ended appointment would rewrite the date it ended,
+                // which is the one fact the record exists to hold.
+                .is('ended_at', null);
+            if (endErr) return { success: false, error: endErr.message };
+        } else {
+            await db.from('leadership').delete().eq('id', id);
+        }
 
         // Appointment grants portal access (assignLeaderAction), so removal revokes it.
         // Only when this was their LAST position — someone leading two units and
@@ -1228,7 +1271,7 @@ export async function removeUnitLeaderAction(id: string) {
         }
 
         revalidatePath('/dashboard/tenure');
-        return { success: true, loginRemoved };
+        return { success: true, loginRemoved, keptHistory: keepHistory };
     } catch (e: any) {
         return { success: false, error: e.message };
     }
@@ -1923,6 +1966,7 @@ export async function getGenerationRosterAction(classSetId: string) {
                 .from("leadership")
                 .select("profile_id, is_lead, position:leadership_positions(title, alias)")
                 .eq("tenure_id", tenure.id)
+                .is("ended_at", null)
                 .in("profile_id", (data ?? []).map((p: any) => p.id));
 
             for (const row of (rows ?? []) as any[]) {
@@ -1975,6 +2019,73 @@ export async function getUnitsWithoutExcoAction() {
             success: true,
             data: (unitsRes.data ?? []).filter((u: any) => !taken.has(`exco-${u.slug}`)),
         };
+    } catch (e: any) {
+        return { success: false, error: e.message, data: [] };
+    }
+}
+
+/**
+ * Every office a member has ever held, newest tenure first.
+ *
+ * "Welfare Coordinator (2025/2026), Director of Commerce (2026/2027)" — a member's
+ * service, which before migration 0014 was destroyed by the same click that ended the
+ * appointment. Current and ended appointments both appear; `isCurrent` tells them apart,
+ * because "she is the Welfare Coordinator" and "she was the Welfare Coordinator" are
+ * different statements and a service record that blurs them is not much use.
+ *
+ * Read gate, not write: `requireModuleRead("tenure")`. Who has served is roster
+ * information, not a secret — it is on the cabinet screen for the current tenure
+ * already, and the past is no more sensitive than the present.
+ */
+export async function getServiceHistoryAction(profileId: string) {
+    try {
+        await requireModuleRead("tenure");
+        if (!profileId) return { success: false, error: "No member given.", data: [] };
+
+        const { data, error } = await db
+            .from("leadership")
+            .select(`
+                id, is_lead, created_at, ended_at, ended_reason,
+                position:leadership_positions(title, alias, slug, tier),
+                tenure:tenures(id, name, session, is_active, start_date),
+                unit:units(name),
+                class_set:class_sets(family_name, entry_year)
+            `)
+            .eq("profile_id", profileId);
+        if (error) throw new Error(error.message);
+
+        const one = (v: any) => (Array.isArray(v) ? v[0] : v);
+
+        const rows = (data ?? []).map((r: any) => {
+            const position = one(r.position);
+            const tenure = one(r.tenure);
+            return {
+                id: r.id,
+                title: position?.alias || position?.title || "Unknown office",
+                fullTitle: position?.title ?? null,
+                slug: position?.slug ?? null,
+                tier: position?.tier ?? null,
+                session: tenure?.session ?? null,
+                tenureName: tenure?.name ?? null,
+                tenureStart: tenure?.start_date ?? null,
+                isLead: r.is_lead !== false,
+                isCurrent: r.ended_at == null && tenure?.is_active === true,
+                endedAt: r.ended_at,
+                endedReason: r.ended_reason,
+                contextName: one(r.unit)?.name || one(r.class_set)?.family_name || null,
+            };
+        });
+
+        // Newest session first. Sorting on the session string works because it starts
+        // with the four-digit start year; falling back to the tenure's start date keeps
+        // a malformed session from scrambling the order.
+        rows.sort((a, b) => {
+            const bySession = String(b.session ?? "").localeCompare(String(a.session ?? ""));
+            if (bySession !== 0) return bySession;
+            return String(b.tenureStart ?? "").localeCompare(String(a.tenureStart ?? ""));
+        });
+
+        return { success: true, data: rows };
     } catch (e: any) {
         return { success: false, error: e.message, data: [] };
     }
