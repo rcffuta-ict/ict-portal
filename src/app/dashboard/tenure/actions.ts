@@ -1,7 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use server'
 
-import { requireModuleRead, requireModuleWrite, requireVpAdmin } from "@/lib/access-control";
+import {
+    requireContext,
+    requireModuleRead,
+    requireModuleWrite,
+    requireVpAdmin,
+    canManageLevel,
+    canManageUnit,
+} from "@/lib/access-control";
+import { canReadModule, getModuleAccessConfig } from "@/lib/module-access";
 import { db } from "@/lib/db";
 import { tenureFullLabel } from "@/lib/tenure";
 import { getTenurePresidentName } from "@/lib/backup";
@@ -23,7 +31,13 @@ import {
     type PositionTier,
 } from "@/config/leadership-positions";
 import type { Privilege } from "@/lib/modules";
-import { setFamilyName } from "@/lib/fellowship";
+import {
+    setFamilyName,
+    unitIdsOfMember,
+    logMembershipEvents,
+    membershipActorOf,
+    type MembershipActor,
+} from "@/lib/fellowship";
 import { revalidatePath } from "next/cache";
 import { addToGenderTally, emptyGenderTally, tallyGender, type GenderTally } from "@/lib/gender";
 import { genderForUnitSlug } from "@/config/fellowship-units";
@@ -544,7 +558,9 @@ export async function handoverTenureAction(formData: FormData) {
         // 4. Carry membership forward, minus the graduating generation.
         let carried = 0;
         if (carryMembership && outgoingTenure) {
-            carried = await carryMembershipForward(outgoingTenure.id, newTenure.id, session);
+            carried = await carryMembershipForward(
+                outgoingTenure.id, newTenure.id, session, membershipActorOf(ctx),
+            );
         }
 
         // 5. Revoke access for outgoing leaders who weren't carried over. Runs against
@@ -606,6 +622,7 @@ async function carryMembershipForward(
     fromTenureId: string,
     toTenureId: string,
     incomingSession: string,
+    actor: MembershipActor,
 ): Promise<number> {
     const { data: sets } = await db
         .from("class_sets")
@@ -656,6 +673,17 @@ async function carryMembershipForward(
             continue;
         }
         inserted += chunk.length;
+        // Logged per chunk, and only for chunks that landed, so the log never claims a
+        // carry-over that the insert refused.
+        await logMembershipEvents(
+            chunk.map((r) => ({
+                profileId: r.profile_id,
+                unitId: r.unit_id,
+                tenureId: toTenureId,
+                action: "carried_over" as const,
+            })),
+            actor,
+        );
     }
     return inserted;
 }
@@ -1614,11 +1642,32 @@ export async function listTransferRequestsAction(includeDecided = false) {
 export async function approveTransferAction(requestId: string) {
     try {
         const ctx = await requireVpAdmin();
+        // Read before approving: the RPC moves the member, and the log needs to say
+        // from where to where.
+        const { data: request } = await db
+            .from("unit_transfer_requests")
+            .select("profile_id, tenure_id, from_unit_id, to_unit_id")
+            .eq("id", requestId)
+            .maybeSingle();
+
         const { error } = await db.rpc("rcf_approve_unit_transfer", {
             p_request_id: requestId,
             p_decided_by: ctx.profile.id,
         });
         if (error) return { success: false as const, error: error.message };
+
+        if (request) {
+            const base = { profileId: request.profile_id, tenureId: request.tenure_id };
+            await logMembershipEvents(
+                [
+                    ...(request.from_unit_id
+                        ? [{ ...base, unitId: request.from_unit_id, action: "transferred_out" as const }]
+                        : []),
+                    { ...base, unitId: request.to_unit_id, action: "transferred_in" as const },
+                ],
+                membershipActorOf(ctx),
+            );
+        }
 
         revalidatePath("/dashboard/tenure");
         revalidatePath("/dashboard/units");
@@ -2073,10 +2122,36 @@ export async function getUnitsWithoutExcoAction() {
  * information, not a secret — it is on the cabinet screen for the current tenure
  * already, and the past is no more sensitive than the present.
  */
+/**
+ * May this session read a member's service record?
+ *
+ * The Tenure module's readers may read anyone's. So may the people who already see the
+ * member's full detail page: their level coordinator, and an Executive of a unit they
+ * belong to this session. Without this the record silently vanished from both pages,
+ * because neither a level coordinator nor an exco holds Tenure access.
+ */
+async function mayViewServiceHistory(ctx: ProfileContext, profileId: string): Promise<boolean> {
+    if (canReadModule(ctx, "tenure", await getModuleAccessConfig())) return true;
+
+    const { data: prof } = await db
+        .from("profiles").select("class_set_id").eq("id", profileId).maybeSingle();
+    if (prof?.class_set_id && (await canManageLevel(ctx, prof.class_set_id))) return true;
+
+    const { data: tenure } = await db.from("tenures").select("id").eq("is_active", true).maybeSingle();
+    if (!tenure) return false;
+    for (const unitId of await unitIdsOfMember(profileId, tenure.id)) {
+        if (await canManageUnit(ctx, unitId)) return true;
+    }
+    return false;
+}
+
 export async function getServiceHistoryAction(profileId: string) {
     try {
-        await requireModuleRead("tenure");
+        const ctx = await requireContext();
         if (!profileId) return { success: false, error: "No member given.", data: [] };
+        if (!(await mayViewServiceHistory(ctx, profileId))) {
+            return { success: false, error: "You don't have access to this member.", data: [] };
+        }
 
         const { data, error } = await db
             .from("leadership")

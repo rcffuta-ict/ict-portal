@@ -2,16 +2,21 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Layers, Users, Crown, UserCog } from "lucide-react";
+import { Search, Layers, Users, Crown, UserCog, Cake, History } from "lucide-react";
 import { UnitManager } from "./unit-manager";
 import { UnitPositionsManager } from "./unit-positions-manager";
 import { UnitLeadershipCard } from "./unit-leadership-card";
 import { UnitModal } from "./unit-modal";
+import { UnitTabs, type UnitTab } from "./unit-tabs";
+import { BirthdaysPanel } from "./birthdays-panel";
+import { MembershipLog } from "./membership-log";
 
-type TabType = "workers" | "positions" | "leadership";
+type TabType = "workers" | "birthdays" | "log" | "positions" | "leadership";
 
-const TABS: { id: TabType; label: string; icon: typeof Users }[] = [
+const TABS: UnitTab<TabType>[] = [
     { id: "workers", label: "Workers", icon: Users },
+    { id: "birthdays", label: "Birthdays", icon: Cake },
+    { id: "log", label: "Log", icon: History },
     { id: "positions", label: "Positions", icon: UserCog },
     { id: "leadership", label: "Leadership", icon: Crown },
 ];
@@ -98,26 +103,7 @@ export function AdminUnitView({
                     onClose={close}
                     wide
                 >
-                    {/* Tabs scroll sideways on a narrow phone rather than wrapping. */}
-                    <div role="tablist" className="-mx-1 mb-5 flex gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1">
-                        {TABS.map(({ id, label, icon: Icon }) => (
-                            <button
-                                key={id}
-                                type="button"
-                                role="tab"
-                                aria-selected={activeTab === id}
-                                onClick={() => setActiveTab(id)}
-                                className={`flex shrink-0 items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy ${
-                                    activeTab === id
-                                        ? "bg-white text-rcf-navy shadow-sm"
-                                        : "text-slate-600 hover:text-slate-900"
-                                }`}
-                            >
-                                <Icon className="h-4 w-4" aria-hidden="true" />
-                                {label}
-                            </button>
-                        ))}
-                    </div>
+                    <UnitTabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
 
                     {activeTab === "workers" && (
                         <UnitManager
@@ -126,6 +112,10 @@ export function AdminUnitView({
                             onChanged={onSuccess}
                         />
                     )}
+
+                    {activeTab === "birthdays" && <BirthdaysPanel unitId={selectedUnit.id} />}
+
+                    {activeTab === "log" && <MembershipLog unitId={selectedUnit.id} />}
 
                     {activeTab === "positions" && (
                         <UnitPositionsManager

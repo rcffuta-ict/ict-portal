@@ -1,9 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Layers, Users, ArrowRight } from "lucide-react";
+import { Layers, Users, ArrowRight, Cake, History } from "lucide-react";
 import { UnitManager } from "./unit-manager";
 import { UnitModal } from "./unit-modal";
+import { UnitTabs, type UnitTab } from "./unit-tabs";
+import { BirthdaysPanel } from "./birthdays-panel";
+import { MembershipLog } from "./membership-log";
+
+type TabType = "members" | "birthdays" | "log";
+
+const TABS: UnitTab<TabType>[] = [
+    { id: "members", label: "Members", icon: Users },
+    { id: "birthdays", label: "Birthdays", icon: Cake },
+    { id: "log", label: "Log", icon: History },
+];
 
 export interface LeaderUnit {
     id: string;
@@ -16,6 +27,7 @@ export interface LeaderUnit {
 /** The units and teams an Executive (lead or assistant) manages. */
 export function LeaderUnitView({ units }: { units: LeaderUnit[] }) {
     const [selected, setSelected] = useState<LeaderUnit | null>(null);
+    const [tab, setTab] = useState<TabType>("members");
 
     return (
         <>
@@ -62,9 +74,15 @@ export function LeaderUnitView({ units }: { units: LeaderUnit[] }) {
                 <UnitModal
                     title={selected.name}
                     subtitle={`As ${selected.leadershipRole}`}
-                    onClose={() => setSelected(null)}
+                    onClose={() => {
+                        setSelected(null);
+                        setTab("members");
+                    }}
                 >
-                    <UnitManager unit={selected} />
+                    <UnitTabs tabs={TABS} active={tab} onChange={setTab} />
+                    {tab === "members" && <UnitManager unit={selected} />}
+                    {tab === "birthdays" && <BirthdaysPanel unitId={selected.id} />}
+                    {tab === "log" && <MembershipLog unitId={selected.id} />}
                 </UnitModal>
             )}
         </>
