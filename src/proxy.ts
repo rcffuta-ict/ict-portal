@@ -21,7 +21,9 @@ export async function proxy(request: NextRequest) {
   // Public routes that don't need authentication
   // /profile is open to everyone, signed in or not: a leader registers with their
   // level's token like any member. The token is checked by the page's actions.
-  const publicRoutes = ['/', '/profile', '/about', '/lo-app', '/events']
+  // /academics is the same: members submit a semester's results with the Academic
+  // Unit's round token, and its actions check the token and who the member is.
+  const publicRoutes = ['/', '/profile', '/academics', '/about', '/lo-app', '/events']
   const isPublicRoute = publicRoutes.includes(pathname) ||
                        (pathname.startsWith('/events/') && !pathname.endsWith('/admin')) ||
                        // Lo! is a login-free app, and a shared testimony link must open

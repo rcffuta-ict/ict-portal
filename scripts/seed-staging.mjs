@@ -118,6 +118,8 @@ function generationsFor(session) {
  *
  * residential_zones is here because nothing reseeds it. It is real fellowship geography
  * entered by hand, so deleting it would destroy something no script can put back.
+ * faculties and departments are the same: seeded once by the academics_module
+ * migration and maintained by the Academic Unit, never by a seed.
  */
 const PRESERVED_BY_RESET = [
     "schema_migrations",
@@ -126,6 +128,8 @@ const PRESERVED_BY_RESET = [
     "position_privileges",
     "module_access",
     "residential_zones",
+    "faculties",
+    "departments",
 ];
 
 const DATA_TABLES = PORTAL_TABLES.filter((t) => !PRESERVED_BY_RESET.includes(t));

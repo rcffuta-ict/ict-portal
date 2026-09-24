@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -15,7 +15,9 @@ import {
     Mail,
     PencilLine,
 } from "lucide-react";
-import { DepartmentUtils } from "@/lib/departments";
+import { findDepartment } from "@/lib/departments";
+import { useDepartments } from "@/lib/hooks/useDepartments";
+import { DepartmentSelect } from "@/components/academics/department-select";
 
 import { Logo } from "@/components/ui/logo";
 import FormInput from "@/components/ui/FormInput";
@@ -334,7 +336,7 @@ function RegistrationForm({
         publicId: null,
     });
 
-    const departments = useMemo(() => DepartmentUtils.getAllNames(), []);
+    const depts = useDepartments();
     const levelLabel = invite.classSet
         ? computeLevel(invite.classSet.entryYear, invite.classSet.isFoundation, `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`)
         : null;
@@ -344,6 +346,8 @@ function RegistrationForm({
         register,
         handleSubmit,
         trigger,
+        getValues,
+        setValue,
         formState: { errors, isSubmitting },
     } = useForm<RegistrationPayload>({
         defaultValues: {
@@ -365,6 +369,14 @@ function RegistrationForm({
     useEffect(() => {
         getZonesAction().then((r) => setZones(r.data || []));
     }, []);
+
+    // Older records hold the department's full name, or a loosely typed code. Once the
+    // list is here, point the picker at the matching course code so it shows selected.
+    useEffect(() => {
+        const current = getValues("department");
+        const match = findDepartment(current, depts.departments);
+        if (match && match.alias !== current) setValue("department", match.alias);
+    }, [depts.departments, getValues, setValue]);
 
     const stepFields: Record<number, (keyof RegistrationPayload)[]> = {
         0: ["firstName", "lastName", "email", "phoneNumber", "gender"],
@@ -585,14 +597,14 @@ function RegistrationForm({
                                     <FormInput {...register("matricNumber")} className="uppercase" placeholder="MEE/19/8821" />
                                 </Field>
                                 <Field label="Department" error={errors.department?.message}>
-                                    <FormSelect {...register("department", { required: "Department is required" })}>
-                                        <option value="">Select Department</option>
-                                        {departments.map((d) => (
-                                            <option key={d.value} value={d.value}>
-                                                {d.label}
-                                            </option>
-                                        ))}
-                                    </FormSelect>
+                                    <DepartmentSelect
+                                        departments={depts.departments}
+                                        loading={depts.loading}
+                                        error={depts.error}
+                                        onRetry={depts.retry}
+                                        currentValue={pf.department}
+                                        {...register("department", { required: "Department is required" })}
+                                    />
                                 </Field>
                             </>
                         )}

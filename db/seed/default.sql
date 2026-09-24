@@ -334,12 +334,17 @@ ON CONFLICT DO NOTHING;
 -- src/lib/modules.ts (POLICY_FIXED_MODULES) -- President, VPs and System Admin
 -- read; only the System Admin and VP Admin write. Kept so the table has a row
 -- for every module, with values that match what the code enforces.
+--
+-- academics: the Academic Coord (EXCO:academic) reads and writes it by default.
+-- Faculties and departments are NOT seeded here: they are data the Academic Unit
+-- maintains, seeded once by the academics_module migration.
 INSERT INTO public.module_access (module, read_slugs, write_slugs, write_scope)
 VALUES
     ('tenure',    ARRAY['CENTRAL'],          ARRAY[]::text[],  'ALL'),
     ('zones',     ARRAY['CENTRAL','ZONE'],   ARRAY['ZONE'],    'OWN'),
     ('workforce', ARRAY['CENTRAL','EXCO'],   ARRAY['EXCO'],    'OWN'),
-    ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN')
+    ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN'),
+    ('academics', ARRAY['EXCO:academic'],    ARRAY['EXCO:academic'], 'ALL')
 ON CONFLICT (module) DO NOTHING;
 
 COMMIT;

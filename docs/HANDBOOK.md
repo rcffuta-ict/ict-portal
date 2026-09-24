@@ -147,6 +147,9 @@ server enforces this in every write action, not only by hiding buttons.
 | **Workforce**: every unit | view | edit | view | edit | — | — | — |
 | **Workforce**: own unit | — | — | — | — | edit | — | — |
 | Workforce exports (members, birthdays) | ✔ | ✔ | ✔ | ✔ | own unit | — | — |
+| **Academics** module (results, rounds, departments) | view | edit | ✘ | edit | Academic Coord: edit³ | ✘ | ✘ |
+| Workforce → Academics: members' results + full-record export | ✔ | ✔ | totals | ✔ | own unit⁴ | — | — |
+| Submit own results (round link) | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | **Levels**: every generation | view | edit | view | edit | — | 500 Level only² | — |
 | **Levels**: own generation + tokens | — | — | — | — | — | edit | — |
 | **Oracle** (search + correct any record) | view | ✘ | ✘ | **edit** | ✘ | ✘ | ✘ |
@@ -159,6 +162,9 @@ server enforces this in every write action, not only by hiding buttons.
 ¹ Only if their office's *grants login* switch is on (on by default for offices with tags).
 ² A Level Coordinator sees and edits only their own generation — except the 500 Level
 Coordinator (`LEVEL:all`), who can edit every generation.
+³ The default, `EXCO:academic`; Settings can give it to more offices.
+⁴ Names and grades while the Academic Unit's "unit heads see their members' results"
+switch is on (it is by default); totals only when it's off.
 
 ### 3.2 What's fixed and what's configurable
 
@@ -168,7 +174,11 @@ Coordinator (`LEVEL:all`), who can edit every generation.
 - **Workforce, Levels and Zones** access is configured by the System Admin in
   **Settings → Module access**, by tag (`EXCO`), scoped tag (`EXCO:choir`) or office slug.
   The defaults: Workforce = `CENTRAL`, `EXCO` read and `EXCO` write (own unit only);
-  Levels = `CENTRAL`, `LEVEL` read and `LEVEL` write (own level only).
+  Levels = `CENTRAL`, `LEVEL` read and `LEVEL` write (own level only);
+  Academics = `EXCO:academic` read and write (the Academic Coord).
+- **Who sees individual results outside Academics** (unit heads, level coordinators,
+  members themselves) is **not** in Settings: the Academic Unit decides it in
+  **Academics → Visibility** (§5.10).
 - **Event** access is per event: the unit it is assigned to (§5.7).
 
 ---
@@ -251,6 +261,10 @@ After the retreat, **Tenure → Tenure Profile → Record coronation**:
   tap-to-call number, and exports.
 - **Records.** Members fix their own details through their level's update link. The
   System Admin can correct anything in the **Oracle**.
+- **Results, every semester (Academic Coord).** After each semester's results are out,
+  open a round in **Academics → Rounds** and share it. Every 100–500 Level member submits
+  their GPA and CGPA at `/academics` with the round token. Chase the **Not submitted** list
+  on the Overview, then close the round (§5.10).
 
 ### 4.6 End of the year
 
@@ -264,7 +278,8 @@ Back to 4.1. Take the backup first.
 
 - **Overview**: your dashboard: modules you can open, upcoming events.
 - **My Identity**: your own profile and ID card. Edit your bio-data, academics, location
-  and photo (optional; uploads go to Cloudinary).
+  and photo (optional; uploads go to Cloudinary). A **My results** card lists your
+  semester results, if the Academic Unit has switched it on.
 
 ### 5.2 Tenure → Tenure Profile
 
@@ -320,7 +335,13 @@ A grid of units (or, for an Exco, just theirs). Open one for its page:
   the office belongs to), leads first. A unit's offices are managed from **Tenure**, not
   here.
 - **Birthdays.** One month at a time, with today's celebrants first. **Export** the month.
-- **Academics.** Coming soon.
+- **Academics.** The unit's results for a semester (pick one): how many owe and have
+  submitted, mean CGPA, class of degree, breakdowns by level, department, school and
+  gender, and the trend. If the Academic Unit allows it (on by default), the unit's
+  heads also see each member's GPA and CGPA, who is at risk and who hasn't submitted,
+  with CSV exports, and a **Full academic record** download: every member, every
+  semester, with matric number and department, for reports to the authorities.
+  Otherwise, totals only.
 
 Every add and remove is still recorded (the membership log); it just isn't a tab.
 
@@ -332,7 +353,9 @@ create one.
 
 The generations as cards. Open one to see its members (search, stats, **Export CSV**
 with a choice of columns), **Tokens** and **Activity** (coordinators only). Members
-open to the full record.
+open to the full record. **Academics** shows the generation's results the same way as
+Workforce → Academics; the coordinator sees names only if the Academic Unit allows it
+(off by default).
 
 ### 5.6 Oracle (System Admin; President can view)
 
@@ -375,6 +398,44 @@ Open to everyone, with no login.
 - **Module access.** Who can read and write Workforce, Levels and Zones (Tenure is fixed
   by policy).
 - **Insurance.** The **full system backup** (§6).
+
+### 5.10 Academics (Academic Coord by default)
+
+Members' semester results, collected in **rounds**. FUTA grades on a 5-point scale.
+Each member reports their **GPA** (that semester) and **CGPA** (their running
+standing). The class bands: First 4.50–5.00, Second Upper 3.50–4.49, Second Lower
+2.40–3.49, Third 1.50–2.39, Pass 1.00–1.49, Probation below 1.00 (`src/lib/academics.ts`).
+Semesters are **Harmattan** (1) and **Rain** (2) of an academic session.
+
+- **Overview.** One semester for the whole fellowship: figures, class of degree,
+  breakdowns, trend. Below that, **Submitted**, **At risk** (CGPA under 2.40, or GPA down
+  0.50 or more on their last semester) and **Not submitted**, filterable by level and
+  unit, each with a CSV export.
+- **Rounds.** Open one per semester (with an optional due date). It gets a token like
+  `ACD-7KX2P`. **Share** sends a ready-made message with the link
+  (`/academics?round=ACD-7KX2P`). Only one round is open at a time. Close it when you're
+  done; reopen it if needed.
+- **Records.** Every member who owes results or has any, with their latest CGPA. Open
+  one to see their history and add, correct or delete a semester (recorded as the
+  Academic Unit's entry, and audited). Export the latest per member, or every semester.
+- **Departments.** FUTA's schools and departments, as every form offers them. Add,
+  rename, change a code (members' records follow), or **retire** one (never delete:
+  records point at it). **Not matched** lists departments that were typed in by hand and
+  match nothing, so you can link each to the right one.
+- **Visibility.** Who else sees individual results: unit heads (on by default), level
+  coordinators (off), members themselves (off). Only those who can edit Academics can
+  change it. Totals are always shown.
+
+**The submission page (`/academics`, public).** A member opens the link (or types the
+token), confirms who they are with **email, surname and matric number** (the matric is
+checked only when one is on file), then enters the semester's GPA and CGPA. Earlier
+semesters since they joined can be filled in too (optional). Only 100–500 Level members
+submit. Things that are deliberate:
+- The page never shows grades already on record, only "submitted". Knowing someone's
+  details is enough to reach it, so it must not reveal anything.
+- A submitted earlier semester is locked. The round's own semester can be resubmitted,
+  which replaces it. Mistakes beyond that are corrected in **Records**.
+- Failed identity checks are logged and rate-limited (8 per 15 minutes per device).
 
 ---
 
@@ -473,6 +534,11 @@ environment variables, set per environment.
   gives row counts.
 - The production database is **shared** with other apps (ReadWrite `rw_*`, Final Year
   Brethren `fyb_*`, e-library `elib_*`, games). Never touch their tables.
+- **Departments** are data, not structure: `faculties` and `departments` were seeded
+  once by the `academics_module` migration and are maintained from Academics. A staging
+  reset keeps them. `profiles.department` (text, the course code) and
+  `profiles.department_id` are kept in step by the trigger `rcf_sync_profile_department`,
+  whichever app writes, so other apps reading the text keep working.
 
 Full runbooks: `docs/DATABASE-CICD.md` (CI, migrations, staging resets) and
 `docs/FRESH-START.md` (rebuilding from an empty Supabase account and a backup).
@@ -515,6 +581,8 @@ There is no automated test suite yet.
    present, to decide between redirecting and allowing. New public top-level routes must
    be added to its list.
 6. **Lo! recognition is not a login.** Never accept it for anything but testimonies.
+   The same goes for the `/academics` round page: it recognises a member only to take
+   their results, and must never show anyone's grades.
 7. **Never commit secrets.** Rotate the Supabase service key if it ever leaks.
 
 ---

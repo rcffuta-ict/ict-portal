@@ -1,4 +1,4 @@
-import { DepartmentUtils } from "@/lib/departments";
+import { departmentLabel, type DepartmentOption } from "@/lib/departments";
 import type { FullUserProfile, LeadershipRole, UnitMembership } from "@/lib/types/portal";
 import clsx from "clsx";
 import { formatGender } from "@/lib/gender";
@@ -119,7 +119,15 @@ export const getRoleCategories = (roles: LeadershipRole[] | null, unit: UnitMemb
     });
 };
 
-export function extractUserProfileInfo(userData: FullUserProfile): ExtractedUserProfile  {
+/**
+ * @param departments the Academic Unit's list (useDepartments), used to show a stored
+ *                    course code as the department's full name. Without it, the stored
+ *                    value is shown as it is.
+ */
+export function extractUserProfileInfo(
+    userData: FullUserProfile,
+    departments: DepartmentOption[] = [],
+): ExtractedUserProfile  {
     const {profile, academics, location, unit, roles, teams} = userData;
     return {
         fullName: `${profile.firstName} ${profile.middleName ? profile.middleName + " " : ""}${profile.lastName}`,
@@ -135,10 +143,7 @@ export function extractUserProfileInfo(userData: FullUserProfile): ExtractedUser
 
         // Academic
         matric: academics?.matricNumber || "Not Set",
-        dept: academics?.department
-            ? DepartmentUtils.getByAlias(academics.department)?.name ||
-                academics.department
-            : "Not Set",
+        dept: departmentLabel(academics?.department, departments) || "Not Set",
 
         faculty: academics?.faculty || "Not Set",
         level: academics?.currentLevel || "Not Set",

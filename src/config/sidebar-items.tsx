@@ -8,6 +8,7 @@ import {
     GraduationCap,
     Settings,
     Database,
+    BookOpen,
 } from "lucide-react";
 import type { FullUserProfile } from "@/lib/types/portal";
 import type { ModuleId } from "@/lib/modules";
@@ -136,6 +137,15 @@ const toolItems: SidebarItem[] = [
         module: "level",
         color: "bg-rcf-navy",
         description: "Manage the members of your level.",
+    },
+    {
+        name: "Academics",
+        href: "/dashboard/academics",
+        icon: BookOpen,
+        section: "tools",
+        module: "academics",
+        color: "bg-rcf-navy",
+        description: "Results rounds, members' GPA/CGPA and departments.",
     },
     {
         name: "Oracle",

@@ -73,6 +73,7 @@ export function BackupPicker({
             "audit",
             "invites",
             "activity",
+            "academics",
             // Last, and only ever present in the system scope: other teams' data.
             "foreign",
         ];

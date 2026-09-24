@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Save, Loader2, RefreshCcw } from "lucide-react";
 import { useProfileStore } from "@/lib/stores/profile.store";
-import { DepartmentUtils } from "@/lib/departments";
+import { departmentLabel } from "@/lib/departments";
+import { useDepartments } from "@/lib/hooks/useDepartments";
 import { getZonesAction } from "@/app/(auth)/profile/action";
 import { updateProfileAction } from "@/app/dashboard/profile/actions";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
@@ -30,7 +31,10 @@ export function ProfileEdit() {
     });
     const [avatarChanged, setAvatarChanged] = useState(false);
 
-    const departments = DepartmentUtils.getAllNames();
+    // Academic details are read-only here; the list only turns the stored course code
+    // into its full name.
+    const { departments } = useDepartments();
+    const departmentName = departmentLabel(userProfile?.academics?.department, departments) ?? "";
 
     const {
         register,
@@ -48,7 +52,6 @@ export function ProfileEdit() {
             gender: userProfile?.profile.gender || "",
             dob: userProfile?.profile.dob || "",
             matricNumber: userProfile?.academics?.matricNumber || "",
-            department: userProfile?.academics?.department || "",
             residentialZoneId: userProfile?.location?.residentialZone || "",
             schoolAddress: userProfile?.location?.schoolAddress || "",
             homeAddress: userProfile?.location?.homeAddress || "",
@@ -219,18 +222,13 @@ export function ProfileEdit() {
                         disabled
                         className="uppercase bg-slate-50 text-slate-500"
                     />
-                    <FormSelect
+                    <FormInput
                         label="Department"
-                        {...register("department")}
+                        value={departmentName}
+                        readOnly
                         disabled
-                        className="bg-slate-50"
-                    >
-                        {departments.map((dept) => (
-                            <option key={dept.value} value={dept.value}>
-                                {dept.label}
-                            </option>
-                        ))}
-                    </FormSelect>
+                        className="bg-slate-50 text-slate-500"
+                    />
                 </div>
                 <div className="mt-4 p-3 bg-blue-50 text-blue-700 text-xs rounded-lg border border-blue-100">
                     Academic details are locked to preserve your level history.
