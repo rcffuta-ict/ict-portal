@@ -117,6 +117,13 @@ screen agrees. No theme means **awaiting coronation**, which is a normal state, 
 error. The coronation date (`coronated_on`) is the day of the retreat, which is **not**
 the session's start date.
 
+The session's **palette** (set at coronation) repaints the members' dashboard by
+overriding the brand tokens on `:root` — `src/app/dashboard/layout.tsx` renders
+`<ThemeStyle>`, and every `bg-rcf-navy` follows. Palette values are strict `#rrggbb`
+checked by `src/lib/palette.ts`; never write anything else into that `<style>`. Public
+pages keep the brand. The Tenure page falls back to `DEFAULT_TENURE_BANNER`
+(`src/config/tenure-branding.ts`) when a session has no banner.
+
 ## Path alias
 
 Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more than one level.

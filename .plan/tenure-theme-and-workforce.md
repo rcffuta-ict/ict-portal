@@ -521,7 +521,18 @@ AGENTS.md                                    honorary offices; tenure has no nam
    - 2d: status action returns availability only; token resolved at click time by
      `copyMemberUpdateLinkAction`, which logs `invite_events.copied`. Full usability
      check (active, not revoked/expired/used up, not per-member).
-5. **Coronation form + palette** — ends with the dashboard in the session's colours.
+5. ✅ **Coronation form + palette** — ends with the dashboard in the session's colours.
+   - `src/lib/palette.ts` (strict hex, WCAG AA, `paletteCss`), `src/lib/coronation.ts`
+     (one zod schema for form + action; own-Cloudinary URLs only).
+   - `coronateTenureAction` / `clearCoronationAction` (tenure write); edit modal is now
+     session-only.
+   - Tenure page hero: banner shown uncovered in its own band (falls back to
+     `DEFAULT_TENURE_BANNER` in `src/config/tenure-branding.ts` — a placeholder SVG
+     until the real generic banner is dropped in), identity panel below.
+   - `src/app/dashboard/layout.tsx` is now a server layout emitting `<ThemeStyle>`;
+     the old client layout is `src/components/layout/dashboard-shell.tsx`. Verified in
+     a browser that `bg-rcf-navy` follows the palette and an injection attempt emits
+     nothing.
 6. **Tenure insight page.**
 7. Release MINOR. Coronate the active tenure from the UI.
 8. **Drop migration**, release MAJOR.

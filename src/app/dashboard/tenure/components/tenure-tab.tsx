@@ -9,34 +9,26 @@ import {
 import {
     Save,
     AlertCircle,
-    Clock,
     Users,
     UsersRound,
     Mars,
     Venus,
     UserRound,
     CalendarCheck,
-    Edit3,
     X,
     ArrowRightLeft,
-    Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import FormInput from "@/components/ui/FormInput";
 import { GENDER_UNSPECIFIED_LABEL } from "@/lib/gender";
-import { isCoronated, tenureLabel } from "@/lib/tenure";
+import { TenureHero } from "./tenure-hero";
+import { CoronationForm } from "./coronation-form";
 
 export function TenureTab({ data, onSuccess }: any) {
     const [isEditing, setIsEditing] = useState(false);
+    const [isCoronating, setIsCoronating] = useState(false);
     const active = data?.activeTenure;
     const stats = data?.sessionStats;
-
-    const daysActive = active
-        ? Math.floor(
-              (new Date().getTime() - new Date(active.start_date).getTime()) /
-                  (1000 * 3600 * 24)
-          )
-        : 0;
 
     async function handleCreate(formData: FormData) {
         if (confirm("Create new tenure? This will archive any active tenure.")) {
@@ -49,62 +41,12 @@ export function TenureTab({ data, onSuccess }: any) {
     return (
         <div className="space-y-8">
             {active ? (
-                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rcf-navy to-[#312e81] p-8 text-white shadow-2xl md:p-10">
-                    <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/5 blur-3xl"></div>
-                    <div className="relative z-10 grid gap-8 lg:grid-cols-2 lg:items-end">
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-4">
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-green-400/30 bg-green-500/20 px-3 py-1 text-xs font-bold text-green-300">
-                                    <span className="h-2 w-2 animate-pulse rounded-full bg-green-400"></span>{" "}
-                                    Active
-                                </span>
-                                <button
-                                    onClick={() => setIsEditing(true)}
-                                    className="flex items-center gap-1.5 text-xs font-medium text-blue-200 hover:text-white bg-white/10 px-3 py-1 rounded-full"
-                                >
-                                    <Edit3 className="h-3 w-3" /> Edit
-                                </button>
-                            </div>
-                            <h2 className="font-serif text-4xl font-bold leading-tight md:text-5xl">
-                                {tenureLabel(active)}
-                            </h2>
-                            {isCoronated(active) ? (
-                                <>
-                                    <p className="text-xl font-light text-blue-200">
-                                        {active.session} Session
-                                    </p>
-                                    {active.theme_text && (
-                                        <p className="inline-flex items-center gap-2 rounded-full bg-yellow-400/15 px-3 py-1 text-sm font-medium text-yellow-200">
-                                            <Sparkles className="h-4 w-4" aria-hidden="true" /> {active.theme_text}
-                                        </p>
-                                    )}
-                                </>
-                            ) : (
-                                // Not a warning: nothing really begins until the retreat,
-                                // so this is the honest state of a young session.
-                                <p className="text-xl font-light text-blue-200">
-                                    Session · Awaiting coronation
-                                </p>
-                            )}
-                        </div>
-                        <div className="flex flex-col gap-4 lg:items-end">
-                            <div className="flex items-center gap-4 rounded-xl bg-white/10 p-4 border border-white/10">
-                                <Clock className="h-6 w-6 text-yellow-300" />
-                                <div>
-                                    <p className="text-xs font-bold uppercase text-blue-200">
-                                        Time Elapsed
-                                    </p>
-                                    <p className="text-2xl font-bold leading-none">
-                                        {daysActive}{" "}
-                                        <span className="text-sm font-normal opacity-70">
-                                            Days
-                                        </span>
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <TenureHero
+                    tenure={active}
+                    canWrite={!!data?.canWriteTenure}
+                    onEditSession={() => setIsEditing(true)}
+                    onCoronate={() => setIsCoronating(true)}
+                />
             ) : (
                 <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50 p-12 text-center">
                     <AlertCircle className="h-10 w-10 mb-4 text-orange-500 opacity-50" />
@@ -193,6 +135,10 @@ export function TenureTab({ data, onSuccess }: any) {
             {isEditing && active && (
                 <EditTenureModal tenure={active} onClose={() => setIsEditing(false)} onSuccess={onSuccess} />
             )}
+
+            {isCoronating && active && (
+                <CoronationForm tenure={active} onClose={() => setIsCoronating(false)} onSaved={onSuccess} />
+            )}
         </div>
     );
 }
@@ -226,14 +172,17 @@ function EditTenureModal({ tenure, onClose, onSuccess }: any) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                 <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                    <h3 className="font-bold text-slate-900">Edit Details</h3>
+                    <h3 className="font-bold text-slate-900">Edit session</h3>
                     <button onClick={onClose}>
                         <X className="h-5 w-5 text-slate-500" />
                     </button>
                 </div>
                 <form action={handleUpdate} className="p-6 space-y-5">
                     <FormInput label="Session" name="session" defaultValue={tenure.session} required />
-                    <FormInput label="Theme" name="theme" defaultValue={tenure.theme || ""} placeholder="e.g. Arise & Shine" />
+                    <p className="text-xs leading-relaxed text-slate-500">
+                        The theme, its text and the coronation date are recorded with
+                        &ldquo;Record coronation&rdquo; on the banner.
+                    </p>
                     <button className="w-full py-2.5 rounded-xl bg-rcf-navy text-white font-bold text-sm">
                         Update
                     </button>

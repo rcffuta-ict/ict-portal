@@ -9,9 +9,11 @@ import {
     canManageLevel,
     canManageUnit,
 } from "@/lib/access-control";
-import { canReadModule, getModuleAccessConfig } from "@/lib/module-access";
+import { canReadModule, canWriteModule, getModuleAccessConfig } from "@/lib/module-access";
 import { db } from "@/lib/db";
 import { tenureFullLabel } from "@/lib/tenure";
+import { coronationSchema, type CoronationInput } from "@/lib/coronation";
+import { parsePalette } from "@/lib/palette";
 import { getTenurePresidentName } from "@/lib/backup";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 import { computeLevel, LEVELS } from "@/lib/levels";
@@ -220,6 +222,8 @@ export async function getAdminData() {
             // Drives UI affordances only — every catalogue mutation re-checks
             // requireVpAdmin() server-side.
             canEditCatalogue: ctx.isVpAdmin === true || ctx.isSysAdmin === true,
+            // Drives the coronation / edit buttons only; coronateTenureAction re-checks.
+            canWriteTenure: canWriteModule(ctx, "tenure", await getModuleAccessConfig()),
         };
 
     } catch (e) {
@@ -250,7 +254,8 @@ export async function createTenureAction(formData: FormData) {
         });
         if (error) return { success: false, error: error.message };
 
-        revalidatePath('/dashboard/tenure');
+        // The previously active tenure's palette no longer applies.
+        revalidatePath('/dashboard', 'layout');
         return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };
@@ -258,30 +263,17 @@ export async function createTenureAction(formData: FormData) {
 }
 
 /**
- * Updates an existing tenure's session and theme.
- *
- * Clearing the theme un-coronates the tenure, so everything that belongs to the theme
- * goes with it — the database refuses a theme text, banner or coronation date with no
- * theme (tenures_theme_details_need_theme).
+ * Updates an existing tenure's session. The theme and everything belonging to it is
+ * recorded through coronateTenureAction instead — a theme is a coronation, not a field.
  */
 export async function updateTenureAction(formData: FormData) {
     await requireModuleWrite("tenure");
     try {
-        const theme = ((formData.get("theme") as string) || "").trim() || null;
+        const session = ((formData.get("session") as string) || "").trim();
+        if (!session) return { success: false, error: "The session is required." };
         const { error } = await db
             .from('tenures')
-            .update({
-                session: formData.get("session"),
-                theme,
-                ...(theme ? {} : {
-                    theme_text: null,
-                    theme_banner_url: null,
-                    theme_icon_url: null,
-                    theme_palette: null,
-                    coronated_on: null,
-                    coronation_recorded_by: null,
-                }),
-            })
+            .update({ session })
             .eq('id', formData.get("id"));
         if (error) return { success: false, error: error.message };
 
@@ -601,8 +593,8 @@ export async function handoverTenureAction(formData: FormData) {
             );
         }
 
-        revalidatePath('/dashboard/tenure');
-        revalidatePath('/dashboard/tenure/handover');
+        // A new active tenure means a new (usually absent) palette for every page.
+        revalidatePath('/dashboard', 'layout');
         return { success: true, tenureId: newTenure.id, carried, revoked };
     } catch (e: any) {
         return { success: false, error: e.message };
@@ -702,6 +694,86 @@ export async function closeTenureAction(tenureId: string) {
         return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };
+    }
+}
+
+// ============================================================================
+// CORONATION
+// ============================================================================
+
+/**
+ * Record (or correct) the active tenure's coronation: its theme, the Bible reference it
+ * is drawn from, the day of the retreat, and optionally its banner, icon and palette.
+ *
+ * Everything is validated again here with the form's own schema — the image URLs must
+ * be this project's Cloudinary, and a palette that fails WCAG AA is refused with the
+ * measured ratio. The form's checks are a convenience; these are the rule.
+ *
+ * Nothing is written to `events`: the retreat is not an app-managed event.
+ */
+export async function coronateTenureAction(tenureId: string, input: CoronationInput) {
+    try {
+        const ctx = await requireModuleWrite("tenure");
+        const parsed = coronationSchema.safeParse(input);
+        if (!parsed.success) {
+            return {
+                success: false as const,
+                error: parsed.error.issues[0]?.message ?? "Check the form and try again.",
+                fieldErrors: Object.fromEntries(
+                    parsed.error.issues.map((i) => [String(i.path[0] ?? "form"), i.message]),
+                ) as Record<string, string>,
+            };
+        }
+        const v = parsed.data;
+        const palette = v.usePalette ? parsePalette({ primary: v.primary, accent: v.accent }) : null;
+
+        const { error } = await db
+            .from("tenures")
+            .update({
+                theme: v.theme,
+                theme_text: v.themeText,
+                coronated_on: v.coronatedOn,
+                theme_banner_url: v.bannerUrl ?? null,
+                theme_icon_url: v.iconUrl ?? null,
+                theme_palette: palette,
+                coronation_recorded_by: ctx.profile.id,
+            })
+            .eq("id", tenureId);
+        if (error) return { success: false as const, error: error.message };
+
+        // The palette repaints every dashboard page, not just this one.
+        revalidatePath("/dashboard", "layout");
+        return { success: true as const };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+/**
+ * Remove a coronation that was recorded by mistake. Clears the theme and everything
+ * that belongs to it together — the database refuses anything else — and the
+ * dashboard returns to the brand colours.
+ */
+export async function clearCoronationAction(tenureId: string) {
+    try {
+        await requireModuleWrite("tenure");
+        const { error } = await db
+            .from("tenures")
+            .update({
+                theme: null,
+                theme_text: null,
+                coronated_on: null,
+                theme_banner_url: null,
+                theme_icon_url: null,
+                theme_palette: null,
+                coronation_recorded_by: null,
+            })
+            .eq("id", tenureId);
+        if (error) return { success: false as const, error: error.message };
+        revalidatePath("/dashboard", "layout");
+        return { success: true as const };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
     }
 }
 
