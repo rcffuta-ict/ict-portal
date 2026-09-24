@@ -2,11 +2,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { addWorkerAction, getUnitDetailsAction, removeWorkerAction } from "../actions";
-import { Search, UserPlus, Trash2, User, Users, Info, Loader2, RefreshCw, Download, Crown, Mars, Venus, UserRound } from "lucide-react";
+import { getUnitDetailsAction, removeWorkerAction } from "../actions";
+import { Search, Trash2, User, Users, Info, Loader2, RefreshCw, Download, Crown, Mars, Venus, UserRound } from "lucide-react";
 import { RosterCard } from "@/components/dashboard/roster/roster-card";
 import { StatsStrip, StatsSkeleton, type StatItem } from "@/components/dashboard/roster/stats-strip";
 import { GENDER_UNSPECIFIED_LABEL, tallyGender } from "@/lib/gender";
@@ -15,11 +12,7 @@ import { byLevel } from "@/lib/levels";
 import { PaginatedGrid } from "@/components/dashboard/roster/paginated-grid";
 import { isGenderCategoryUnit } from "@/config/fellowship-units";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
-
-const addSchema = z.object({
-    email: z.string().trim().min(1, "Enter the member's email.").email("That isn't a valid email address."),
-});
-type AddValues = z.infer<typeof addSchema>;
+import { AddWorkersForm } from "./add-workers-form";
 
 /**
  * One unit's roster: load, add, remove.
@@ -54,14 +47,6 @@ export function UnitManager({
     const isDerived = isGenderCategoryUnit(unit.slug ?? null);
     const canEdit = !readOnly && !isDerived;
 
-    const {
-        register,
-        handleSubmit,
-        reset,
-        setError,
-        formState: { errors, isSubmitting },
-    } = useForm<AddValues>({ resolver: zodResolver(addSchema) });
-
     const load = useCallback(async () => {
         setLoading(true);
         setLoadError(null);
@@ -76,28 +61,6 @@ export function UnitManager({
         const t = setTimeout(load, 0);
         return () => clearTimeout(t);
     }, [load]);
-
-    const onAdd = async (values: AddValues) => {
-        const fd = new FormData();
-        fd.append("unitId", unit.id);
-        fd.append("email", values.email);
-
-        const res = await addWorkerAction(fd);
-        if (!res.success) {
-            // Inline, on the field it is about — not only in a popup.
-            setError("email", { message: res.error || "Couldn't add that member." });
-            return;
-        }
-        reset();
-        showAlert({
-            type: "success",
-            message: (res as any).pendingTransfer
-                ? (res as any).message
-                : "Worker added.",
-        });
-        await load();
-        onChanged?.();
-    };
 
     const handleRemove = (membershipId: string, who: string) => {
         showAlert({
@@ -141,8 +104,6 @@ export function UnitManager({
         );
     };
 
-    const emailId = `add-worker-email-${unit.id}`;
-
     return (
         <div className="space-y-5">
             <AlertModal isOpen={isOpen} onClose={closeAlert} {...alertConfig} />
@@ -160,50 +121,14 @@ export function UnitManager({
                     </div>
                 </div>
             ) : canEdit ? (
-                <form
-                    onSubmit={handleSubmit(onAdd)}
-                    noValidate
-                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                >
-                    <label
-                        htmlFor={emailId}
-                        className="text-[11px] font-bold uppercase tracking-wide text-slate-500"
-                    >
-                        Add a worker by email
-                    </label>
-                    <div className="mt-1 flex flex-col gap-2 sm:flex-row">
-                        <input
-                            id={emailId}
-                            type="email"
-                            inputMode="email"
-                            autoComplete="off"
-                            placeholder="member@example.com"
-                            aria-invalid={!!errors.email}
-                            aria-describedby={errors.email ? `${emailId}-error` : undefined}
-                            {...register("email")}
-                            className={`h-11 w-full rounded-lg border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-rcf-navy/20 ${
-                                errors.email ? "border-red-400 focus:border-red-500" : "border-slate-300 focus:border-rcf-navy"
-                            }`}
-                        />
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-rcf-navy px-5 text-sm font-bold text-white transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            {isSubmitting ? (
-                                <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                            ) : (
-                                <UserPlus className="h-4 w-4" aria-hidden="true" />
-                            )}
-                            {isSubmitting ? "Adding…" : "Add"}
-                        </button>
-                    </div>
-                    {errors.email && (
-                        <p id={`${emailId}-error`} role="alert" className="mt-1.5 text-xs font-medium text-red-600">
-                            {errors.email.message}
-                        </p>
-                    )}
-                </form>
+                <AddWorkersForm
+                    unitId={unit.id}
+                    unitName={unit.name}
+                    onAdded={() => {
+                        void load();
+                        onChanged?.();
+                    }}
+                />
             ) : null}
 
             {/* Stats — the same strip as Levels, with Workforce's own figures. */}

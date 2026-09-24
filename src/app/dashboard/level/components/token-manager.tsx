@@ -21,6 +21,7 @@ import {
 } from "../actions";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { displayLevelToken, profilePath } from "@/lib/level-token";
 
 /**
  * The level's token.
@@ -181,7 +182,7 @@ export function TokenManager({
                         >
                             <Ban className="h-4 w-4 shrink-0 text-slate-400" />
                             <code className="min-w-0 flex-1 truncate font-mono text-xs text-slate-500">
-                                {t.token}
+                                {displayLevelToken(t.token)}
                             </code>
                             <span className="shrink-0 text-[10px] text-slate-400">
                                 {t.use_count} use{t.use_count === 1 ? "" : "s"}
@@ -274,7 +275,7 @@ function ActiveToken({
                 </code>
                 <button
                     type="button"
-                    onClick={() => copy("token", token.token)}
+                    onClick={() => copy("token", displayLevelToken(token.token))}
                     className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white px-2.5 text-[11px] font-bold text-slate-600 shadow-sm hover:text-rcf-navy"
                 >
                     {copied === "token" ? (
@@ -292,14 +293,14 @@ function ActiveToken({
                     label="Copy register link"
                     hint="For new members"
                     copied={copied === "register"}
-                    onCopy={() => copy("register", `${origin}/register?invite=${token.token}&reason=register`)}
+                    onCopy={() => copy("register", `${origin}${profilePath(token.token, "register")}`)}
                 />
                 <CopyLinkButton
                     icon={PencilLine}
                     label="Copy update link"
                     hint="Members edit their own details"
                     copied={copied === "update"}
-                    onCopy={() => copy("update", `${origin}/register?invite=${token.token}&reason=update`)}
+                    onCopy={() => copy("update", `${origin}${profilePath(token.token, "update")}`)}
                 />
             </div>
         </section>

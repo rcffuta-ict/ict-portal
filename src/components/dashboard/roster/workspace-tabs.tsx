@@ -6,6 +6,8 @@ export interface WorkspaceTab<T extends string> {
     id: T;
     label: string;
     icon: LucideIcon;
+    /** A short tag after the label, e.g. "Soon" on a tab whose feature isn't built yet. */
+    badge?: string;
 }
 
 /**
@@ -47,6 +49,15 @@ export function WorkspaceTabs<T extends string>({
                     >
                         <t.icon className="h-4 w-4" aria-hidden="true" />
                         {t.label}
+                        {t.badge && (
+                            <span
+                                className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                                    on ? "bg-white/20 text-white" : "bg-amber-100 text-amber-800"
+                                }`}
+                            >
+                                {t.badge}
+                            </span>
+                        )}
                     </button>
                 );
             })}

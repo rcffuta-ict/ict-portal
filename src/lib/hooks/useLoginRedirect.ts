@@ -21,8 +21,9 @@ export function useLoginRedirect() {
     const redirectToLogin = useCallback((customReturnTo?: string) => {
         const returnTo = customReturnTo || pathname;
         
-        // Don't include login/register pages as returnTo
-        if (returnTo.includes('/login') || returnTo.includes('/register')) {
+        // Don't include the login or public /profile pages as returnTo
+        // (/dashboard/profile is a normal return target).
+        if (returnTo.startsWith('/login') || /^\/profile(\?|$)/.test(returnTo)) {
             router.replace('/login');
             return;
         }

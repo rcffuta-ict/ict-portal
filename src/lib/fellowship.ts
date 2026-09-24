@@ -243,40 +243,101 @@ async function getMembersByGender(gender: "male" | "female"): Promise<UnitMember
     })) as UnitMember[];
 }
 
+export interface ProfileByEmail {
+    id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+}
+
 /**
- * Add an existing member to a unit or team by email.
+ * Members by email, matched case-insensitively. Keyed by the lower-cased address.
+ *
+ * Reads `profiles` directly. It used to go through the `get_user_id_by_email` RPC,
+ * which reads `auth.users`, the retired Supabase Auth table; anyone who joined after
+ * that (every seeded test member, every new registrant) wasn't there, so adding them
+ * failed with "No member found".
+ *
+ * ILIKE rather than `=` because stored addresses aren't guaranteed lower-case. `_` is a
+ * one-character wildcard in ILIKE, so the rows are compared exactly again afterwards;
+ * `parseEmailList` never yields `%`. Twenty addresses per request keeps the URL short.
+ */
+export async function findProfilesByEmail(emails: string[]): Promise<Map<string, ProfileByEmail>> {
+    const found = new Map<string, ProfileByEmail>();
+    const wanted = new Set(emails.map((e) => e.toLowerCase()));
+    const chunks: string[][] = [];
+    for (let i = 0; i < emails.length; i += 20) chunks.push(emails.slice(i, i + 20));
+
+    const results = await Promise.all(
+        chunks.map((chunk) =>
+            db
+                .from("profiles")
+                .select("id, email, first_name, last_name")
+                .or(chunk.map((e) => `email.ilike."${e}"`).join(",")),
+        ),
+    );
+    for (const { data, error } of results) {
+        if (error) throw new Error(error.message);
+        for (const p of data ?? []) {
+            const key = (p.email ?? "").toLowerCase();
+            if (wanted.has(key)) found.set(key, p as ProfileByEmail);
+        }
+    }
+    return found;
+}
+
+/**
+ * Put members into a unit or team. Returns the ids that were actually added.
  *
  * The single-unit rule is enforced in the database by the
- * `enforce_single_unit_membership` trigger (migration 0001), not here — teams are
- * deliberately unconstrained, and unit conflicts are intercepted by the transfer queue
- * in `addWorkerAction` before this is ever reached.
+ * `enforce_single_unit_membership` trigger (migration 0001), not here. Teams are
+ * deliberately unconstrained, and `addWorkersAction` sends unit conflicts to the
+ * transfer queue before this is reached.
+ *
+ * One insert for the lot. If it fails (somebody was added by another leader a moment
+ * ago), it falls back to one insert per member, so one conflict doesn't sink the rest.
  */
-export async function addWorker(
+export async function addWorkers(
     tenureId: string,
-    email: string,
     unitId: string,
+    profileIds: string[],
     actor: MembershipActor,
-): Promise<void> {
-    const { data: profileId, error: lookupError } = await db.rpc("get_user_id_by_email", {
-        email_arg: email,
-    });
-    if (lookupError || !profileId) {
-        throw new Error(`No member found with the email ${email}.`);
-    }
-
-    const { error } = await db.from("membership_units").insert({
+): Promise<{ added: string[]; failed: { profileId: string; error: string }[] }> {
+    if (profileIds.length === 0) return { added: [], failed: [] };
+    const row = (profileId: string) => ({
         tenure_id: tenureId,
         profile_id: profileId,
         unit_id: unitId,
         role: "Member",
     });
 
-    if (error) {
-        if (error.code === "23505") throw new Error("This member is already in this unit.");
-        throw new Error(error.message);
+    let added: string[] = [];
+    const failed: { profileId: string; error: string }[] = [];
+
+    const { error } = await db.from("membership_units").insert(profileIds.map(row));
+    if (!error) {
+        added = profileIds;
+    } else {
+        const each = await Promise.all(
+            profileIds.map(async (profileId) => {
+                const { error: e } = await db.from("membership_units").insert(row(profileId));
+                return { profileId, e };
+            }),
+        );
+        for (const { profileId, e } of each) {
+            if (!e) added.push(profileId);
+            else failed.push({
+                profileId,
+                error: e.code === "23505" ? "Already in this unit." : e.message,
+            });
+        }
     }
 
-    await logMembershipEvents([{ profileId, unitId, tenureId, action: "added" }], actor);
+    await logMembershipEvents(
+        added.map((profileId) => ({ profileId, unitId, tenureId, action: "added" as const })),
+        actor,
+    );
+    return { added, failed };
 }
 
 /**

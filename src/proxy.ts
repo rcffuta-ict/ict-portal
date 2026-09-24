@@ -8,7 +8,7 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Define route types
-  const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/register')
+  const isAuthPage = pathname.startsWith('/login')
   const isPublicAsset = pathname.startsWith('/_next') || pathname.startsWith('/api') ||
                        pathname.includes('.') // Files with extensions (images, etc.)
   const isDashboardPage = pathname.startsWith('/dashboard')
@@ -19,7 +19,9 @@ export async function proxy(request: NextRequest) {
   }
 
   // Public routes that don't need authentication
-  const publicRoutes = ['/', '/forgot-password', '/about', '/lo-app', '/events']
+  // /profile is open to everyone, signed in or not: a leader registers with their
+  // level's token like any member. The token is checked by the page's actions.
+  const publicRoutes = ['/', '/profile', '/about', '/lo-app', '/events']
   const isPublicRoute = publicRoutes.includes(pathname) ||
                        (pathname.startsWith('/events/') && !pathname.endsWith('/admin')) ||
                        // Lo! is a login-free app, and a shared testimony link must open

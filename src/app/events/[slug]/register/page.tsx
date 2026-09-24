@@ -272,7 +272,7 @@ function RegistrationView({ event, slug }: { event: EventRecord; slug: string })
                     Log in
                 </Link>
                 <Link
-                    href="/register"
+                    href="/profile"
                     className="rounded-2xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                 >
                     Join the fellowship

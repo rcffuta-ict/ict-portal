@@ -1799,7 +1799,7 @@ export async function getCatalogueAction() {
 // ============================================================================
 //
 // A member belongs to exactly one unit per tenure. When a second executive claims
-// someone, the app queues a request rather than moving them (see addWorkerAction in
+// someone, the app queues a request rather than moving them (see addWorkersAction in
 // the units module) and the VP Admin arbitrates. Until then the member does not move.
 
 /** Pending (and recently decided) transfer requests for the active tenure. */

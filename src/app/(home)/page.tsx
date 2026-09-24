@@ -155,7 +155,7 @@ export default function ComingSoon() {
 
                             <div className="flex flex-col sm:flex-row gap-4 justify-center">
                                 <Link
-                                    href="/register"
+                                    href="/profile"
                                     className="group flex items-center justify-center gap-2 bg-rcf-navy text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg hover:bg-rcf-navy-light transition-all hover:-translate-y-1 hover:shadow-xl"
                                 >
                                     <UserPlus className="h-5 w-5 group-hover:scale-110 transition-transform" />

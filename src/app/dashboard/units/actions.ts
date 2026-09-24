@@ -7,7 +7,9 @@ import { listPositions } from "@/lib/positions";
 import {
     getAllUnitsOverview,
     getUnitMembers,
-    addWorker,
+    addWorkers,
+    findProfilesByEmail,
+    type ProfileByEmail,
     removeWorker,
     membershipActorOf,
     isMemberOfUnit,
@@ -20,12 +22,13 @@ import {
     requireContext,
     requireModuleRead,
     requireModuleWrite,
-    requireAccess,
     requireAdminWrite,
     canManageUnit,
     canManageLevel,
 } from "@/lib/access-control";
 import { isGenderCategoryUnit } from "@/config/fellowship-units";
+import { MAX_EMAILS_PER_ADD, parseEmailList } from "@/lib/email-list";
+import { profilePath } from "@/lib/level-token";
 
 // ============================================================================
 // DATA LOADER
@@ -75,21 +78,26 @@ async function generationsBySet(session: string | null) {
 }
 
 /**
- * Who holds an Exco office this tenure, and which: profile id → the office's alias.
- * An Exco office is one carrying an EXCO privilege tag; ended appointments don't count.
- * Not exported: "use server" file.
+ * Who holds an Exco office this tenure, and which: profile id → the office's alias, and
+ * whether they're its lead (not an assistant). Someone with two offices is shown by their
+ * lead one. An Exco office is one carrying an EXCO privilege tag; ended appointments
+ * don't count. Not exported: "use server" file.
  */
-async function excoOfficesThisTenure(tenureId: string): Promise<Map<string, string>> {
+async function excoOfficesThisTenure(tenureId: string): Promise<Map<string, { office: string; isLead: boolean }>> {
     const { data } = await db
         .from("leadership")
-        .select("profile_id, position:leadership_positions!inner(title, alias, position_privileges!inner(privilege))")
+        .select("profile_id, is_lead, position:leadership_positions!inner(title, alias, position_privileges!inner(privilege))")
         .eq("tenure_id", tenureId)
         .is("ended_at", null)
         .eq("position.position_privileges.privilege", "EXCO");
-    const map = new Map<string, string>();
+    const map = new Map<string, { office: string; isLead: boolean }>();
     for (const row of (data ?? []) as any[]) {
         const pos = Array.isArray(row.position) ? row.position[0] : row.position;
-        if (!map.has(row.profile_id)) map.set(row.profile_id, pos?.alias || pos?.title || "Exco");
+        const seen = map.get(row.profile_id);
+        if (seen?.isLead) continue;
+        if (!seen || row.is_lead) {
+            map.set(row.profile_id, { office: pos?.alias || pos?.title || "Exco", isLead: !!row.is_lead });
+        }
     }
     return map;
 }
@@ -214,7 +222,8 @@ export async function getUnitDetailsAction(unitId: string) {
                 generation: (m.class_set_id && bySet.get(m.class_set_id)?.generation) || null,
                 // Holds an Exco office this tenure (lead or assistant) — any unit's, not
                 // only this one's: the metric is "how many of our people are Excos".
-                excoOffice: excos.get(m.id) ?? null,
+                excoOffice: excos.get(m.id)?.office ?? null,
+                excoLead: excos.get(m.id)?.isLead ?? false,
             })),
         };
     } catch (e: any) {
@@ -222,120 +231,156 @@ export async function getUnitDetailsAction(unitId: string) {
     }
 }
 
+export interface AddWorkersResult {
+    success: boolean;
+    error?: string;
+    /** Names of members now on the roster. */
+    added: string[];
+    /** Members in another unit: a transfer was queued for the VP Admin instead. */
+    transfers: { name: string; from: string }[];
+    /** Already on this roster, or already waiting on a transfer. */
+    skipped: { name: string; reason: string }[];
+    /** Addresses with no member behind them. */
+    notFound: string[];
+    /** Tokens with an "@" that aren't addresses. */
+    invalid: string[];
+    failed: { name: string; error: string }[];
+}
+
+const emptyResult = (): AddWorkersResult => ({
+    success: false, added: [], transfers: [], skipped: [], notFound: [], invalid: [], failed: [],
+});
+
 /**
- * Add an existing member to a unit or team.
+ * Add existing members to a unit or team by email, one or many at once.
  *
- * Executives do this themselves — no invite token, no approval — because leading a unit
- * IS the authority to decide who is in it. The one exception is a tug-of-war:
+ * `raw` is whatever the leader typed or pasted; it's parsed here (parseEmailList), not
+ * trusted as a list from the client. Every address gets its own outcome, so one bad
+ * address never blocks the others, and the leader sees exactly what happened to each.
+ *
+ * Executives do this themselves, with no invite token and no approval, because leading
+ * a unit IS the authority to decide who is in it. The one exception is a tug-of-war:
  *
  *   * TEAMS are multi-membership by design, so a team add always goes straight through.
  *   * UNITS are exclusive (one per member per tenure, enforced by the DB trigger
- *     `enforce_single_unit_membership`). When the member already belongs to another
- *     unit, this does NOT move them and does NOT fail — it queues a transfer request
+ *     `enforce_single_unit_membership`). When a member already belongs to another
+ *     unit, this does NOT move them and does NOT fail. It queues a transfer request
  *     for the VP Admin. The member stays exactly where they are until that is approved,
  *     so nobody's roster changes behind their leader's back.
+ *
+ * Round trips are fixed, not per address: one lookup (per 20 addresses, in parallel),
+ * one membership read, one insert. Leaders add from phones on slow data.
  */
-export async function addWorkerAction(formData: FormData) {
+export async function addWorkersAction(unitId: string, raw: string): Promise<AddWorkersResult> {
+    const result = emptyResult();
     try {
         const ctx = await requireModuleWrite("workforce");
-        const unitId = formData.get("unitId") as string;
-        const email = formData.get("email") as string;
-
         if (!(await canManageUnit(ctx, unitId))) {
-            return { success: false, error: "You don't lead this unit/team." };
+            return { ...result, error: "You don't lead this unit/team." };
         }
 
-        // Always the ACTIVE tenure, resolved here. Taking it from the form would let a
-        // crafted request write into a closed tenure's roster.
-        const tenure = await getActiveTenure();
-        if (!tenure) return { success: false, error: "There is no active tenure." };
+        const { emails, invalid } = parseEmailList(raw);
+        result.invalid = invalid;
+        if (emails.length === 0) {
+            return { ...result, error: invalid.length ? "None of those are valid email addresses." : "Enter at least one email address." };
+        }
+        if (emails.length > MAX_EMAILS_PER_ADD) {
+            return { ...result, error: `That's ${emails.length} addresses. Add at most ${MAX_EMAILS_PER_ADD} at a time.` };
+        }
+
+        // Always the ACTIVE tenure, resolved here. Taking it from the client would let
+        // a crafted request write into a closed tenure's roster.
+        const [tenure, { data: target }, profiles] = await Promise.all([
+            getActiveTenure(),
+            db.from("units").select("id, name, type, slug").eq("id", unitId).maybeSingle(),
+            findProfilesByEmail(emails),
+        ]);
+        if (!tenure) return { ...result, error: "There is no active tenure." };
+        if (!target) return { ...result, error: "That unit no longer exists." };
         const tenureId = tenure.id;
 
-        const { data: target } = await db
-            .from("units")
-            .select("id, name, type, slug")
-            .eq("id", unitId)
-            .maybeSingle();
-        if (!target) return { success: false, error: "That unit no longer exists." };
-
-        // The Brothers' and Sisters' units have no roster to add to -- membership IS
+        // The Brothers' and Sisters' units have no roster to add to: membership IS
         // gender (see genderCategory in src/config/fellowship-units.ts). Refused here
         // and not merely hidden in the UI, because a stored row would create a second,
         // disagreeing answer to "is she in the Sisters' Unit?".
         if (isGenderCategoryUnit(target.slug)) {
             return {
-                success: false,
-                error: `${target.name} has no roster — every member is in it already, by gender. `
+                ...result,
+                error: `${target.name} has no roster. Every member is in it already, by gender. `
                     + "To correct someone's membership, correct their gender on their profile.",
             };
         }
 
-        // Teams are unconstrained — there is nothing to arbitrate.
-        if (target.type === "TEAM") {
-            await addWorker(tenureId, email, unitId, membershipActorOf(ctx));
-            revalidatePath("/dashboard/units");
-            return { success: true };
+        result.notFound = emails.filter((e) => !profiles.has(e));
+        const people = [...profiles.values()];
+        const nameOf = (p: ProfileByEmail) =>
+            [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email;
+
+        // Everyone's memberships this tenure, in one read.
+        const { data: existing, error: existingError } = people.length
+            ? await db
+                .from("membership_units")
+                .select("profile_id, unit:units(id, name, type)")
+                .eq("tenure_id", tenureId)
+                .in("profile_id", people.map((p) => p.id))
+            : { data: [], error: null };
+        if (existingError) return { ...result, error: existingError.message };
+
+        const unitsOf = new Map<string, { id: string; name: string; type: string }[]>();
+        for (const m of existing ?? []) {
+            const u = Array.isArray((m as any).unit) ? (m as any).unit[0] : (m as any).unit;
+            if (!u) continue;
+            unitsOf.set(m.profile_id, [...(unitsOf.get(m.profile_id) ?? []), u]);
         }
 
-        const { data: profile } = await db
-            .from("profiles")
-            .select("id, first_name, last_name")
-            .eq("email", (email || "").toLowerCase().trim())
-            .maybeSingle();
-        if (!profile) {
-            return { success: false, error: "No member with that email address." };
-        }
-
-        // Does this member already hold a UNIT this tenure?
-        const { data: existing } = await db
-            .from("membership_units")
-            .select("id, unit:units(id, name, type)")
-            .eq("profile_id", profile.id)
-            .eq("tenure_id", tenureId);
-
-        const currentUnit = (existing ?? [])
-            .map((m: any) => (Array.isArray(m.unit) ? m.unit[0] : m.unit))
-            .find((u: any) => u?.type === "UNIT");
-
-        if (!currentUnit) {
-            await addWorker(tenureId, email, unitId, membershipActorOf(ctx));
-            revalidatePath("/dashboard/units");
-            return { success: true };
-        }
-
-        if (currentUnit.id === unitId) {
-            return { success: false, error: "They are already in this unit." };
-        }
-
-        // Contested. Queue it for the VP Admin rather than moving anyone.
-        const { error } = await db.from("unit_transfer_requests").insert({
-            profile_id: profile.id,
-            tenure_id: tenureId,
-            from_unit_id: currentUnit.id,
-            to_unit_id: unitId,
-            requested_by: ctx.profile.id,
-        });
-
-        if (error) {
-            // The partial unique index allows only one open request per member.
-            if ((error as any).code === "23505") {
-                return {
-                    success: false,
-                    error: `${profile.first_name} already has a transfer waiting for VP Admin approval.`,
-                };
+        const toAdd: ProfileByEmail[] = [];
+        const toTransfer: { p: ProfileByEmail; from: { id: string; name: string } }[] = [];
+        for (const p of people) {
+            const theirs = unitsOf.get(p.id) ?? [];
+            if (theirs.some((u) => u.id === unitId)) {
+                result.skipped.push({ name: nameOf(p), reason: `Already in ${target.name}.` });
+                continue;
             }
-            return { success: false, error: error.message };
+            // Teams are unconstrained; there is nothing to arbitrate.
+            const otherUnit = target.type === "UNIT" ? theirs.find((u) => u.type === "UNIT") : undefined;
+            if (otherUnit) toTransfer.push({ p, from: otherUnit });
+            else toAdd.push(p);
         }
 
-        revalidatePath("/dashboard/units");
-        revalidatePath("/dashboard/tenure");
-        return {
-            success: true,
-            pendingTransfer: true,
-            message: `${profile.first_name} is currently in ${currentUnit.name}. A transfer to ${target.name} has been sent to the VP Admin for approval.`,
-        };
+        const byId = new Map(people.map((p) => [p.id, p]));
+        const { added, failed } = await addWorkers(tenureId, unitId, toAdd.map((p) => p.id), membershipActorOf(ctx));
+        result.added = added.map((id) => nameOf(byId.get(id)!));
+        result.failed = failed.map((f) => ({ name: nameOf(byId.get(f.profileId)!), error: f.error }));
+
+        // Contested. Queue each for the VP Admin rather than moving anyone. One insert
+        // each: the partial unique index allows one open request per member, and a
+        // member who already has one shouldn't fail the others.
+        const transfers = await Promise.all(
+            toTransfer.map(async ({ p, from }) => {
+                const { error } = await db.from("unit_transfer_requests").insert({
+                    profile_id: p.id,
+                    tenure_id: tenureId,
+                    from_unit_id: from.id,
+                    to_unit_id: unitId,
+                    requested_by: ctx.profile.id,
+                });
+                return { p, from, error };
+            }),
+        );
+        for (const { p, from, error } of transfers) {
+            if (!error) result.transfers.push({ name: nameOf(p), from: from.name });
+            else if ((error as any).code === "23505") {
+                result.skipped.push({ name: nameOf(p), reason: "Already has a transfer waiting for VP Admin approval." });
+            } else result.failed.push({ name: nameOf(p), error: error.message });
+        }
+
+        if (result.added.length || result.transfers.length) {
+            revalidatePath("/dashboard/units");
+            if (result.transfers.length) revalidatePath("/dashboard/tenure");
+        }
+        return { ...result, success: true };
     } catch (e: any) {
-        return { success: false, error: e.message };
+        return { ...result, error: e.message };
     }
 }
 
@@ -471,45 +516,6 @@ export async function removePositionFromUnitAction(unitPositionId: string) {
         return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };
-    }
-}
-
-export async function getUnitLeadershipAction(unitId: string, tenureId: string) {
-    try {
-        // Returns leaders' contact details; admin-only, like the panels that call it.
-        await requireAccess("ADMIN");
-        const { data: unitPositions, error: upError } = await db
-            .from("unit_positions")
-            .select(`id, role_type, position_id, position:leadership_positions(id, title, tier)`)
-            .eq("unit_id", unitId);
-        if (upError) throw upError;
-        if (!unitPositions || unitPositions.length === 0) return { success: true, data: [] };
-
-        const positionIds = unitPositions.map((up: any) => up.position_id);
-        const { data: leadership, error: lError } = await db
-            .from("leadership")
-            .select(`id, position_id, profile:profiles!leadership_profile_id_fkey(id, first_name, last_name, email, phone_number, avatar_url)`)
-            .eq("tenure_id", tenureId)
-            .eq("unit_id", unitId)
-            .is("ended_at", null)
-            .in("position_id", positionIds);
-        if (lError) throw lError;
-
-        const result = (leadership || []).map((l: any) => {
-            const unitPos = unitPositions.find((up: any) => up.position_id === l.position_id);
-            const positionData = Array.isArray(unitPos?.position) ? unitPos?.position[0] : unitPos?.position;
-            return {
-                unitPositionId: unitPos?.id,
-                leadershipId: l.id,
-                roleType: unitPos?.role_type || "assistant",
-                positionId: l.position_id,
-                positionTitle: positionData?.title || "Unknown Position",
-                profile: l.profile,
-            };
-        });
-        return { success: true, data: result };
-    } catch (e: any) {
-        return { success: false, error: e.message, data: [] };
     }
 }
 
@@ -732,7 +738,7 @@ export async function copyMemberUpdateLinkAction(unitId: string, profileId: stri
 
         return {
             success: true as const,
-            path: `/register?invite=${encodeURIComponent(token.token)}&reason=update`,
+            path: profilePath(token.token, "update"),
         };
     } catch (e: any) {
         return { success: false as const, error: e.message };
