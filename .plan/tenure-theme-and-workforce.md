@@ -506,7 +506,21 @@ AGENTS.md                                    honorary offices; tenure has no nam
    - `UnitManager` never showed members (copied a prop into state before the fetch
      landed); it now loads its own roster with loading/error states, RHF+zod add form.
    - President sees every unit read-only.
-4. **Workforce features** — 2a details, 2b birthdays, 2c log, 2d update link.
+4. ✅ **Workforce features** — 2a details, 2b birthdays, 2c log, 2d update link.
+   - 2a: `/dashboard/units/[unitId]/member/[profileId]`; `MemberDetailView` promoted to
+     `src/components/dashboard/`. Gate = may view the unit AND member is in it this
+     session (`isMemberOfUnit`, gender units included).
+   - Service history was silently hidden for level coordinators AND excos
+     (`getServiceHistoryAction` required Tenure read). Now also allowed for the
+     member's level coordinator and an exco of a unit they're in.
+   - 2b: `getUnitBirthdaysAction` → `rcf_birthdays(ids, month, year)`; month arrows,
+     today highlighted (Lagos time).
+   - 2c: `logMembershipEvents` in `src/lib/fellowship.ts`, called from add, remove
+     (row read before delete), transfer approval (read before the RPC), and handover
+     carry-over (per landed chunk). Never fails the caller. Log tab, 20 per page.
+   - 2d: status action returns availability only; token resolved at click time by
+     `copyMemberUpdateLinkAction`, which logs `invite_events.copied`. Full usability
+     check (active, not revoked/expired/used up, not per-member).
 5. **Coronation form + palette** — ends with the dashboard in the session's colours.
 6. **Tenure insight page.**
 7. Release MINOR. Coronate the active tenure from the UI.

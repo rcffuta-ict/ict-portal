@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -237,7 +238,12 @@ export function UnitManager({
                                         )}
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="truncate text-sm font-bold text-slate-900">{who}</p>
+                                        <Link
+                                            href={`/dashboard/units/${unit.id}/member/${m.id}`}
+                                            className="block truncate text-sm font-bold text-slate-900 hover:text-rcf-navy hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+                                        >
+                                            {who}
+                                        </Link>
                                         <div className="flex flex-col text-[11px] text-slate-500 sm:flex-row sm:gap-3">
                                             {m.email && (
                                                 <a href={`mailto:${m.email}`} className="flex min-w-0 items-center gap-1 hover:text-rcf-navy">

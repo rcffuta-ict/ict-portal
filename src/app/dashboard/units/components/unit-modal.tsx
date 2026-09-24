@@ -26,11 +26,18 @@ export function UnitModal({
     wide?: boolean;
 }) {
     const closeRef = useRef<HTMLButtonElement>(null);
+    // Latest onClose, read through a ref: callers pass an inline arrow, and depending on
+    // it would re-run the effect on every parent render — re-focusing the close button
+    // out from under whatever the user was typing in.
+    const onCloseRef = useRef(onClose);
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
 
     useEffect(() => {
         closeRef.current?.focus();
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
+            if (e.key === "Escape") onCloseRef.current();
         };
         document.addEventListener("keydown", onKey);
         // Stop the page behind scrolling along with the dialog on touch devices.
@@ -40,7 +47,7 @@ export function UnitModal({
             document.removeEventListener("keydown", onKey);
             document.body.style.overflow = previous;
         };
-    }, [onClose]);
+    }, []);
 
     return (
         <div
