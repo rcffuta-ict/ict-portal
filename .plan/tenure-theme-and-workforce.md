@@ -533,7 +533,13 @@ AGENTS.md                                    honorary offices; tenure has no nam
      the old client layout is `src/components/layout/dashboard-shell.tsx`. Verified in
      a browser that `bg-rcf-navy` follows the palette and an injection attempt emits
      nothing.
-6. **Tenure insight page.**
+6. ✅ **Tenure insight page.** `src/lib/session-insight.ts` computes every figure in one
+   pass (paged past PostgREST's 1000-row cap); `getSessionInsightAction` (tenure read);
+   `session-insight.tsx` renders coverage headline + meter, KPI row, units (workforce
+   units scaled together, gender units on their own line), cabinet by tier with vacant
+   offices, generations (workers vs not, one hue two shades, labelled), access, and
+   transfers. Each panel links to where it's fixed. Verified at 360px (no horizontal
+   scroll) and desktop.
 7. Release MINOR. Coronate the active tenure from the UI.
 8. **Drop migration**, release MAJOR.
 
