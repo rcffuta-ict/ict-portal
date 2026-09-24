@@ -147,7 +147,7 @@ export function HandoverWizard({
     const [saving, setSaving] = useState(false);
     const [confirmText, setConfirmText] = useState("");
     const [submitting, setSubmitting] = useState(false);
-    const [done, setDone] = useState<null | { carried: number; revoked: number }>(null);
+    const [done, setDone] = useState<null | { carried: number; revoked: number; carryError: string | null }>(null);
 
     const session = form.session.trim();
 
@@ -253,7 +253,11 @@ export function HandoverWizard({
             });
             return;
         }
-        setDone({ carried: res.carried ?? 0, revoked: res.revoked ?? 0 });
+        setDone({
+            carried: res.carried ?? 0,
+            revoked: res.revoked ?? 0,
+            carryError: ("carryError" in res ? res.carryError : null) ?? null,
+        });
     };
 
     if (done) {
@@ -728,7 +732,7 @@ function HandoverComplete({
     result,
 }: {
     session: string;
-    result: { carried: number; revoked: number };
+    result: { carried: number; revoked: number; carryError: string | null };
 }) {
     return (
         <div className="flex min-h-full flex-col items-center justify-center bg-emerald-50 p-6 text-center sm:p-8">
@@ -740,6 +744,16 @@ function HandoverComplete({
                 Every generation has advanced. The session is awaiting coronation — record
                 its theme from the Tenure page once it is unveiled.
             </p>
+
+            {result.carryError && (
+                <p
+                    role="alert"
+                    className="mx-auto mt-4 flex max-w-md items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-left text-sm text-amber-900"
+                >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>{result.carryError}</span>
+                </p>
+            )}
 
             <dl className="mx-auto mt-5 max-w-sm space-y-1.5 text-left text-sm">
                 <div className="flex justify-between gap-4 rounded-lg bg-white/70 px-3 py-2">

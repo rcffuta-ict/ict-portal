@@ -11,6 +11,7 @@ import {
 } from "@/lib/access-control";
 import { canReadModule, canWriteModule, getModuleAccessConfig } from "@/lib/module-access";
 import { db } from "@/lib/db";
+import { fetchAll } from "@/lib/fetch-all";
 import { tenureFullLabel } from "@/lib/tenure";
 import { coronationSchema, type CoronationInput } from "@/lib/coronation";
 import { parsePalette } from "@/lib/palette";
@@ -96,10 +97,17 @@ export async function getAdminData() {
                     .order('created_at', { ascending: false })
                 : { data: [] },
             // All profiles (id/gender/class_set) — drives church-wide + generation stats.
-            db.from('profiles').select('id, gender, class_set_id'),
+            // Paged: a single read stops at 1000 rows without an error, and every total
+            // on this page would silently stop growing with it.
+            fetchAll<{ id: string; gender: string | null; class_set_id: string | null }>((from, to) =>
+                db.from('profiles').select('id, gender, class_set_id').order('id').range(from, to),
+            ).then((data) => ({ data })),
             // Unit memberships for the active tenure — drives per-unit + workforce stats.
             activeTenure
-                ? db.from('membership_units').select('profile_id, unit_id').eq('tenure_id', activeTenure.id)
+                ? fetchAll<{ profile_id: string; unit_id: string }>((from, to) =>
+                    db.from('membership_units').select('profile_id, unit_id')
+                        .eq('tenure_id', activeTenure.id).order('id').range(from, to),
+                ).then((data) => ({ data }))
                 : { data: [] },
         ]);
 
@@ -549,11 +557,24 @@ export async function handoverTenureAction(formData: FormData) {
         }
 
         // 4. Carry membership forward, minus the graduating generation.
+        //    The new tenure already exists by now, so a failure here must not abort the
+        //    rest of the handover (appointments, revocation, closing the intent) — it is
+        //    reported instead, on the completion screen and in the handover record.
         let carried = 0;
+        let carryError: string | null = null;
         if (carryMembership && outgoingTenure) {
-            carried = await carryMembershipForward(
-                outgoingTenure.id, newTenure.id, session, membershipActorOf(ctx),
-            );
+            try {
+                const result = await carryMembershipForward(
+                    outgoingTenure.id, newTenure.id, session, membershipActorOf(ctx),
+                );
+                carried = result.inserted;
+                if (result.failed > 0) {
+                    carryError = `${result.failed} membership${result.failed === 1 ? "" : "s"} could not be copied. Those members need adding to their units again.`;
+                }
+            } catch (e: any) {
+                console.error("handover carry-over failed:", e.message);
+                carryError = `Memberships were not carried forward (${e.message}). Units start empty until members are added again.`;
+            }
         }
 
         // 5. Revoke access for outgoing leaders who weren't carried over. Runs against
@@ -590,13 +611,14 @@ export async function handoverTenureAction(formData: FormData) {
                 intentId,
                 ctx,
                 "completed",
-                `Opened ${tenureFullLabel({ session })}. ${carried} membership${carried === 1 ? "" : "s"} carried forward, ${revoked} outgoing login${revoked === 1 ? "" : "s"} revoked.`,
+                `Opened ${tenureFullLabel({ session })}. ${carried} membership${carried === 1 ? "" : "s"} carried forward, ${revoked} outgoing login${revoked === 1 ? "" : "s"} revoked.`
+                    + (carryError ? ` WARNING: ${carryError}` : ""),
             );
         }
 
         // A new active tenure means a new (usually absent) palette for every page.
         revalidatePath('/dashboard', 'layout');
-        return { success: true, tenureId: newTenure.id, carried, revoked };
+        return { success: true, tenureId: newTenure.id, carried, revoked, carryError };
     } catch (e: any) {
         return { success: false, error: e.message };
     }
@@ -616,10 +638,15 @@ async function carryMembershipForward(
     toTenureId: string,
     incomingSession: string,
     actor: MembershipActor,
-): Promise<number> {
-    const { data: sets } = await db
+): Promise<{ inserted: number; failed: number }> {
+    // Every read here must be complete and must not fail quietly: a short profile list
+    // would carry graduates forward as if they were still students, and a short
+    // membership list would leave people out of their units. So reads are paged
+    // (fetchAll) and errors throw — the caller reports them rather than "0 carried".
+    const { data: sets, error: setsError } = await db
         .from("class_sets")
         .select("id, entry_year, is_foundation, level_override");
+    if (setsError) throw new Error(`Could not read generations: ${setsError.message}`);
 
     const graduated = new Set(
         (sets ?? [])
@@ -631,20 +658,24 @@ async function carryMembershipForward(
             .map((s: any) => s.id),
     );
 
-    const { data: profiles } = await db
-        .from("profiles").select("id, class_set_id");
+    const profiles = await fetchAll<{ id: string; class_set_id: string | null }>((from, to) =>
+        db.from("profiles").select("id, class_set_id").order("id").range(from, to),
+    );
     const alumniProfileIds = new Set(
-        (profiles ?? [])
+        profiles
             .filter((p: any) => p.class_set_id && graduated.has(p.class_set_id))
             .map((p: any) => p.id),
     );
 
-    const { data: memberships } = await db
-        .from("membership_units")
-        .select("profile_id, unit_id, role")
-        .eq("tenure_id", fromTenureId);
+    const memberships = await fetchAll<{ profile_id: string; unit_id: string; role: string | null }>((from, to) =>
+        db.from("membership_units")
+            .select("profile_id, unit_id, role")
+            .eq("tenure_id", fromTenureId)
+            .order("id")
+            .range(from, to),
+    );
 
-    const rows = (memberships ?? [])
+    const rows = memberships
         .filter((m: any) => !alumniProfileIds.has(m.profile_id))
         .map((m: any) => ({
             profile_id: m.profile_id,
@@ -653,16 +684,19 @@ async function carryMembershipForward(
             role: m.role ?? "Member",
         }));
 
-    if (!rows.length) return 0;
+    if (!rows.length) return { inserted: 0, failed: 0 };
 
     // Chunked: a fellowship-sized insert in one request is a good way to hit a
     // statement or payload limit at the worst possible moment.
     let inserted = 0;
+    let failed = 0;
     for (let i = 0; i < rows.length; i += 500) {
         const chunk = rows.slice(i, i + 500);
         const { error } = await db.from("membership_units").insert(chunk);
         if (error) {
+            // Counted, not swallowed: the caller tells the VP Admin how many were missed.
             console.error("carryMembershipForward chunk failed:", error.message);
+            failed += chunk.length;
             continue;
         }
         inserted += chunk.length;
@@ -678,7 +712,7 @@ async function carryMembershipForward(
             actor,
         );
     }
-    return inserted;
+    return { inserted, failed };
 }
 
 /**

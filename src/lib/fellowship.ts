@@ -10,6 +10,7 @@
  * authorization of its own. Callers must check permissions first.
  */
 import { db } from "@/lib/db";
+import { fetchAll } from "@/lib/fetch-all";
 import { genderForUnitSlug } from "@/config/fellowship-units";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 
@@ -99,14 +100,17 @@ export interface UnitOverview {
  * reporting that would put "0 members" beside a unit that contains half the fellowship.
  */
 export async function getAllUnitsOverview(tenureId: string | null): Promise<UnitOverview[]> {
-    const [{ data, error }, { data: memberships, error: mError }] = await Promise.all([
+    const [{ data, error }, memberships] = await Promise.all([
         db.from("units").select("*").order("name"),
+        // Paged: every membership row of the tenure, not the first 1000 (fetchAll).
         tenureId
-            ? db.from("membership_units").select("unit_id").eq("tenure_id", tenureId)
-            : Promise.resolve({ data: [] as { unit_id: string }[], error: null }),
+            ? fetchAll<{ unit_id: string }>((from, to) =>
+                db.from("membership_units").select("unit_id")
+                    .eq("tenure_id", tenureId).order("id").range(from, to),
+            )
+            : Promise.resolve([] as { unit_id: string }[]),
     ]);
     if (error) throw new Error(error.message);
-    if (mError) throw new Error(mError.message);
 
     const counts = new Map<string, number>();
     for (const m of memberships ?? []) counts.set(m.unit_id, (counts.get(m.unit_id) ?? 0) + 1);
