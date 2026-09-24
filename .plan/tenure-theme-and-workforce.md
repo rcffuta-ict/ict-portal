@@ -468,13 +468,21 @@ AGENTS.md                                    honorary offices; tenure has no nam
 
 ## Order of work
 
-1. **Migration (MINOR)** — columns, backfill notices, `name` nullable, CHECKs,
-   Secretariat data fix, `membership_events`, `rcf_unit_birthdays`, `'copied'` action.
-   Everything else reads these.
+1. ✅ **Migration (MINOR)** — `20260924095226_tenure_identity_and_workforce.sql`:
+   columns, backfill notices, `name` nullable, CHECKs, Secretariat data fix,
+   `membership_events`, `rcf_birthdays`, `'copied'` action. **The Secretariat config +
+   seed regen moved here from step 3**: CI applies `db/seed/default.sql` right after the
+   migrations, and the old seed would have put the team and its EXCO tag straight back.
+   Rehearsed from zero on local PG16 (CI replays on 17), idempotent on re-run.
+   - Birthdays take **profile ids**, not a unit (`rcf_birthdays(ids, month, year)`):
+     the Brothers'/Sisters' rosters are computed from gender in the app, so the app
+     resolves the roster and SQL only filters by month.
 2. **`src/lib/tenure.ts` + remove every `name` read/write** (table in §1), including
    handover and scripts. Mechanical; must land before any new UI.
-3. **Workforce switch-on** — `comingSoon`, Secretariat config + seed regen. Smallest
-   change; unblocks real use while the rest is built.
+   **Must land before this branch reaches `stage`**: after step 1 the handover and
+   tenure forms can still write a `theme` without `coronated_at`, which the new CHECK
+   refuses.
+3. **Workforce switch-on** — drop `comingSoon`. (Secretariat already done in step 1.)
 4. **Workforce features** — 2a details, 2b birthdays, 2c log, 2d update link.
 5. **Coronation form + palette** — ends with the dashboard in the session's colours.
 6. **Tenure insight page.**
