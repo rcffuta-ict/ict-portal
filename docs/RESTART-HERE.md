@@ -231,9 +231,12 @@ Then create the staging System Admin — **staging only**, the script refuses pr
 pnpm db:ict-coord -- --seed --env local
 ```
 
-That creates **Melchizedek Oracle** `<oracle@rcffuta.test>` and prints a generated
-password. `.test` is an RFC 2606 reserved TLD — it can never resolve or receive mail,
-which is the point.
+That creates **Melchizedek Oracle** `<oracle@rcffuta.test>` with **no password**: sign in
+with that address and the login screen asks you to choose one, exactly as it does for any
+newly appointed leader. Do it straight away on a deployed staging URL — until you do,
+whoever reaches the login screen first with that (public) address gets to choose it.
+`.test` is an RFC 2606 reserved TLD — it can never resolve or receive mail, which is the
+point.
 
 Then check the whole chain holds:
 

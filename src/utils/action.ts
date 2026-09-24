@@ -1,11 +1,16 @@
 "use server"
 
+import { cache } from "react";
 import type { Tenure } from "@/lib/types/portal";
 import { tenureLabel } from "@/lib/tenure";
 import { db } from "@/lib/db";
-import { requireAccess } from "@/lib/access-control";
 
-export async function getActiveTenure(): Promise<Tenure | null> {
+/**
+ * The active tenure, read once per request (almost every loader and gate needs it).
+ * Not exported: this file is "use server", where only async functions may be exported,
+ * and every export is a callable endpoint.
+ */
+const activeTenureOnce = cache(async (): Promise<Tenure | null> => {
     try {
         // Service-role client: RLS is default-deny, so anon reads no longer work.
         const { data } = await db
@@ -19,6 +24,10 @@ export async function getActiveTenure(): Promise<Tenure | null> {
         console.error("Error fetching active tenure:", error);
         return null; // Fallback if no tenure exists
     }
+});
+
+export async function getActiveTenure(): Promise<Tenure | null> {
+    return activeTenureOnce();
 }
 
 /**
@@ -39,61 +48,7 @@ export async function getActiveTenureLabel(): Promise<string | null> {
 // SECURITY & AUTHORIZATION
 // ============================================================================
 
-/**
- * Ensures the current session belongs to an ADMIN (VP Admin / ICT Coordinator /
- * PRESIDENT scope) and returns the service-role client for privileged DB writes.
- * @throws Error if unauthorized.
- */
-export const checkAdminAccess = async () => {
-    await requireAccess("ADMIN"); // throws if not an admin
-    return db;
-};
-
-/**
- * Position-based admin check by email (used where only an email is available).
- *
- * Reads the PRIVILEGE TAGS directly — the same source `rcf_profile_context` uses — so
- * this can no longer disagree with the rest of the system. It previously tested the
- * `is_default` / `category` columns, which migration 0013 dropped: both were
- * hand-maintained duplicates of what the tags already say.
- *
- * SYSADMIN (ICT Coordinator), PRESIDENT and CENTRAL (the VPs) are the church-wide
- * offices. Deliberately NOT scoped to the active tenure, matching the previous
- * behaviour of this function.
- */
-export const checkIsAdminByEmail = async (email: string) => {
-    if (!email) return false;
-
-    try {
-        const { data: profile } = await db
-            .from("profiles")
-            .select("id")
-            .eq("email", email)
-            .maybeSingle();
-
-        if (!profile) return false;
-
-        const { data: rows, error } = await db
-            .from("leadership")
-            .select("id, position:leadership_positions(position_privileges(privilege))")
-            .eq("profile_id", profile.id)
-            // Ended appointments confer nothing -- see migration 0014.
-            .is("ended_at", null);
-
-        if (error) {
-            console.error("checkIsAdminByEmail: leadership lookup failed:", error.message);
-            return false;
-        }
-
-        const ADMIN_TAGS = new Set(["SYSADMIN", "PRESIDENT", "CENTRAL"]);
-
-        return (rows ?? []).some((r) => {
-            const pos = Array.isArray(r.position) ? r.position[0] : r.position;
-            const privileges = (pos?.position_privileges ?? []) as { privilege: string }[];
-            return privileges.some((pp) => ADMIN_TAGS.has(pp.privilege));
-        });
-    } catch (error) {
-        console.error("checkIsAdminByEmail failed:", error);
-        return false;
-    }
-};
+// Removed: `checkAdminAccess` (returned the service-role client from a callable
+// server action) and `checkIsAdminByEmail` (authorized by an email the CALLER supplied,
+// so anyone could claim to be an admin by naming one). Authorize from the session:
+// requireAccess / requireAdminWrite in src/lib/access-control.ts.

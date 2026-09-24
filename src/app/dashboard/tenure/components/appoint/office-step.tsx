@@ -58,10 +58,26 @@ export function OfficeStep({
         return map;
     }, [leadership]);
 
+    // Offices that already have a lead are not offered: there is one lead per office
+    // (enforced in the database), so picking one could only end in a refusal. Replacing
+    // a holder starts from the Roster — Replace ends the appointment and comes back here
+    // with the office chosen.
+    const filledIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (const row of leadership ?? []) {
+            if (row?.position_id && row.is_lead !== false) ids.add(row.position_id);
+        }
+        return ids;
+    }, [leadership]);
+    const hiddenCount = (positions ?? []).filter(
+        (p: any) => p.is_active !== false && filledIds.has(p.id),
+    ).length;
+
     const grouped = useMemo(() => {
         const needle = query.trim().toLowerCase();
         const active = (positions ?? [])
             .filter((p: any) => p.is_active !== false)
+            .filter((p: any) => !filledIds.has(p.id))
             .filter((p: any) =>
                 !needle ||
                 `${p.title} ${p.alias ?? ""} ${p.slug ?? ""}`.toLowerCase().includes(needle),
@@ -75,7 +91,7 @@ export function OfficeStep({
         return [...TIER_ORDER, "OTHER"]
             .filter((tier) => buckets.has(tier))
             .map((tier) => ({ tier, label: TIER_LABEL[tier], offices: buckets.get(tier)! }));
-    }, [positions, query]);
+    }, [positions, query, filledIds]);
 
     const total = grouped.reduce((sum, g) => sum + g.offices.length, 0);
 
@@ -87,6 +103,12 @@ export function OfficeStep({
                     Pick the office being filled. The next step narrows the fellowship down
                     to one generation.
                 </p>
+                {hiddenCount > 0 && (
+                    <p className="mt-2 text-xs text-slate-500">
+                        {hiddenCount} office{hiddenCount === 1 ? " is" : "s are"} already filled and
+                        not shown. To change who holds one, use <strong>Replace</strong> on the Roster.
+                    </p>
+                )}
             </div>
 
             <FormInput
@@ -100,7 +122,7 @@ export function OfficeStep({
 
             {total === 0 && (
                 <p className="rounded-xl border-2 border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
-                    No office matches “{query}”.
+                    {query.trim() ? <>No vacant office matches “{query}”.</> : "Every office is filled."}
                 </p>
             )}
 

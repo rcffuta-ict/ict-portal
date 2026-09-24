@@ -406,7 +406,7 @@ async function main() {
     section("Done");
     ok(`${env.ref} has an active tenure, its generations, and a System Admin${withMembers ? ", and a roster" : ""}.`);
     blank();
-    info("Next:  pnpm dev   — sign in with the address and password above.");
+    info("Next:  pnpm dev   — sign in with the address above and choose the password on the login screen.");
     blank();
     if (!withMembers) {
         info(c.grey("No members were seeded. Add a test roster of 110 with:"));

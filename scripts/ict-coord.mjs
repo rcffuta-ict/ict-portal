@@ -21,10 +21,20 @@
  *              seeding a fictional one there would put a working System Admin login
  *              into a live system under a name nobody can hold accountable.
  *
+ *              The login is created WITHOUT a password, exactly as appointing a leader
+ *              in the portal does (src/lib/auth/provision.ts): whoever signs in first
+ *              as the coordinator chooses it on the login screen. Nothing readable is
+ *              printed or kept anywhere. `--password` still sets one directly, for a
+ *              scripted setup that cannot click through a first login.
+ *
+ *              The address below is public (it is in this file), so on a deployed
+ *              staging URL, sign in and set the password right after a reset -- until
+ *              then, the first visitor to try that address would get to choose it.
+ *
  * Usage:
  *   node scripts/ict-coord.mjs                         # check; pick an environment
  *   node scripts/ict-coord.mjs --env production        # check production
- *   node scripts/ict-coord.mjs --seed                  # staging default, random password
+ *   node scripts/ict-coord.mjs --seed                  # staging default, password set at first sign-in
  *   node scripts/ict-coord.mjs --seed --password 'x'   # staging default, chosen password
  */
 import { createClient } from "@supabase/supabase-js";
@@ -155,14 +165,18 @@ function report({ position, tenure, privileges, holders }) {
     if (lead) {
         checks.push({
             check: "The holder can sign in",
-            pass: Boolean(lead.login?.is_active && lead.login?.password_hash),
+            // An active row is a working login: a null hash is the first-login state,
+            // where the login screen asks the holder to choose a password.
+            pass: Boolean(lead.login?.is_active),
             note: !lead.login
                 ? "no profile_login row"
                 : !lead.login.is_active
                     ? "login is deactivated"
                     : lead.login.last_login_at
                         ? `last signed in ${new Date(lead.login.last_login_at).toISOString().slice(0, 10)}`
-                        : "never signed in (password set on first login)",
+                        : lead.login.password_hash
+                            ? "never signed in"
+                            : "no password yet — chosen at first sign-in",
         });
     }
 
@@ -218,7 +232,9 @@ async function seed(db, password) {
         info("Already holds the position this tenure");
     }
 
-    const password_hash = await hashPassword(password);
+    // No password: the coordinator sets one on first sign-in, as every appointed leader
+    // does. A null hash is what the login screen reads as "first login".
+    const password_hash = password ? await hashPassword(password) : null;
     const { data: login } = await db.from("profile_login").select("id").eq("profile_id", profile.id).maybeSingle();
     if (login) {
         const { error } = await db
@@ -226,13 +242,13 @@ async function seed(db, password) {
             .update({ password_hash, is_active: true, failed_attempts: 0, locked_until: null })
             .eq("id", login.id);
         if (error) throw error;
-        ok("Password reset");
+        ok(password ? "Password reset" : "Password cleared — set at first sign-in");
     } else {
         const { error } = await db
             .from("profile_login")
             .insert({ profile_id: profile.id, password_hash, is_active: true, granted_by: profile.id });
         if (error) throw error;
-        ok("Login provisioned");
+        ok(password ? "Login provisioned" : "Login provisioned — no password until first sign-in");
     }
 
     return { email, password };
@@ -267,14 +283,17 @@ async function main() {
         ]);
         blank();
 
-        const password = flagValue("password") ?? randomBytes(9).toString("base64url");
+        const password = flagValue("password") ?? null;
         const result = await seed(db, password);
 
         blank();
         section("Sign in with");
-        kv([["Email", c.bold(result.email)], ["Password", c.bold(result.password)]]);
-        if (!flagValue("password")) {
-            info(c.grey("Randomly generated — copy it now, it is not stored anywhere in readable form."));
+        if (result.password) {
+            kv([["Email", c.bold(result.email)], ["Password", c.bold(result.password)]]);
+        } else {
+            kv([["Email", c.bold(result.email)], ["Password", "you choose it — the login screen asks on first sign-in"]]);
+            info(c.yellow("Sign in and set it now: until you do, whoever reaches the login screen first with"));
+            info(c.yellow("this address gets to choose it."));
         }
         blank();
     }

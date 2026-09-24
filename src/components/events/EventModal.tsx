@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { createEvent, updateEvent } from "@/app/events/actions";
-import { useProfileStore } from "@/lib/stores/profile.store";
 import {
     EVENT_TIME_ZONE_LABEL,
     EventConfig,
@@ -105,7 +104,6 @@ function Toggle({
 export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const user = useProfileStore((e) => e.user);
     const reduceMotion = useReducedMotion();
     const isEditing = !!event;
 
@@ -203,8 +201,8 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
 
             const result =
                 isEditing && event
-                    ? await updateEvent(event.id, payload, user?.profile.email || "")
-                    : await createEvent(payload, user?.profile.email || "");
+                    ? await updateEvent(event.id, payload)
+                    : await createEvent(payload);
 
             if (result.success) {
                 onSuccess?.();

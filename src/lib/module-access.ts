@@ -18,10 +18,12 @@
  *
  * Server-only: reads the service-role client. Never import into a client component.
  */
+import { cache } from "react";
 import { db } from "@/lib/db";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 import {
     MODULES,
+    isPolicyFixedModule,
     type ModuleId,
     type WriteScope,
     type ModuleAccessRow,
@@ -39,8 +41,11 @@ function emptyRow(module: ModuleId): ModuleAccessRow {
 /**
  * Read the module_access config, keyed by module. Missing rows fall back to an empty
  * (deny-all-but-admins) row so callers can index every module safely.
+ *
+ * Cached for the rest of the request: every gated action reads it, and a page calls
+ * several. Treat the result as read-only — it is shared within the request.
  */
-export async function getModuleAccessConfig(): Promise<ModuleAccessConfig> {
+export const getModuleAccessConfig = cache(async (): Promise<ModuleAccessConfig> => {
     const config = Object.fromEntries(
         MODULES.map((m) => [m, emptyRow(m)]),
     ) as ModuleAccessConfig;
@@ -66,7 +71,7 @@ export async function getModuleAccessConfig(): Promise<ModuleAccessConfig> {
     }
 
     return config;
-}
+});
 
 /**
  * The set of ACCESS TOKENS a context "holds" from its active-tenure leadership. A config
@@ -103,6 +108,9 @@ export function canReadModule(
     config: ModuleAccessConfig,
 ): boolean {
     if (ctx.isAdmin) return true;
+    // Fixed by policy (see POLICY_FIXED_MODULES): the admin tier plus the VPs, whatever
+    // the Settings row says.
+    if (isPolicyFixedModule(module)) return heldTokens(ctx).has("CENTRAL");
     return matches(heldTokens(ctx), config[module].readSlugs);
 }
 
@@ -118,6 +126,8 @@ export function canWriteModule(
 ): boolean {
     if (ctx.isPresident) return false;
     if (ctx.isSysAdmin || ctx.isVpAdmin) return true;
+    // Fixed by policy: nobody beyond the two above, whatever the Settings row says.
+    if (isPolicyFixedModule(module)) return false;
     return matches(heldTokens(ctx), config[module].writeSlugs);
 }
 

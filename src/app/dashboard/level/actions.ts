@@ -77,8 +77,8 @@ const emptyTally = emptyGenderTally;
 
 export async function getLevelModuleData() {
     try {
-        const ctx = await requireModuleRead("level");
-        const tenure = await getActiveTenure();
+        // Together: the tenure is only used once the gate has passed.
+        const [ctx, tenure] = await Promise.all([requireModuleRead("level"), getActiveTenure()]);
         const session = tenure?.session ?? null;
         const seesAll = seesAllLevels(ctx);
         const canWriteAny = ctx.isSysAdmin || ctx.isVpAdmin; // write-bypass tier

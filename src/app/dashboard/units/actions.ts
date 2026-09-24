@@ -22,6 +22,7 @@ import {
     requireModuleRead,
     requireModuleWrite,
     requireAccess,
+    requireAdminWrite,
     requireVpAdmin,
     canManageUnit,
     canManageLevel,
@@ -456,7 +457,7 @@ export async function appointLeaderAction(input: {
     residentialZoneId?: string;
 }) {
     try {
-        const admin = await requireAccess("ADMIN");
+        const admin = await requireAdminWrite();
         const tenure = await getActiveTenure();
         if (!tenure) return { success: false, error: "No active tenure." };
 
@@ -524,7 +525,7 @@ export async function appointLeaderAction(input: {
  */
 export async function resetLeaderLoginAction(leaderProfileId: string) {
     try {
-        await requireAccess("ADMIN");
+        await requireAdminWrite();
         const { data: login } = await db
             .from("profile_login")
             .select("id")
@@ -569,7 +570,7 @@ export async function assignPositionToUnitAction(
     roleType: "leader" | "assistant",
 ) {
     try {
-        await requireAccess("ADMIN");
+        await requireAdminWrite();
         const { data: existing } = await db
             .from("unit_positions")
             .select("id")
@@ -603,7 +604,7 @@ export async function assignPositionToUnitAction(
 
 export async function removePositionFromUnitAction(unitPositionId: string) {
     try {
-        await requireAccess("ADMIN");
+        await requireAdminWrite();
         const { error } = await db
             .from("unit_positions")
             .delete()
@@ -904,8 +905,11 @@ export async function getUnitBirthdaysAction(unitId: string, month: number, year
         const tenure = await getActiveTenure();
         if (!tenure) return { success: true as const, data: [] };
 
-        const ids = (await getUnitMembers(unitId, tenure.id)).map((m) => m.id);
+        const members = await getUnitMembers(unitId, tenure.id);
+        const ids = members.map((m) => m.id);
         if (ids.length === 0) return { success: true as const, data: [] };
+        // The roster is already in hand, so the card's details cost no extra query.
+        const byId = new Map(members.map((m: any) => [m.id as string, m]));
 
         const { data, error } = await db.rpc("rcf_birthdays", {
             p_profile_ids: ids,
@@ -916,12 +920,19 @@ export async function getUnitBirthdaysAction(unitId: string, month: number, year
 
         return {
             success: true as const,
-            data: (data ?? []).map((r: any) => ({
-                profileId: r.profile_id as string,
-                name: [r.first_name, r.last_name].filter(Boolean).join(" "),
-                avatarUrl: (r.avatar_url as string | null) ?? null,
-                day: r.celebrate_day as number,
-            })),
+            data: (data ?? []).map((r: any) => {
+                const m: any = byId.get(r.profile_id);
+                return {
+                    profileId: r.profile_id as string,
+                    firstName: (r.first_name as string | null) ?? null,
+                    lastName: (r.last_name as string | null) ?? null,
+                    name: [r.first_name, r.last_name].filter(Boolean).join(" "),
+                    avatarUrl: (r.avatar_url as string | null) ?? null,
+                    day: r.celebrate_day as number,
+                    department: (m?.department as string | null) ?? null,
+                    phone: (m?.phone_number as string | null) ?? null,
+                };
+            }),
         };
     } catch (e: any) {
         return { success: false as const, error: e.message, data: [] };

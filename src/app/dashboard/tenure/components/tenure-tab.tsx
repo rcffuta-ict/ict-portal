@@ -49,28 +49,32 @@ export function TenureTab({ data, onSuccess, onNavigate }: any) {
                 <>
                     <SessionInsight refreshToken={data} onNavigate={onNavigate} />
 
-                    {/* Handover / close */}
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                        <div className="flex items-center gap-4">
-                            <div className="rounded-full bg-amber-100 p-3 text-amber-700">
-                                <ArrowRightLeft className="h-5 w-5" />
+                    {/* Handover / close — only for those who can run one. The server refuses
+                        everyone else anyway; offering the button just led the President
+                        to a "Restricted" page. */}
+                    {data?.canHandover && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                            <div className="flex items-center gap-4">
+                                <div className="rounded-full bg-amber-100 p-3 text-amber-700">
+                                    <ArrowRightLeft className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-amber-900">Handover & Close Tenure</h4>
+                                    <p className="text-sm text-amber-700/80">
+                                        Archives this session and opens the next. Every handover is
+                                        recorded, so you can pause and resume — and successors can
+                                        see what was done.
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <h4 className="font-bold text-amber-900">Handover & Close Tenure</h4>
-                                <p className="text-sm text-amber-700/80">
-                                    Archives this session and opens the next. Every handover is
-                                    recorded, so you can pause and resume — and successors can
-                                    see what was done.
-                                </p>
-                            </div>
+                            <Link
+                                href="/dashboard/tenure/handover"
+                                className="shrink-0 rounded-lg bg-amber-600 px-6 py-2.5 text-center text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700"
+                            >
+                                Handing Over
+                            </Link>
                         </div>
-                        <Link
-                            href="/dashboard/tenure/handover"
-                            className="shrink-0 rounded-lg bg-amber-600 px-6 py-2.5 text-center text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700"
-                        >
-                            Handing Over
-                        </Link>
-                    </div>
+                    )}
                 </>
             ) : (
                 <div className="mx-auto max-w-2xl">

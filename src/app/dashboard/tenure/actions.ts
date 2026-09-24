@@ -11,6 +11,7 @@ import {
 } from "@/lib/access-control";
 import { canReadModule, canWriteModule, getModuleAccessConfig } from "@/lib/module-access";
 import { db } from "@/lib/db";
+import { getActiveTenure } from "@/utils/action";
 import { fetchAll } from "@/lib/fetch-all";
 import { tenureFullLabel } from "@/lib/tenure";
 import { coronationSchema, type CoronationInput } from "@/lib/coronation";
@@ -18,7 +19,7 @@ import { parsePalette } from "@/lib/palette";
 import { computeSessionInsight } from "@/lib/session-insight";
 import { getTenurePresidentName } from "@/lib/backup";
 import type { ProfileContext } from "@/lib/auth/profile-context";
-import { computeLevel, LEVELS } from "@/lib/levels";
+import { computeLevel, isEditableGenerationLevel, LEVELS } from "@/lib/levels";
 import { validatePrivilegeSet, derivePositionKind, normalizePrivileges } from "@/lib/privileges";
 import {
     ensureLoginProvisioned,
@@ -58,14 +59,10 @@ export async function getAdminData() {
     try {
         // READ is gated by the tenure module's access config (default: CENTRAL);
         // the mutations below require WRITE access (default: vp-admin; admins bypass).
-        const ctx = await requireModuleRead("tenure");
-
-        // 1. Get Active Tenure
-        const { data: activeTenure } = await db
-            .from('tenures')
-            .select('*')
-            .eq('is_active', true)
-            .single();
+        // 1. The gate and the active tenure, together: the tenure is only returned if
+        //    the gate passes (requireModuleRead throws otherwise), so reading it early
+        //    exposes nothing and saves a round trip.
+        const [ctx, activeTenure] = await Promise.all([requireModuleRead("tenure"), getActiveTenure()]);
 
         // 2. Fetch Master Data. We fetch positions directly (not via the SDK) so we
         //    control the columns we need (slug, alias, tier, is_protected).
@@ -84,8 +81,11 @@ export async function getAdminData() {
                 // errors, which emptied the cabinet roster and made every office read
                 // as vacant.
                 ? db.from('leadership')
+                    // `position_id` is what the Appoint screen matches holders to offices
+                    // by. Without it every office read as "Vacant" and step 3 never
+                    // knew an office already had a lead.
                     .select(`
-                        id, is_lead, unit_id, units(name, type, is_workforce),
+                        id, is_lead, position_id, unit_id, units(name, type, is_workforce),
                         class_set_id, class_sets(family_name, entry_year),
                         position:leadership_positions(title, tier, slug, position_privileges(privilege, scope)),
                         profile:profiles!leadership_profile_id_fkey(id, first_name, last_name, avatar_url, department, phone_number, gender)
@@ -231,6 +231,9 @@ export async function getAdminData() {
             // Drives UI affordances only — every catalogue mutation re-checks
             // requireVpAdmin() server-side.
             canEditCatalogue: ctx.isVpAdmin === true || ctx.isSysAdmin === true,
+            // Handover is the VP Admin's and the System Admin's alone (requireVpAdmin on
+            // every handover action and page) — never the President, who only views.
+            canHandover: (ctx.isVpAdmin === true || ctx.isSysAdmin === true) && ctx.isPresident !== true,
             // Drives the coronation / edit buttons only; coronateTenureAction re-checks.
             canWriteTenure: canWriteModule(ctx, "tenure", await getModuleAccessConfig()),
         };
@@ -916,6 +919,39 @@ export async function createGenerationAction(formData: FormData) {
         if (error) return { success: false, error: error.message };
 
         revalidatePath('/dashboard/tenure');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Rename a generation — 200 Level and above only (isEditableGenerationLevel).
+ *
+ * The level is worked out here, from the generation's own override or its entry year
+ * against the ACTIVE session, rather than trusted from the client: a stale screen
+ * could otherwise rename a set that has since become, say, 100 Level.
+ */
+export async function updateGenerationAction(classSetId: string, familyName: string) {
+    try {
+        await requireModuleWrite("tenure");
+        const name = (familyName || "").trim();
+        if (name.length < 2) return { success: false, error: "Enter the generation's name." };
+        if (name.length > 60) return { success: false, error: "Keep the name under 60 characters." };
+
+        const [{ data: set }, tenure] = await Promise.all([
+            db.from("class_sets").select("id, entry_year, is_foundation, level_override").eq("id", classSetId).maybeSingle(),
+            getActiveTenure(),
+        ]);
+        if (!set) return { success: false, error: "That generation doesn't exist." };
+        const level = set.level_override || computeLevel(set.entry_year, set.is_foundation, tenure?.session ?? null);
+        if (!isEditableGenerationLevel(level)) {
+            return { success: false, error: `${level ?? "This"} generation can't be edited here — only 200 Level and above.` };
+        }
+
+        const { error } = await db.from("class_sets").update({ family_name: name }).eq("id", classSetId);
+        if (error) return { success: false, error: error.message };
+        revalidatePath("/dashboard/tenure");
         return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };

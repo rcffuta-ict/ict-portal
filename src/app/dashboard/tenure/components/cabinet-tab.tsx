@@ -18,6 +18,7 @@ import {
     Trash2,
     Loader2,
     Pencil,
+    RefreshCw,
     X,
     ChevronRight,
 } from "lucide-react";
@@ -34,7 +35,17 @@ import { tenureFullLabel } from "@/lib/tenure";
 
 export function CabinetTab({ data, onSuccess }: any) {
     const [mode, setMode] = useState<"LIST" | "APPOINT" | "CONFIGURE">("LIST");
+    // The office being replaced: set by Replace on the Roster, so Appoint opens on it.
+    const [replacing, setReplacing] = useState<any>(null);
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
+    // Appointing and revoking go through requireModuleWrite("tenure") on the server;
+    // this only hides what would be refused — the President, for one, views only.
+    const canAppoint = !!data?.canWriteTenure;
+
+    const replace = (office: any) => {
+        setReplacing(office);
+        setMode("APPOINT");
+    };
 
     return (
         <>
@@ -56,10 +67,15 @@ export function CabinetTab({ data, onSuccess }: any) {
                                 ["APPOINT", UserCheck, "Appoint"],
                                 ["CONFIGURE", Settings, "Roles"],
                             ] as const
-                        ).map(([m, Icon, label]) => (
+                        ).filter(([m]) => m !== "APPOINT" || canAppoint).map(([m, Icon, label]) => (
                             <button
                                 key={m}
-                                onClick={() => setMode(m)}
+                                type="button"
+                                aria-pressed={mode === m}
+                                onClick={() => {
+                                    setMode(m);
+                                    setReplacing(null);
+                                }}
                                 className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${
                                     mode === m
                                         ? "bg-rcf-navy text-white shadow-sm"
@@ -74,13 +90,22 @@ export function CabinetTab({ data, onSuccess }: any) {
 
                 <div className="p-0 sm:p-8">
                     {mode === "LIST" && (
-                        <RosterView data={data} onSuccess={onSuccess} showAlert={showAlert} />
-                    )}
-                    {mode === "APPOINT" && (
-                        <AppointmentView
+                        <RosterView
                             data={data}
+                            onSuccess={onSuccess}
+                            showAlert={showAlert}
+                            canRevoke={canAppoint}
+                            onReplaced={replace}
+                        />
+                    )}
+                    {mode === "APPOINT" && canAppoint && (
+                        <AppointmentView
+                            key={replacing?.id ?? "new"}
+                            data={data}
+                            initialOffice={replacing}
                             onSuccess={() => {
                                 onSuccess();
+                                setReplacing(null);
                                 setMode("LIST");
                             }}
                             showAlert={showAlert}
@@ -127,7 +152,7 @@ function KeepHistoryChoice({ onChange }: { onChange: (keep: boolean) => void }) 
 }
 
 // --- SUB-COMPONENT 1: ROSTER ---
-function RosterView({ data, onSuccess, showAlert }: any) {
+function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) {
     const leaders = data?.leadership || [];
     const [search, setSearch] = useState("");
 
@@ -142,22 +167,33 @@ function RosterView({ data, onSuccess, showAlert }: any) {
     // would otherwise read whatever the checkbox was set to BEFORE the admin touched it.
     const keepHistoryRef = useRef(true);
 
-    const handleRevoke = async (leader: any) => {
+    /**
+     * End an appointment. With `thenReplace`, the Appoint screen opens next on the same
+     * office — replacing a lead is "end this one, appoint that one", and the office is
+     * hidden from Appoint while it is filled, so this is the way in.
+     */
+    const handleRevoke = async (leader: any, thenReplace = false) => {
         keepHistoryRef.current = true;
         const who = `${leader.profile.first_name} ${leader.profile.last_name}`;
         const office = leader.position?.alias || leader.position?.title || "this office";
+        const position = (data?.positions ?? []).find((p: any) => p.id === leader.position_id);
 
         showAlert({
             type: "warning",
-            title: "End this appointment?",
+            title: thenReplace ? `Replace ${who}?` : "End this appointment?",
             message: `${who} will stop holding ${office} and lose any access it granted, `
-                + "effective immediately.",
-            confirmText: "End appointment",
+                + "effective immediately."
+                + (thenReplace ? " You'll then choose who takes the office." : ""),
+            confirmText: thenReplace ? "End and choose replacement" : "End appointment",
             children: <KeepHistoryChoice onChange={(v) => { keepHistoryRef.current = v; }} />,
             onConfirm: async () => {
                 const res = await removeUnitLeaderAction(leader.id, keepHistoryRef.current);
-                if (res.success) onSuccess();
-                else showAlert({ type: "error", message: res.error });
+                if (!res.success) {
+                    showAlert({ type: "error", message: res.error });
+                    return;
+                }
+                onSuccess();
+                if (thenReplace && position) onReplaced(position);
             },
         });
     };
@@ -235,13 +271,32 @@ function RosterView({ data, onSuccess, showAlert }: any) {
                                     />
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <button
-                                        onClick={() => handleRevoke(l)}
-                                        className="text-slate-300 hover:text-red-500 transition-colors p-2"
-                                        aria-label="Revoke leadership"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
+                                    {canRevoke ? (
+                                        <div className="flex justify-end gap-2">
+                                            {/* Replace only for a lead: an assistant's
+                                                office stays open for others anyway. */}
+                                            {l.is_lead !== false && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRevoke(l, true)}
+                                                    aria-label={`Replace ${l.profile.first_name} ${l.profile.last_name} as ${l.position.title}`}
+                                                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+                                                >
+                                                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Replace
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRevoke(l)}
+                                                aria-label={`Revoke ${l.profile.first_name} ${l.profile.last_name} as ${l.position.title}`}
+                                                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Revoke
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <span className="text-xs text-slate-400">View only</span>
+                                    )}
                                 </td>
                             </tr>
                         ))}
@@ -266,8 +321,9 @@ function RosterView({ data, onSuccess, showAlert }: any) {
  * knows which level to expect, and the member list knows which offices its candidates
  * already hold.
  */
-function AppointmentView({ data, onSuccess, showAlert }: any) {
-    const [office, setOffice] = useState<any>(null);
+function AppointmentView({ data, onSuccess, showAlert, initialOffice }: any) {
+    // Replace from the Roster opens here with the office already chosen.
+    const [office, setOffice] = useState<any>(initialOffice ?? null);
     const [generation, setGeneration] = useState<any>(null);
     const [submitting, setSubmitting] = useState(false);
 
@@ -381,6 +437,9 @@ function AppointmentView({ data, onSuccess, showAlert }: any) {
 
 // --- SUB-COMPONENT 3: ROLES / CONFIGURE ---
 function ConfigurationView({ data, onSuccess, showAlert }: any) {
+    // Every control here is VP Admin / System Admin only on the server (requireVpAdmin).
+    // Everyone else — the President included — gets the same table, read-only.
+    const canEdit = !!data?.canEditCatalogue;
     const units = (data?.units ?? []).map((u: any) => ({
         id: u.id,
         name: u.name,
@@ -421,12 +480,14 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
                         The one office that can legitimately be missing is a new unit&rsquo;s
                         Executive.
                     </p>
-                    <Link
-                        href="/dashboard/tenure/offices/new"
-                        className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-rcf-navy px-4 text-sm font-bold text-white transition-opacity hover:opacity-90"
-                    >
-                        Create an Executive office
-                    </Link>
+                    {canEdit && (
+                        <Link
+                            href="/dashboard/tenure/offices/new"
+                            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-rcf-navy px-4 text-sm font-bold text-white transition-opacity hover:opacity-90"
+                        >
+                            Create an Executive office
+                        </Link>
+                    )}
                     <p className="text-[11px] text-slate-400">
                         Privileges for an office that already exists are edited in the table
                         beside this.
@@ -466,35 +527,41 @@ function ConfigurationView({ data, onSuccess, showAlert }: any) {
                                             />
                                         </td>
                                         <td className="px-4 py-3 align-top">
-                                            <div className="flex items-center justify-end gap-3">
-                                                {!isSysAdmin && (
-                                                    <button
-                                                        onClick={() =>
-                                                            setEditing({
-                                                                ...pos,
-                                                                _privileges: normalizePrivileges(
-                                                                    pos.position_privileges,
-                                                                ),
-                                                            })
-                                                        }
-                                                        title="Edit privileges"
-                                                        className="text-xs font-bold text-rcf-navy hover:text-rcf-navy-light flex items-center gap-1"
-                                                    >
-                                                        <Pencil className="h-3 w-3" /> Edit
-                                                    </button>
-                                                )}
-                                                <button
-                                                    onClick={() => toggleStatus(pos.id, pos.is_active, pos)}
-                                                    className={`text-xs font-bold flex items-center gap-1 ${
-                                                        pos.is_active
-                                                            ? "text-green-600 hover:text-green-800"
-                                                            : "text-slate-400 hover:text-slate-600"
-                                                    }`}
-                                                >
-                                                    <Power className="h-3 w-3" />
+                                            {!canEdit ? (
+                                                <span className={`flex justify-end text-xs font-bold ${pos.is_active ? "text-green-600" : "text-slate-400"}`}>
                                                     {pos.is_active ? "Active" : "Inactive"}
-                                                </button>
-                                            </div>
+                                                </span>
+                                            ) : (
+                                                <div className="flex items-center justify-end gap-3">
+                                                    {!isSysAdmin && (
+                                                        <button
+                                                            onClick={() =>
+                                                                setEditing({
+                                                                    ...pos,
+                                                                    _privileges: normalizePrivileges(
+                                                                        pos.position_privileges,
+                                                                    ),
+                                                                })
+                                                            }
+                                                            title="Edit privileges"
+                                                            className="text-xs font-bold text-rcf-navy hover:text-rcf-navy-light flex items-center gap-1"
+                                                        >
+                                                            <Pencil className="h-3 w-3" /> Edit
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => toggleStatus(pos.id, pos.is_active, pos)}
+                                                        className={`text-xs font-bold flex items-center gap-1 ${
+                                                            pos.is_active
+                                                                ? "text-green-600 hover:text-green-800"
+                                                                : "text-slate-400 hover:text-slate-600"
+                                                        }`}
+                                                    >
+                                                        <Power className="h-3 w-3" />
+                                                        {pos.is_active ? "Active" : "Inactive"}
+                                                    </button>
+                                                </div>
+                                            )}
                                         </td>
                                     </tr>
                                 );
