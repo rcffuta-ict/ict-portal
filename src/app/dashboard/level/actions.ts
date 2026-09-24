@@ -283,7 +283,9 @@ export async function getMemberDetailAction(profileId: string) {
     try {
         const ctx = await requireModuleRead("level");
         const { data: prof } = await db
-            .from("profiles").select("class_set_id").eq("id", profileId).maybeSingle();
+            // `dob` here, not from the context: rcf_profile_context doesn't carry it, and
+            // the member page's "Date of birth" row read empty for everyone.
+            .from("profiles").select("class_set_id, dob").eq("id", profileId).maybeSingle();
         if (!prof) return { success: false as const, error: "Member not found.", canWrite: false };
         if (prof.class_set_id == null || !(await canReadLevel(ctx, prof.class_set_id))) {
             return { success: false as const, error: "You don't have access to this member.", canWrite: false };
@@ -293,7 +295,12 @@ export async function getMemberDetailAction(profileId: string) {
         // `canWrite` drives the member-page update-link control only; the invite action
         // re-checks `canManageLevel` itself, so this flag is UI convenience, not a gate.
         const canWrite = await canManageLevel(ctx, prof.class_set_id);
-        return { success: true as const, data: context, canWrite, classSetId: prof.class_set_id };
+        return {
+            success: true as const,
+            data: { ...context, profile: { ...context.profile, dob: prof.dob ?? null } },
+            canWrite,
+            classSetId: prof.class_set_id,
+        };
     } catch (e: any) {
         return { success: false as const, error: e.message, canWrite: false };
     }

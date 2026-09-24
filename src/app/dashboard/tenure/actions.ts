@@ -25,6 +25,8 @@ import {
     ensureLoginProvisioned,
     deprovisionLoginIfUnappointed,
     applyPositionLoginPolicy,
+    resetLoginPassword,
+    revokeAllSessions,
 } from "@/lib/auth/provision";
 import { positionGrantsLogin } from "@/lib/positions";
 import {
@@ -234,6 +236,8 @@ export async function getAdminData() {
             // Handover is the VP Admin's and the System Admin's alone (requireVpAdmin on
             // every handover action and page) — never the President, who only views.
             canHandover: (ctx.isVpAdmin === true || ctx.isSysAdmin === true) && ctx.isPresident !== true,
+            // Same group as handover: resetting a leader's login (resetLeaderLoginAction).
+            canResetLogins: (ctx.isVpAdmin === true || ctx.isSysAdmin === true) && ctx.isPresident !== true,
             // Drives the coronation / edit buttons only; coronateTenureAction re-checks.
             canWriteTenure: canWriteModule(ctx, "tenure", await getModuleAccessConfig()),
         };
@@ -922,6 +926,52 @@ export async function createGenerationAction(formData: FormData) {
         return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Reset a leader's login: their password is cleared, so the next time they sign in
+ * with their email the login screen asks them to choose a new one — the same first-login
+ * step a new appointee sees. No link, no temporary password to pass around.
+ *
+ * Also unlocks the account (a leader who forgot their password has usually locked it by
+ * guessing) and ends every open session. Ending sessions matters when the reset is
+ * because someone ELSE had the password: otherwise that person's session would outlive
+ * the reset.
+ *
+ * VP Admin and System Admin only (requireVpAdmin) — never the President, who views.
+ */
+export async function resetLeaderLoginAction(profileId: string) {
+    try {
+        const ctx = await requireVpAdmin();
+        const { data: target } = await db
+            .from("profiles")
+            .select("id, first_name, last_name, profile_login(id)")
+            .eq("id", profileId)
+            .maybeSingle();
+        const login = Array.isArray(target?.profile_login) ? target?.profile_login[0] : target?.profile_login;
+        if (!target || !login) {
+            return { success: false as const, error: "This person doesn't have a portal login to reset." };
+        }
+
+        await resetLoginPassword(profileId);
+        const ended = await revokeAllSessions(profileId, "login_reset");
+
+        const actor = actorOf(ctx);
+        await db.from("admin_audit_log").insert({
+            actor_profile_id: actor.id,
+            actor_name: actor.name,
+            target_profile_id: profileId,
+            target_name: [target.first_name, target.last_name].filter(Boolean).join(" ") || null,
+            action: "login.reset",
+            field: "password",
+            old_value: null,
+            new_value: null,
+        });
+
+        return { success: true as const, sessionsEnded: ended };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
     }
 }
 

@@ -20,10 +20,9 @@ import {
     Users,
     X,
 } from "lucide-react";
-import { getEventBySlug, getEventRegistrationStats } from "../actions";
+import { getEventBySlug, getEventRegistrationStats, getMyEventAccessAction } from "../actions";
 import { CompactPreloader } from "@/components/ui/preloader";
 import { useProfileStore } from "@/lib/stores/profile.store";
-import { isProfileAdmin } from "@/lib/auth-roles";
 import { GenericFooter } from "@/components/events/footer";
 import { LoLogo } from "@/components/lo-app/LoLogo";
 import { parseGender } from "@/lib/gender";
@@ -76,7 +75,21 @@ export default function EventDetailsPage() {
     const [error, setError] = useState<string | null>(null);
     const [timeLeft, setTimeLeft] = useState<Countdown | null>(null);
 
-    const isAdmin = useMemo(() => isProfileAdmin(user), [user]);
+    // Asked of the server, not guessed from the profile: the console is open to the
+    // System Admin, the VPs, the President and the unit running this event.
+    const [isAdmin, setIsAdmin] = useState(false);
+    useEffect(() => {
+        if (!user) return;
+        let cancelled = false;
+        getMyEventAccessAction(slug)
+            .then((a) => {
+                if (!cancelled) setIsAdmin(a.read);
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [slug, user]);
 
     const loadEvent = useCallback(async () => {
         setLoading(true);

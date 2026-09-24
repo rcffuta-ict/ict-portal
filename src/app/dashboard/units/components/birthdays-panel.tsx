@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Cake, ChevronLeft, ChevronRight, GraduationCap, Loader2, Phone, RefreshCw } from "lucide-react";
+import { Cake, ChevronLeft, ChevronRight, Download, GraduationCap, Loader2, Phone, RefreshCw } from "lucide-react";
+import { downloadCsv } from "@/lib/csv";
 import { getUnitBirthdaysAction } from "../actions";
-import { PaginatedGrid } from "./paginated-grid";
-import { MemberAvatar } from "./member-avatar";
+import { PaginatedGrid } from "@/components/dashboard/roster/paginated-grid";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 
 type Row = {
     profileId: string;
@@ -16,6 +17,7 @@ type Row = {
     day: number;
     department: string | null;
     phone: string | null;
+    level: string | null;
 };
 
 const MONTHS = [
@@ -43,7 +45,7 @@ function lagosToday(): { year: number; month: number; day: number } {
  * department (so a namesake is told apart), and a number to tap and call. Today's
  * celebrants are ringed in gold and sorted first, since those are the calls to make now.
  */
-export function BirthdaysPanel({ unitId }: { unitId: string }) {
+export function BirthdaysPanel({ unitId, unitName }: { unitId: string; unitName?: string }) {
     const today = lagosToday();
     const [cursor, setCursor] = useState({ year: today.year, month: today.month });
     const [rows, setRows] = useState<Row[]>([]);
@@ -74,6 +76,16 @@ export function BirthdaysPanel({ unitId }: { unitId: string }) {
 
     const monthName = MONTHS[cursor.month - 1];
     const isThisMonth = cursor.year === today.year && cursor.month === today.month;
+    /** The month on screen, in birthday order — what the unit uses to plan greetings. */
+    const exportCsv = () => {
+        const byDay = [...rows].sort((a, b) => a.day - b.day);
+        downloadCsv(
+            `${(unitName ?? "unit").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-birthdays-${monthName.toLowerCase()}-${cursor.year}.csv`,
+            ["Name", "Birthday", "Level", "Department", "Phone"],
+            byDay.map((r) => [r.name, `${r.day} ${monthName}`, r.level, r.department, r.phone]),
+        );
+    };
+
     // Today's celebrants first, then by day of the month.
     const sorted = [...rows].sort((a, b) => {
         const at = isThisMonth && a.day === today.day ? 0 : 1;
@@ -88,6 +100,16 @@ export function BirthdaysPanel({ unitId }: { unitId: string }) {
                     <Cake className="h-4 w-4" aria-hidden="true" /> Birthdays
                 </h3>
                 <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        onClick={exportCsv}
+                        disabled={loading || rows.length === 0}
+                        aria-label={`Export ${monthName} birthdays`}
+                        className="mr-1 inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy disabled:opacity-40"
+                    >
+                        <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="hidden sm:inline">Export</span>
+                    </button>
                     <button
                         type="button"
                         onClick={() => step(-1)}
@@ -162,10 +184,12 @@ export function BirthdaysPanel({ unitId }: { unitId: string }) {
                                     <p className={`text-xs font-semibold ${isToday ? "text-rcf-navy" : "text-slate-600"}`}>
                                         {isToday ? "Today 🎉" : `${r.day} ${monthName}`}
                                     </p>
-                                    {r.department && (
+                                    {(r.level || r.department) && (
                                         <p className="flex min-w-0 items-center gap-1 text-[11px] text-slate-500">
                                             <GraduationCap className="h-3 w-3 shrink-0" aria-hidden="true" />
-                                            <span className="truncate">{r.department}</span>
+                                            <span className="truncate">
+                                                {[r.level, r.department].filter(Boolean).join(" · ")}
+                                            </span>
                                         </p>
                                     )}
                                 </div>

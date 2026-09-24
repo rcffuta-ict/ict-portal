@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import {
@@ -16,13 +16,15 @@ import {
     Search,
     UserRound,
     Users,
+    ScanLine,
+    DoorOpen,
 } from "lucide-react";
 import { EventAdminStats, getEventAdminStats, getEventQuestions } from "./actions";
-import { useProfileStore } from "@/lib/stores/profile.store";
-import { isProfileAdmin } from "@/lib/auth-roles";
+import { CheckInPanel } from "./components/check-in-panel";
+import { downloadCsv } from "@/lib/csv";
 import { formatEventDateTime, levelLabel, parseEventDate } from "@/lib/event-utils";
 
-type TabType = "overview" | "attendees" | "questions";
+type TabType = "overview" | "attendees" | "checkin" | "questions";
 
 interface Registrant {
     id: string;
@@ -35,6 +37,7 @@ interface Registrant {
     department?: string | null;
     matric_number?: string | null;
     is_rcf_member?: boolean | null;
+    checked_in_at?: string | null;
     created_at: string;
 }
 
@@ -51,21 +54,15 @@ interface EventQuestion {
 const TABS: { id: TabType; label: string; icon: typeof Users }[] = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "attendees", label: "Attendees", icon: Users },
+    { id: "checkin", label: "Check-in", icon: ScanLine },
     { id: "questions", label: "Questions", icon: MessageSquare },
 ];
 
-/** RFC-4180 quoting — names and departments routinely contain commas. */
-function csvCell(value: unknown): string {
-    const text = value === null || value === undefined ? "" : String(value);
-    return `"${text.replace(/"/g, '""')}"`;
-}
 
 export default function EventAdminPage() {
     const params = useParams();
     const slug = params.slug as string;
-    const router = useRouter();
     const reduceMotion = useReducedMotion();
-    const { user } = useProfileStore();
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -75,13 +72,10 @@ export default function EventAdminPage() {
     const [search, setSearch] = useState("");
     const [levelFilter, setLevelFilter] = useState<string>("all");
 
-    const isAdmin = useMemo(() => isProfileAdmin(user), [user]);
-
-    useEffect(() => {
-        if (!loading && !isAdmin) {
-            router.push(`/events/${slug}`);
-        }
-    }, [isAdmin, loading, router, slug]);
+    // Access is decided on the server (getEventAdminStats → eventAccessFor): the System
+    // Admin, the VPs, the President and the assigned unit's leadership. It returns null
+    // for everyone else, which lands on the "not available" screen below.
+    const canCheckIn = !!stats?.access.write;
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -89,7 +83,7 @@ export default function EventAdminPage() {
         try {
             const statsData = await getEventAdminStats(slug);
             if (!statsData) {
-                setError("This event could not be found.");
+                setError("This event doesn't exist, or its console isn't open to you. It's for the System Admin, the VPs, the President and the unit running the event.");
                 return;
             }
 
@@ -148,6 +142,7 @@ export default function EventAdminPage() {
             "Matric Number",
             "RCF Member",
             "Registered At",
+            "Checked In At",
         ];
 
         const rows = registrants.map((r) => [
@@ -161,18 +156,14 @@ export default function EventAdminPage() {
             r.matric_number || "",
             r.is_rcf_member ? "Yes" : "No",
             formatEventDateTime(parseEventDate(r.created_at)),
+            r.checked_in_at ? formatEventDateTime(parseEventDate(r.checked_in_at)) : "",
         ]);
 
-        const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
-        const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${slug}-attendees.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
+        // Shared helper: quoting, a UTF-8 marker for Excel, and formula-injection
+        // protection — anyone can register for a public event and type "=..." as a name.
+        downloadCsv(`${slug}-attendees.csv`, headers, rows);
     };
 
-    if (!isAdmin && !loading) return null;
 
     if (loading) {
         return (
@@ -249,7 +240,7 @@ export default function EventAdminPage() {
                     </div>
 
                     <nav className="no-scrollbar mt-2 flex gap-1 overflow-x-auto" aria-label="Sections">
-                        {TABS.map((tab) => {
+                        {TABS.filter((tab) => tab.id !== "checkin" || canCheckIn).map((tab) => {
                             const count =
                                 tab.id === "attendees"
                                     ? stats?.totalRegistered
@@ -293,7 +284,7 @@ export default function EventAdminPage() {
                 >
                     {activeTab === "overview" && (
                         <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                                 <StatCard
                                     label="Registered"
                                     value={stats?.totalRegistered ?? 0}
@@ -308,6 +299,11 @@ export default function EventAdminPage() {
                                     label="Guests"
                                     value={stats?.guests ?? 0}
                                     icon={UserRound}
+                                />
+                                <StatCard
+                                    label="Checked in"
+                                    value={stats?.checkedIn ?? 0}
+                                    icon={DoorOpen}
                                 />
                                 <StatCard
                                     label="Questions"
@@ -550,6 +546,28 @@ export default function EventAdminPage() {
                                 </>
                             )}
                         </div>
+                    )}
+
+                    {activeTab === "checkin" && stats && canCheckIn && (
+                        <CheckInPanel
+                            eventId={(stats.event as { id: string }).id}
+                            registrants={registrants}
+                            onCheckedIn={(id, at) =>
+                                // Update in place: re-fetching every registrant over a
+                                // slow connection between two guests is what makes a
+                                // door queue.
+                                setStats((s) =>
+                                    s
+                                        ? {
+                                            ...s,
+                                            checkedIn: s.checkedIn + 1,
+                                            registrants: s.registrants.map((r) =>
+                                                r.id === id ? { ...r, checked_in_at: at } : r,
+                                            ),
+                                        }
+                                        : s,
+                                )}
+                        />
                     )}
 
                     {activeTab === "questions" && (

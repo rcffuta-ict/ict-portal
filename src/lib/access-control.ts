@@ -75,11 +75,19 @@ function refusePresident(ctx: ProfileContext): void {
     if (ctx.isPresident) throw new Error(PRESIDENT_READ_ONLY);
 }
 
-/** requireAccess("ADMIN"), for a CHANGE: the admin tier minus the President. */
+/**
+ * The admin tier, for a CHANGE: the System Admin and the VP Admin — never the President.
+ *
+ * Decided from `isSysAdmin` / `isVpAdmin`, which the database derives from immutable
+ * slugs and privilege tags — NOT from requireAccess("ADMIN"), whose role is matched on
+ * office TITLES. Titles are editable in the Roles tab, so a title-based gate changes
+ * who is an admin when someone renames an office.
+ */
 export async function requireAdminWrite(): Promise<AuthUser> {
-    const user = await requireAccess("ADMIN");
-    refusePresident(await requireContext());
-    return user;
+    const ctx = await requireContext();
+    refusePresident(ctx);
+    if (!ctx.isSysAdmin && !ctx.isVpAdmin) throw new Error("Admin access required");
+    return createAuthUser(ctx, ctx.profile.email || "");
 }
 
 /** requireContext(), for a CHANGE: any signed-in leader except the President. */
@@ -98,11 +106,15 @@ export async function checkEnhancedAdminWriteAccess(): Promise<{
     user: AuthUser | null;
     error?: string;
 }> {
-    const check = await checkEnhancedAdminAccess();
-    if (!check.isAdmin) return check;
+    // Same rule as requireAdminWrite: slug- and tag-derived flags, not office titles.
     const ctx = await getCurrentContext();
-    if (!ctx || ctx.isPresident) return { isAdmin: false, user: check.user, error: PRESIDENT_READ_ONLY };
-    return check;
+    if (!ctx) return { isAdmin: false, user: null, error: "Invalid session" };
+    const user = createAuthUser(ctx, ctx.profile.email || "");
+    if (ctx.isPresident) return { isAdmin: false, user, error: PRESIDENT_READ_ONLY };
+    if (!ctx.isSysAdmin && !ctx.isVpAdmin) {
+        return { isAdmin: false, user, error: "Access denied: Not authorized for admin access" };
+    }
+    return { isAdmin: true, user };
 }
 
 /**

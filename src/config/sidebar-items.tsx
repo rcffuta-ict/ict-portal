@@ -4,7 +4,6 @@ import {
     LocationEditIcon,
     Crown,
     SquaresUnite,
-    Heart,
     Calendar,
     GraduationCap,
     Settings,
@@ -85,14 +84,6 @@ const eventItems: SidebarItem[] = [
         section: "events",
         color: "bg-purple-500",
         description: "View all upcoming and past events.",
-    },
-    {
-        name: "Singles Weekend",
-        href: "/events/singles-weekend-26",
-        icon: Heart,
-        section: "events",
-        color: "bg-pink-500",
-        description: "Register for Agape '26 - Feb 14-15, 2026.",
     },
 ];
 

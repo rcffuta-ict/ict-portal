@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 import { AlertCircle, CalendarX2, Plus, Search } from "lucide-react";
-import { getEvents } from "./actions";
+import { getEvents, getEventsCapabilityAction } from "./actions";
 import { CompactPreloader } from "@/components/ui/preloader";
 import { useProfileStore } from "@/lib/stores/profile.store";
-import { isProfileAdmin } from "@/config/sidebar-items";
 import { EventModal } from "@/components/events/EventModal";
 import { Logo } from "@/components/ui/logo";
 import { EventCard } from "@/components/events/EventCard";
@@ -32,7 +31,21 @@ export default function EventsPage() {
 
     const reduceMotion = useReducedMotion();
     const { user } = useProfileStore();
-    const isAdmin = useMemo(() => isProfileAdmin(user), [user]);
+    // Creating and editing events is the System Admin's alone — asked of the server
+    // (getEventsCapabilityAction), which also refuses the actions for anyone else.
+    const [isAdmin, setIsAdmin] = useState(false);
+    useEffect(() => {
+        if (!user) return;
+        let cancelled = false;
+        getEventsCapabilityAction()
+            .then((c) => {
+                if (!cancelled) setIsAdmin(c.canCreate);
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [user]);
 
     const loadEvents = useCallback(async () => {
         setLoading(true);

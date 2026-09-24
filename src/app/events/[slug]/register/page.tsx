@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import QRCode from "react-qr-code";
 import { Resolver, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -169,6 +170,8 @@ function RegistrationView({ event, slug }: { event: EventRecord; slug: string })
 
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [submitted, setSubmitted] = useState(false);
+    // The ticket: the new registration's id, rendered as a QR for door check-in.
+    const [ticket, setTicket] = useState<{ id: string; name: string } | null>(null);
     const [showLoginHint, setShowLoginHint] = useState(true);
 
     const regConfig = useMemo(() => getRegistrationConfig(event.config), [event.config]);
@@ -224,6 +227,8 @@ function RegistrationView({ event, slug }: { event: EventRecord; slug: string })
             });
 
             if (result.success) {
+                const reg = result.data as { id?: string } | undefined;
+                if (reg?.id) setTicket({ id: reg.id, name: `${values.firstName} ${values.lastName}`.trim() });
                 setSubmitted(true);
             } else {
                 setSubmitError(result.error || "Registration failed. Please try again.");
@@ -283,6 +288,20 @@ function RegistrationView({ event, slug }: { event: EventRecord; slug: string })
                 description={`Your spot for ${event.title} is confirmed. See you there!`}
                 icon={<CheckCircle2 className="h-8 w-8 text-emerald-600" />}
             >
+                {ticket && (
+                    <figure className="mb-2 rounded-2xl border border-dashed border-slate-300 p-4">
+                        <div className="mx-auto w-fit rounded-xl bg-white p-2">
+                            <QRCode value={ticket.id} size={168} level="Q" fgColor="currentColor" className="text-rcf-navy" aria-label="Your ticket QR code" />
+                        </div>
+                        <figcaption className="mt-3 space-y-1 text-center">
+                            <p className="text-sm font-bold text-slate-900">{ticket.name}</p>
+                            <p className="text-xs leading-relaxed text-slate-500">
+                                Your ticket. Screenshot it and show it at the door. Lost it? The
+                                team can find you by your phone number or email.
+                            </p>
+                        </figcaption>
+                    </figure>
+                )}
                 <Link
                     href={`/events/${slug}`}
                     className="rounded-2xl bg-rcf-navy px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light"

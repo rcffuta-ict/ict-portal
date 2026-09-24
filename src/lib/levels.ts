@@ -65,3 +65,16 @@ export function isFinalistLevel(level: LevelLabel | null): boolean {
 export function isEditableGenerationLevel(level: string | null | undefined): boolean {
     return level === "Alumni" || /^[2-5]00 Level$/.test(level ?? "");
 }
+
+/** Display order for level labels: foundation, 100 → 500, then Alumni; unknowns last. */
+const LEVEL_ORDER: string[] = ["Pre-100", ...LEVELS, "Alumni"];
+
+/** Sort comparator for level labels, e.g. `levels.sort(byLevel)`. */
+export function byLevel(a: string | null, b: string | null): number {
+    const ia = a ? LEVEL_ORDER.indexOf(a) : -1;
+    const ib = b ? LEVEL_ORDER.indexOf(b) : -1;
+    if (ia === -1 && ib === -1) return (a ?? "").localeCompare(b ?? "");
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+}
