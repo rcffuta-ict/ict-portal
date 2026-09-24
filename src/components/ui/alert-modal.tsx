@@ -120,13 +120,16 @@ export function AlertModal({
         <AnimatePresence>
             {isOpen && (
                 <>
-                    {/* Backdrop */}
+                    {/* Backdrop. Above every other modal (they sit at z-50 to z-[150]):
+                    an alert is usually raised FROM one, and at the same z-index the one
+                    later in the DOM wins, which put confirmations behind their form.
+                    Still below the toast and preview banner (z-[200]). */}
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={requestClose}
-                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 min-h-screen"
+                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[160] flex items-center justify-center p-4 min-h-screen"
                     >
                         {/* Modal */}
                         <motion.div

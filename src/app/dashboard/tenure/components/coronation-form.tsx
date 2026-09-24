@@ -9,6 +9,7 @@ import {
     Check,
     Crown,
     ImagePlus,
+    Link2,
     Loader2,
     Palette as PaletteIcon,
     Trash2,
@@ -19,7 +20,7 @@ import {
 import type { Tenure } from "@/lib/types/portal";
 import { coronationSchema, type CoronationInput } from "@/lib/coronation";
 import { BRAND_PALETTE, checkPalette, isHexColour, parsePalette } from "@/lib/palette";
-import { isCloudinaryConfigured, uploadThemeImage } from "@/lib/cloudinary";
+import { imageLoaderFor, importThemeImageFromUrl, isCloudinaryConfigured, uploadThemeImage } from "@/lib/cloudinary";
 import { DEFAULT_TENURE_BANNER } from "@/config/tenure-branding";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 import { clearCoronationAction, coronateTenureAction } from "../actions";
@@ -187,14 +188,14 @@ export function CoronationForm({
                                 <Field
                                     id="c-text"
                                     label="Theme text"
-                                    hint="The Bible reference, e.g. John 1:1-3"
+                                    hint="One or more Bible references, separated by commas"
                                     error={errors.themeText?.message}
                                     required
                                 >
                                     <input
                                         id="c-text"
                                         autoComplete="off"
-                                        placeholder="Isaiah 60:1-3"
+                                        placeholder="Isaiah 60:1-3, Romans 8:19"
                                         {...register("themeText")}
                                         {...aria("c-text", errors.themeText?.message, "c-text-hint")}
                                         className={inputClass(!!errors.themeText)}
@@ -231,7 +232,7 @@ export function CoronationForm({
                             )}
                             <ImagePicker
                                 label="Banner"
-                                hint="2400×800 (3:1). Keep text and faces in the middle — phones crop the sides, desktops crop the top and bottom."
+                                hint="2400×800 (3:1). Shown whole on every screen, so lettering can run edge to edge — it is small on a phone, so keep it bold."
                                 value={bannerUrl || ""}
                                 fallback={DEFAULT_TENURE_BANNER}
                                 shape="banner"
@@ -535,16 +536,20 @@ function ImagePicker({
     const inputRef = useRef<HTMLInputElement>(null);
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
+    const [linkOpen, setLinkOpen] = useState(false);
+    const [link, setLink] = useState("");
     const enabled = isCloudinaryConfigured();
     const shown = value || fallback;
+    const linkId = `${shape}-link`;
 
-    const pick = async (file: File | undefined) => {
-        if (!file) return;
+    const run = async (get: () => Promise<{ url: string }>) => {
         setUploading(true);
         setUploadError(null);
         try {
-            const { url } = await uploadThemeImage(file);
+            const { url } = await get();
             onChange(url);
+            setLinkOpen(false);
+            setLink("");
         } catch (e) {
             setUploadError(e instanceof Error ? e.message : "Upload failed. Please try again.");
         } finally {
@@ -553,13 +558,25 @@ function ImagePicker({
         }
     };
 
+    const pick = (file: File | undefined) => {
+        if (file) run(() => uploadThemeImage(file));
+    };
+
+    const importLink = () => {
+        if (!link.trim()) {
+            setUploadError("Paste a link to an image first.");
+            return;
+        }
+        run(() => importThemeImageFromUrl(link));
+    };
+
     const message = uploadError || error;
 
     return (
         <div className={shape === "icon" ? "flex items-center gap-4" : "space-y-2"}>
             <div
                 className={`relative shrink-0 overflow-hidden bg-slate-100 ${
-                    shape === "banner" ? "aspect-[8/3] w-full rounded-xl" : "h-20 w-20 rounded-2xl"
+                    shape === "banner" ? "aspect-[3/1] w-full rounded-xl" : "h-20 w-20 rounded-2xl"
                 }`}
             >
                 {shown ? (
@@ -569,6 +586,7 @@ function ImagePicker({
                         fill
                         sizes={shape === "banner" ? "(max-width: 672px) 100vw, 672px" : "80px"}
                         className="object-cover"
+                        loader={imageLoaderFor(shown)}
                         unoptimized={shown.endsWith(".svg")}
                     />
                 ) : (
@@ -611,6 +629,20 @@ function ImagePicker({
                         <Upload className="h-3.5 w-3.5" aria-hidden="true" />
                         {value ? "Replace" : "Upload"}
                     </button>
+                    <button
+                        type="button"
+                        disabled={!enabled || uploading}
+                        aria-expanded={linkOpen}
+                        aria-controls={linkId}
+                        onClick={() => {
+                            setLinkOpen((o) => !o);
+                            setUploadError(null);
+                        }}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy disabled:opacity-50"
+                    >
+                        <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        Paste link
+                    </button>
                     {value && (
                         <button
                             type="button"
@@ -621,6 +653,46 @@ function ImagePicker({
                         </button>
                     )}
                 </div>
+                {linkOpen && (
+                    <div className="space-y-1">
+                        <label htmlFor={linkId} className="sr-only">
+                            {label} image link
+                        </label>
+                        <div className="flex gap-2">
+                            <input
+                                id={linkId}
+                                type="url"
+                                inputMode="url"
+                                autoComplete="off"
+                                autoFocus
+                                placeholder="https://…"
+                                value={link}
+                                disabled={uploading}
+                                onChange={(e) => setLink(e.target.value)}
+                                onKeyDown={(e) => {
+                                    // Enter imports the link; it must not submit the whole form.
+                                    if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        importLink();
+                                    }
+                                }}
+                                className="h-9 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-rcf-navy disabled:opacity-50"
+                            />
+                            <button
+                                type="button"
+                                onClick={importLink}
+                                disabled={uploading}
+                                className="inline-flex h-9 shrink-0 items-center rounded-lg bg-rcf-navy px-3 text-xs font-semibold text-white hover:bg-rcf-navy-light focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy focus-visible:ring-offset-2 disabled:opacity-50"
+                            >
+                                {uploading ? "Importing…" : "Import"}
+                            </button>
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                            A link that opens the image itself. A copy is kept here, so it stays
+                            even if the original is taken down.
+                        </p>
+                    </div>
+                )}
                 {message && (
                     <p role="alert" className="text-xs font-medium text-red-600">
                         {message}

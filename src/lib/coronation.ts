@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { checkPalette, isHexColour, parsePalette } from "@/lib/palette";
+import { isOwnCloudinaryUrl } from "@/lib/cloudinary";
 
 /**
  * `John 1:1-3`, `Isaiah 1:2-3`, `1 John 4:7`, `Song of Solomon 2:4`, `Psalm 23:1`.
@@ -18,23 +19,15 @@ import { checkPalette, isHexColour, parsePalette } from "@/lib/palette";
 export const BIBLE_REFERENCE = /^(?:[1-3]\s?)?[A-Za-z][A-Za-z .']*\s\d{1,3}:\d{1,3}(?:\s?[-–]\s?\d{1,3})?$/;
 
 /**
- * Only images in this project's own Cloudinary cloud. The upload is unsigned and
- * happens in the browser, so without this anyone who reached the action could make
- * every dashboard load an image from a server of their choosing.
+ * A theme can be drawn from several passages: `Isaiah 60:1-3, Romans 8:19`. Each part
+ * is a whole reference on its own — `John 1:1, 14` is not read as `John 1:14`, because
+ * guessing the book and chapter is how a stored reference ends up wrong.
  */
-export function isOwnCloudinaryUrl(url: string): boolean {
-    const cloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-    if (!cloud) return false;
-    try {
-        const u = new URL(url);
-        return (
-            u.protocol === "https:" &&
-            u.hostname === "res.cloudinary.com" &&
-            u.pathname.startsWith(`/${cloud}/`)
-        );
-    } catch {
-        return false;
-    }
+export function splitReferences(text: string): string[] {
+    return text
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
 }
 
 const optionalImage = z
@@ -43,7 +36,7 @@ const optionalImage = z
     .optional()
     .transform((v) => v || undefined)
     .refine((v) => v === undefined || isOwnCloudinaryUrl(v), {
-        message: "Upload the image here rather than pasting a link.",
+        message: "Upload the image, or import it with Paste link.",
     });
 
 const hex = z.string().refine(isHexColour, { message: "Pick a colour." });
@@ -59,8 +52,23 @@ export const coronationSchema = z
             .string()
             .trim()
             .min(1, "Enter the Bible reference the theme is drawn from.")
-            .max(60, "That reference is too long.")
-            .regex(BIBLE_REFERENCE, "Write it as a reference, e.g. John 1:1-3."),
+            .max(160, "That is too long — keep it to the references themselves.")
+            .superRefine((text, ctx) => {
+                const refs = splitReferences(text);
+                if (refs.length === 0) {
+                    ctx.addIssue({ code: "custom", message: "Enter the Bible reference the theme is drawn from." });
+                    return;
+                }
+                const bad = refs.find((r) => !BIBLE_REFERENCE.test(r));
+                if (bad) {
+                    ctx.addIssue({
+                        code: "custom",
+                        message: `"${bad}" isn't a full reference — write each one like John 1:1-3, separated by commas.`,
+                    });
+                }
+            })
+            // Stored as typed, apart from the separators: `a,b ,  c` becomes `a, b, c`.
+            .transform((text) => splitReferences(text).join(", ")),
         coronatedOn: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/, "Pick the day of the retreat.")

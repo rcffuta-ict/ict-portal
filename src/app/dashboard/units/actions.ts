@@ -104,6 +104,43 @@ export async function getUnitModuleData() {
     };
 }
 
+/**
+ * One unit or team's page: the unit itself and how this session sees it.
+ *
+ * Gated by canViewUnit, the same check every roster action makes, so a unit whose page
+ * opens is one whose data will load. `view` picks the tab set: the admin read tier gets
+ * positions and leadership too; an Executive gets their roster.
+ */
+export async function getUnitPageAction(unitId: string) {
+    try {
+        const ctx = await requireModuleRead("workforce");
+        if (!(await canViewUnit(ctx, unitId))) {
+            return { success: false as const, error: "You don't lead this unit or team." };
+        }
+        const [{ data: unit }, tenure] = await Promise.all([
+            db.from("units").select("id, slug, name, type").eq("id", unitId).maybeSingle(),
+            getActiveTenure(),
+        ]);
+        if (!unit) return { success: false as const, error: "That unit or team doesn't exist." };
+
+        const excoOffice = ctx.leadership.find((l) =>
+            (l.privileges ?? []).some((p) => p.tag === "EXCO"));
+
+        return {
+            success: true as const,
+            unit: unit as ManagedUnit,
+            tenureId: tenure?.id ?? null,
+            view: ctx.isAdmin ? ("ADMIN" as const) : ("LEADER" as const),
+            // The President reads every unit but changes none. The server refuses the
+            // writes regardless; this only hides controls that would always fail.
+            readOnly: ctx.isAdmin && !(ctx.isSysAdmin || ctx.isVpAdmin),
+            leadershipRole: ctx.isAdmin ? null : excoOffice?.alias || excoOffice?.title || "Executive",
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
 // ============================================================================
 // UNIT / TEAM MEMBERSHIP
 // ============================================================================

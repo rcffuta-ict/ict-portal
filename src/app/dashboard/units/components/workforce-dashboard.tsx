@@ -96,7 +96,7 @@ export function WorkforceDashboard() {
             )}
 
             {data.role === "ADMIN" ? (
-                <AdminUnitView data={data} onSuccess={load} />
+                <AdminUnitView data={data} />
             ) : data.role === "LEADER" ? (
                 <LeaderUnitView units={data.managedUnits} />
             ) : (
