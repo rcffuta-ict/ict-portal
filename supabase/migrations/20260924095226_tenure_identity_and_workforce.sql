@@ -9,10 +9,10 @@
 -- third label for a thing that already had two, and it held whatever somebody typed
 -- ("Staging", "Dominion").
 --
--- This is the first of two releases. Here the app stops needing `name`: the column
--- becomes nullable and nothing new writes it. The NEXT migration drops it, released as
--- MAJOR. Doing both at once would mean a rollback of the app meets a database that no
--- longer has the column the old code reads.
+-- Here the app stops needing `name`: the column becomes nullable and nothing new writes
+-- it. 20260924115410_drop_tenure_name.sql then drops it, in the same release, which is
+-- therefore MAJOR. (A rollback of the app to a build older than this change would meet
+-- a missing column — roll forward instead.)
 --
 -- CORONATION
 --
@@ -148,7 +148,7 @@ BEGIN
 
         ALTER TABLE public.tenures ALTER COLUMN name DROP NOT NULL;
         COMMENT ON COLUMN public.tenures.name IS
-            'DEPRECATED. No longer read or written by the app; dropped in the next release.';
+            'DEPRECATED. No longer read or written by the app; dropped by 20260924115410_drop_tenure_name.sql.';
     END IF;
 END $$;
 
