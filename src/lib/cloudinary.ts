@@ -25,17 +25,29 @@ export function isCloudinaryConfigured(): boolean {
 }
 
 export async function uploadAvatar(file: File): Promise<UploadedImage> {
+    return uploadImage(file, MAX_AVATAR_BYTES, "Photo uploads aren't configured yet. You can skip this.");
+}
+
+/** Banners are shown full-width, so they may be larger than an avatar. */
+export const MAX_THEME_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MB
+
+/** A coronation banner or icon. Same unsigned preset as avatars. */
+export async function uploadThemeImage(file: File): Promise<UploadedImage> {
+    return uploadImage(file, MAX_THEME_IMAGE_BYTES, "Image uploads aren't configured on this portal yet.");
+}
+
+async function uploadImage(file: File, maxBytes: number, notConfigured: string): Promise<UploadedImage> {
     const cloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
     const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
     if (!cloud || !preset) {
-        throw new Error("Photo uploads aren't configured yet. You can skip this.");
+        throw new Error(notConfigured);
     }
     if (!file.type.startsWith("image/")) {
         throw new Error("Please choose an image file.");
     }
-    if (file.size > MAX_AVATAR_BYTES) {
-        throw new Error("Image is too large (max 5 MB).");
+    if (file.size > maxBytes) {
+        throw new Error(`Image is too large (max ${Math.round(maxBytes / 1024 / 1024)} MB).`);
     }
 
     const form = new FormData();
