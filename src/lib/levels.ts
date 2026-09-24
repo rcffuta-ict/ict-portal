@@ -55,3 +55,13 @@ export function computeLevel(
 export function isFinalistLevel(level: LevelLabel | null): boolean {
     return level === "500 Level";
 }
+
+/**
+ * Whether a generation's details (its family name) may be edited from the Tenure
+ * module: 200 Level and above, Alumni included. 100 Level, the PDS/UABS foundation set
+ * and anything not yet at 100 are not — they are named later, not corrected here.
+ * Checked by the Generations tab and again by updateGenerationAction.
+ */
+export function isEditableGenerationLevel(level: string | null | undefined): boolean {
+    return level === "Alumni" || /^[2-5]00 Level$/.test(level ?? "");
+}

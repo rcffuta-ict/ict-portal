@@ -329,9 +329,14 @@ ON CONFLICT DO NOTHING;
 -- and a reset seed that overwrote a deliberate access decision would be a
 -- security regression dressed up as housekeeping.
 -- ----------------------------------------------------------------------------
+--
+-- The tenure row is IGNORED by the app: its access is fixed by policy in
+-- src/lib/modules.ts (POLICY_FIXED_MODULES) -- President, VPs and System Admin
+-- read; only the System Admin and VP Admin write. Kept so the table has a row
+-- for every module, with values that match what the code enforces.
 INSERT INTO public.module_access (module, read_slugs, write_slugs, write_scope)
 VALUES
-    ('tenure',    ARRAY['CENTRAL'],          ARRAY['CENTRAL'], 'ALL'),
+    ('tenure',    ARRAY['CENTRAL'],          ARRAY[]::text[],  'ALL'),
     ('zones',     ARRAY['CENTRAL','ZONE'],   ARRAY['ZONE'],    'OWN'),
     ('workforce', ARRAY['CENTRAL','EXCO'],   ARRAY['EXCO'],    'OWN'),
     ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN')

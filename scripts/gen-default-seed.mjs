@@ -282,9 +282,14 @@ function render() {
     L.push("-- and a reset seed that overwrote a deliberate access decision would be a");
     L.push("-- security regression dressed up as housekeeping.");
     L.push("-- ----------------------------------------------------------------------------");
+    L.push("--");
+    L.push("-- The tenure row is IGNORED by the app: its access is fixed by policy in");
+    L.push("-- src/lib/modules.ts (POLICY_FIXED_MODULES) -- President, VPs and System Admin");
+    L.push("-- read; only the System Admin and VP Admin write. Kept so the table has a row");
+    L.push("-- for every module, with values that match what the code enforces.");
     L.push("INSERT INTO public.module_access (module, read_slugs, write_slugs, write_scope)");
     L.push("VALUES");
-    L.push("    ('tenure',    ARRAY['CENTRAL'],          ARRAY['CENTRAL'], 'ALL'),");
+    L.push("    ('tenure',    ARRAY['CENTRAL'],          ARRAY[]::text[],  'ALL'),");
     L.push("    ('zones',     ARRAY['CENTRAL','ZONE'],   ARRAY['ZONE'],    'OWN'),");
     L.push("    ('workforce', ARRAY['CENTRAL','EXCO'],   ARRAY['EXCO'],    'OWN'),");
     L.push("    ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN')");

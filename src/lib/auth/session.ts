@@ -3,10 +3,12 @@
  *
  * A random opaque token is stored in an httpOnly cookie; only its sha256 hash is
  * persisted in `auth_sessions`, so a DB leak can't be replayed as a live session.
- * Every request looks the token up (non-revoked, non-expired) and refreshes
- * `last_seen_at`. Server-only.
+ * Every request looks the token up (non-revoked, non-expired); `last_seen_at` is
+ * refreshed at most every few minutes, after the response. Server-only.
  */
+import { cache } from "react";
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import { randomBytes, createHash } from "crypto";
 import { db } from "@/lib/db";
 
@@ -54,19 +56,31 @@ export async function createSession(profileId: string, meta: SessionMeta = {}): 
     return token;
 }
 
+/** How stale `last_seen_at` may get before a request refreshes it. */
+const LAST_SEEN_EVERY_MS = 5 * 60 * 1000;
+
 /**
  * Resolve the current session from the cookie. Returns the owning profile id, or
- * null if there is no valid, non-revoked, non-expired session. Touches
- * `last_seen_at` on success.
+ * null if there is no valid, non-revoked, non-expired session.
+ *
+ * `cache`: once per request. A page's metadata, layout, and every action it calls all
+ * resolve the session, and each lookup is a round trip to the database — on a slow
+ * connection the repeats were most of the wait. React's cache is scoped to one
+ * request, so nothing is shared between users or between requests; a revoked session
+ * is refused on the very next request.
+ *
+ * `last_seen_at` used to be written, and awaited, on every call — a second round trip
+ * on the critical path of every page and action. It is only an activity marker, so it
+ * is now refreshed at most every five minutes, and after the response has been sent.
  */
-export async function getSessionProfileId(): Promise<string | null> {
+export const getSessionProfileId = cache(async (): Promise<string | null> => {
     const cookieStore = await cookies();
     const token = cookieStore.get(SESSION_COOKIE)?.value;
     if (!token) return null;
 
     const { data, error } = await db
         .from("auth_sessions")
-        .select("id, profile_id, expires_at, revoked_at")
+        .select("id, profile_id, expires_at, revoked_at, last_seen_at")
         .eq("token_hash", sha256(token))
         .maybeSingle();
 
@@ -74,14 +88,19 @@ export async function getSessionProfileId(): Promise<string | null> {
     if (data.revoked_at) return null;
     if (new Date(data.expires_at).getTime() < Date.now()) return null;
 
-    // Best-effort activity timestamp; don't fail the request if it errors.
-    await db
-        .from("auth_sessions")
-        .update({ last_seen_at: new Date().toISOString() })
-        .eq("id", data.id);
+    const lastSeen = data.last_seen_at ? new Date(data.last_seen_at).getTime() : 0;
+    if (Date.now() - lastSeen > LAST_SEEN_EVERY_MS) {
+        // Best-effort; never fails or delays the request.
+        after(async () => {
+            await db
+                .from("auth_sessions")
+                .update({ last_seen_at: new Date().toISOString() })
+                .eq("id", data.id);
+        });
+    }
 
     return data.profile_id as string;
-}
+});
 
 /**
  * Delete the session cookie and nothing else.

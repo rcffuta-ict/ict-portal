@@ -1,6 +1,6 @@
 "use server";
 
-import { checkEnhancedAdminAccess } from "@/lib/access-control";
+import { checkEnhancedAdminWriteAccess } from "@/lib/access-control";
 import { validateSession } from "@/lib/auth-utils";
 import { db } from "@/lib/db";
 import { getProfileContext } from "@/lib/auth/profile-context";
@@ -110,7 +110,7 @@ export async function askQuestion(data: {
 
 export async function answerQuestion(questionId: string, answerText: string) {
     try {
-        const adminCheck = await checkEnhancedAdminAccess();
+        const adminCheck = await checkEnhancedAdminWriteAccess();
         if (!adminCheck.isAdmin || !adminCheck.user) {
             return { success: false, error: "Unauthorized: Admin access required" };
         }
@@ -133,7 +133,7 @@ export async function toggleVisibility(
     status: "visible" | "hidden" | "answered"
 ) {
     try {
-        const adminCheck = await checkEnhancedAdminAccess();
+        const adminCheck = await checkEnhancedAdminWriteAccess();
         if (!adminCheck.isAdmin) {
             return { success: false, error: "Unauthorized" };
         }
@@ -244,7 +244,7 @@ export async function searchQuestions(eventId: string, searchTerm: string) {
 
 export async function clusterQuestions(questionIds: string[]) {
     try {
-        const adminCheck = await checkEnhancedAdminAccess();
+        const adminCheck = await checkEnhancedAdminWriteAccess();
         if (!adminCheck.isAdmin) {
             return { success: false, error: "Unauthorized" };
         }

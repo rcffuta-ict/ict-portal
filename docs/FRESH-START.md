@@ -125,8 +125,10 @@ holds it → that person can sign in.
 pnpm db:ict-coord -- --seed
 ```
 
-That creates **Melchizedek Oracle** `<oracle@rcffuta.test>`, assigns the position in the
-active tenure and prints a generated password (pass `--password` to choose one).
+That creates **Melchizedek Oracle** `<oracle@rcffuta.test>` and assigns the position in the
+active tenure, with **no password**: the first sign-in with that address asks for one
+(pass `--password` to set it from the command line instead). Sign in straight away on a
+deployed staging URL — until you do, the first visitor to try that address chooses it.
 `@rcffuta.test` is an RFC 2606 reserved TLD — it can never resolve or receive mail.
 
 **On production this refuses to run**, and should. The System Admin there has to be a

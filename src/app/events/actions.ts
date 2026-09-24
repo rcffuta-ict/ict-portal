@@ -2,12 +2,24 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { checkIsAdminByEmail } from "@/utils/action";
+import { requireAdminWrite } from "@/lib/access-control";
 import { parseGender } from "@/lib/gender";
 
-// Position-based admin check (VP Admin / ICT Coordinator / PRESIDENT scope).
-async function isUserAdmin(email: string | null | undefined): Promise<boolean> {
-    return checkIsAdminByEmail(email || "");
+/**
+ * May the SESSION create or change events? The admin tier, minus the President.
+ *
+ * This used to take an `email` argument from the caller and ask whether that address
+ * belonged to an admin — so anyone could call the action with an admin's address (the
+ * staging one is in the repo) and get through. Identity comes from the session cookie,
+ * never from the request body.
+ */
+async function canManageEvents(): Promise<boolean> {
+    try {
+        await requireAdminWrite();
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 export async function getEvents() {
@@ -114,12 +126,9 @@ export async function createEvent(data: {
   is_recurring: boolean;
   is_exclusive: boolean;
   config?: any;
-}, email: string) {
+}) {
   try {
-    // Check authentication and authorization
-    // const user = await getCurrentUser();
-    // console.log("User:", user);
-    if (!email || !(await isUserAdmin(email))) {
+    if (!(await canManageEvents())) {
         return { success: false, error: "Unauthorized: Admin access required" };
     }
 
@@ -167,11 +176,9 @@ export async function updateEvent(id: string, data: {
   is_recurring?: boolean;
   is_exclusive?: boolean;
   config?: any;
-}, email: string) {
+}) {
   try {
-    // Check authentication and authorization
-    // const user = await getCurrentUser();
-    if (!email || !(await isUserAdmin(email))) {
+    if (!(await canManageEvents())) {
         return { success: false, error: "Unauthorized: Admin access required" };
     }
 

@@ -8,6 +8,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addWorkerAction, getUnitDetailsAction, removeWorkerAction } from "../actions";
 import { Search, UserPlus, Trash2, Mail, Phone, User, Info, Loader2, RefreshCw } from "lucide-react";
+import { PaginatedGrid } from "./paginated-grid";
+import { MemberAvatar } from "./member-avatar";
 import { isGenderCategoryUnit } from "@/config/fellowship-units";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 
@@ -220,23 +222,27 @@ export function UnitManager({
                     </button>
                 </div>
             ) : (
-                <ul className="space-y-2">
-                    {filtered.map((m: any) => {
+                <PaginatedGrid
+                    items={filtered}
+                    label={`${unit.name} members`}
+                    resetKey={search}
+                    getKey={(m: any) => m.membershipId || m.id}
+                    empty={
+                        <p className="rounded-xl border-2 border-dashed border-slate-100 py-12 text-center text-sm text-slate-400">
+                            <User className="mx-auto mb-2 h-8 w-8 opacity-20" aria-hidden="true" />
+                            {search
+                                ? "Nobody matches that filter."
+                                : isDerived
+                                    ? "No member is recorded with this gender yet."
+                                    : "No members in this unit yet."}
+                        </p>
+                    }
+                    renderItem={(m: any) => {
                         const who = `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || "this member";
                         return (
-                            <li
-                                key={m.membershipId || m.id}
-                                className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 transition-colors hover:bg-slate-50"
-                            >
+                            <div className="flex h-full min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white p-3 transition-colors hover:bg-slate-50">
                                 <div className="flex min-w-0 items-center gap-3">
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-xs font-bold text-blue-600">
-                                        {m.avatar_url ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={m.avatar_url} alt="" loading="lazy" className="h-full w-full object-cover" />
-                                        ) : (
-                                            `${m.first_name?.[0] ?? ""}${m.last_name?.[0] ?? ""}`
-                                        )}
-                                    </div>
+                                    <MemberAvatar url={m.avatar_url} first={m.first_name} last={m.last_name} />
                                     <div className="min-w-0">
                                         <Link
                                             href={`/dashboard/units/${unit.id}/member/${m.id}`}
@@ -244,7 +250,8 @@ export function UnitManager({
                                         >
                                             {who}
                                         </Link>
-                                        <div className="flex flex-col text-[11px] text-slate-500 sm:flex-row sm:gap-3">
+                                        {/* Stacked: a grid card has no room to set them side by side. */}
+                                        <div className="flex flex-col text-[11px] text-slate-500">
                                             {m.email && (
                                                 <a href={`mailto:${m.email}`} className="flex min-w-0 items-center gap-1 hover:text-rcf-navy">
                                                     <Mail className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -260,9 +267,11 @@ export function UnitManager({
                                     </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-1">
-                                    <span className="hidden rounded border border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 sm:inline">
-                                        {m.role}
-                                    </span>
+                                    {m.role && (
+                                        <span className="hidden rounded border border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 sm:inline">
+                                            {m.role}
+                                        </span>
+                                    )}
                                     {canEdit && !m.derived && (
                                         <button
                                             type="button"
@@ -274,21 +283,10 @@ export function UnitManager({
                                         </button>
                                     )}
                                 </div>
-                            </li>
+                            </div>
                         );
-                    })}
-
-                    {filtered.length === 0 && (
-                        <li className="rounded-xl border-2 border-dashed border-slate-100 py-12 text-center text-sm text-slate-400">
-                            <User className="mx-auto mb-2 h-8 w-8 opacity-20" aria-hidden="true" />
-                            {search
-                                ? "Nobody matches that filter."
-                                : isDerived
-                                    ? "No member is recorded with this gender yet."
-                                    : "No members in this unit yet."}
-                        </li>
-                    )}
-                </ul>
+                    }}
+                />
             )}
         </div>
     );
