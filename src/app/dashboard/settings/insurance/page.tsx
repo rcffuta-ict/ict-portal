@@ -4,6 +4,7 @@ import { ShieldCheck, ArrowLeft, AlertTriangle } from "lucide-react";
 import { getCurrentContext } from "@/lib/access-control";
 import { getTenurePresidentName } from "@/lib/backup";
 import { db } from "@/lib/db";
+import { tenureFullLabel } from "@/lib/tenure";
 import { BackupPicker } from "@/components/dashboard/backup-picker";
 import type { Metadata } from "next";
 
@@ -33,7 +34,7 @@ export default async function InsurancePage() {
 
     const { data: tenure } = await db
         .from("tenures")
-        .select("id, name, session")
+        .select("id, session, theme")
         .eq("is_active", true)
         .maybeSingle();
 
@@ -77,7 +78,7 @@ export default async function InsurancePage() {
                 <BackupPicker
                     scope="system"
                     tenureId={tenure?.id ?? null}
-                    tenureName={tenure?.name ?? null}
+                    tenureLabel={tenure ? tenureFullLabel(tenure) : null}
                     presidentName={presidentName}
                 />
             </div>

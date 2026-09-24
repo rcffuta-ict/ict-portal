@@ -17,9 +17,14 @@
 -- CORONATION
 --
 -- The theme is unveiled at coronation (the retreat). So "no theme" is not missing data;
--- it is a true statement that the tenure has not been coronated yet. `coronated_at` is
--- stored rather than inferred, because when the session was coronated is a fact worth
--- keeping and a theme can be edited afterwards. The two move together (CHECK below).
+-- it is a true statement that the tenure has not been coronated yet. A tenure is
+-- coronated exactly when it has a theme.
+--
+-- The coronation DATE is its own fact. The retreat happens some time after the session
+-- starts, so `start_date` says nothing about it, and neither does the moment somebody
+-- filled in the form. `coronated_on` is the day of the retreat, entered by whoever
+-- records the coronation. For tenures themed before this change it is NULL -- unknown
+-- rather than invented -- and the Tenure page asks for it.
 --
 -- The banner, icon and palette are each optional. A coronation can be recorded on
 -- retreat day before the banner is finished, and each missing asset falls back to the
@@ -60,19 +65,19 @@ ALTER TABLE public.tenures
     ADD COLUMN IF NOT EXISTS theme_banner_url text,
     ADD COLUMN IF NOT EXISTS theme_icon_url   text,
     ADD COLUMN IF NOT EXISTS theme_palette    jsonb,
-    ADD COLUMN IF NOT EXISTS coronated_at     timestamp with time zone,
-    ADD COLUMN IF NOT EXISTS coronated_by     uuid;
+    ADD COLUMN IF NOT EXISTS coronated_on           date,
+    ADD COLUMN IF NOT EXISTS coronation_recorded_by uuid;
 
 -- SET NULL, not CASCADE: whoever recorded the coronation may leave the fellowship, and
 -- that must not take the session's identity with them.
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'tenures_coronated_by_fkey'
+        SELECT 1 FROM pg_constraint WHERE conname = 'tenures_coronation_recorded_by_fkey'
     ) THEN
         ALTER TABLE public.tenures
-            ADD CONSTRAINT tenures_coronated_by_fkey
-            FOREIGN KEY (coronated_by) REFERENCES public.profiles(id) ON DELETE SET NULL;
+            ADD CONSTRAINT tenures_coronation_recorded_by_fkey
+            FOREIGN KEY (coronation_recorded_by) REFERENCES public.profiles(id) ON DELETE SET NULL;
     END IF;
 END $$;
 
@@ -82,32 +87,32 @@ COMMENT ON COLUMN public.tenures.theme_text IS
     'The Bible reference the theme is drawn from, e.g. John 1:1-3. A reference, not the verse; stored as typed.';
 COMMENT ON COLUMN public.tenures.theme_palette IS
     'Optional {primary, primaryLight, accent} as #rrggbb. Validated (format and WCAG AA contrast) in the app; the dashboard falls back to the brand when absent.';
-COMMENT ON COLUMN public.tenures.coronated_at IS
-    'When the theme was unveiled. Set exactly when theme is set.';
+COMMENT ON COLUMN public.tenures.coronated_on IS
+    'The day of the coronation retreat. Not the session''s start date. NULL on tenures themed before it was recorded.';
+COMMENT ON COLUMN public.tenures.coronation_recorded_by IS
+    'Who entered the coronation in the portal.';
 
 -- ----------------------------------------------------------------------------
--- 2. Backfill: existing themes are honoured as coronations
+-- 2. Backfill: existing themes are coronations whose date is unknown
 -- ----------------------------------------------------------------------------
 --
 -- A blank theme is no theme. Normalise first so "   " cannot count as a coronation.
 UPDATE public.tenures SET theme = NULLIF(btrim(theme), '')
  WHERE theme IS NOT NULL AND theme IS DISTINCT FROM NULLIF(btrim(theme), '');
 
--- A theme that is already on record was unveiled at some point; the start of the
--- session is the best date available. Reported, because it is an assumption.
+-- A theme already on record was unveiled at some point, but nothing says when: the
+-- retreat is not the session's start date. Left NULL and reported, so the date is
+-- entered by somebody who knows it rather than guessed here.
 DO $$
 DECLARE
     r record;
 BEGIN
     FOR r IN
-        SELECT id, session, theme FROM public.tenures
-         WHERE theme IS NOT NULL AND coronated_at IS NULL
+        SELECT session, theme FROM public.tenures
+         WHERE theme IS NOT NULL AND coronated_on IS NULL
          ORDER BY start_date
     LOOP
-        UPDATE public.tenures
-           SET coronated_at = COALESCE(start_date::timestamptz, created_at, now())
-         WHERE id = r.id;
-        RAISE NOTICE 'Tenure % (%) already had a theme; recorded as coronated at the start of the session.',
+        RAISE NOTICE 'Tenure % is coronated ("%") but its coronation date is not on record. Add it from the Tenure page.',
             r.session, r.theme;
     END LOOP;
 END $$;
@@ -152,20 +157,20 @@ END $$;
 -- ----------------------------------------------------------------------------
 DO $$
 BEGIN
-    -- Coronated exactly when there is a theme, and a theme is never blank.
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tenures_theme_iff_coronated') THEN
-        ALTER TABLE public.tenures ADD CONSTRAINT tenures_theme_iff_coronated
-            CHECK ((theme IS NULL) = (coronated_at IS NULL)
-                   AND (theme IS NULL OR btrim(theme) <> ''));
+    -- A theme is never blank: "   " would read as coronated.
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tenures_theme_not_blank') THEN
+        ALTER TABLE public.tenures ADD CONSTRAINT tenures_theme_not_blank
+            CHECK (theme IS NULL OR btrim(theme) <> '');
     END IF;
 
-    -- Nothing theme-shaped exists without a theme.
+    -- Nothing theme-shaped exists without a theme -- including a coronation date:
+    -- a tenure cannot have been coronated with no theme unveiled.
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tenures_theme_details_need_theme') THEN
         ALTER TABLE public.tenures ADD CONSTRAINT tenures_theme_details_need_theme
             CHECK (theme IS NOT NULL
                    OR (theme_text IS NULL AND theme_banner_url IS NULL
                        AND theme_icon_url IS NULL AND theme_palette IS NULL
-                       AND coronated_by IS NULL));
+                       AND coronated_on IS NULL AND coronation_recorded_by IS NULL));
     END IF;
 
     -- Shape and contrast are checked in the app (src/lib/palette.ts); the database

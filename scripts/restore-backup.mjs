@@ -117,7 +117,7 @@ async function main() {
     // exactly whose name to try instead of failing with "invalid JSON".
     if (parsed?.rcfBackup?.encrypted) {
         const meta = parsed.rcfBackup;
-        console.log(`\nLocked backup: ${meta.label} (${meta.tenure?.name ?? "?"})`);
+        console.log(`\nLocked backup: ${meta.label} (${meta.tenure?.label ?? meta.tenure?.name ?? "?"})`);
         console.log(`Hint: ${meta.hint}`);
         if (!password) {
             console.error("\nThis backup is encrypted. Pass --password \"<passphrase>\".");
@@ -149,7 +149,8 @@ async function main() {
     }
 
     console.log(`\nBackup: ${manifest.label}`);
-    console.log(`Tenure: ${manifest.tenure?.name ?? "—"} (${manifest.tenure?.session ?? "—"})`);
+    // `label` since tenures lost their names; `name` in backups taken before that.
+    console.log(`Tenure: ${manifest.tenure?.label ?? `${manifest.tenure?.name ?? "—"} (${manifest.tenure?.session ?? "—"})`}`);
     console.log(`Taken:  ${manifest.takenAt}${manifest.takenBy ? ` by ${manifest.takenBy.name}` : ""}`);
     if (manifest.skipped?.length) {
         console.log(`\n⚠  ${manifest.skipped.length} table(s) were skipped when this backup was taken:`);

@@ -88,7 +88,7 @@ starting point, not a proof.
 ```ts
 tenureLabel(t)      // t.theme ?? t.session                 → "Arise and Shine" | "2026/2027"
 tenureFullLabel(t)  // "Arise and Shine · 2026/2027"  |  "2026/2027 · Awaiting coronation"
-isCoronated(t)      // t.coronated_at != null
+isCoronated(t)      // !!t.theme
 ```
 
 No component decides this for itself. Short label for tight spaces (sidebar, copyright),
@@ -102,34 +102,39 @@ ALTER TABLE public.tenures
     ADD COLUMN theme_banner_url  text,
     ADD COLUMN theme_icon_url    text,
     ADD COLUMN theme_palette     jsonb,
-    ADD COLUMN coronated_at      timestamptz,
-    ADD COLUMN coronated_by      uuid REFERENCES public.profiles(id) ON DELETE SET NULL;
+    ADD COLUMN coronated_on           date,   -- the day of the retreat, NOT the start date
+    ADD COLUMN coronation_recorded_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL;
 ```
 
 **Constraints** — the state the database can be in, stated once:
 
 ```sql
--- Coronated exactly when there is a theme.
-CHECK ((theme IS NULL) = (coronated_at IS NULL))
--- Nothing theme-shaped exists without a theme.
+-- Coronated = has a theme; a theme is never blank.
+CHECK (theme IS NULL OR btrim(theme) <> '')
+-- Nothing theme-shaped exists without a theme, a coronation date included.
 CHECK (theme IS NOT NULL OR (theme_text IS NULL AND theme_banner_url IS NULL
-                             AND theme_icon_url IS NULL AND theme_palette IS NULL))
+                             AND theme_icon_url IS NULL AND theme_palette IS NULL
+                             AND coronated_on IS NULL AND coronation_recorded_by IS NULL))
 -- The palette, if present, is an object (shape + contrast are checked in the app).
 CHECK (theme_palette IS NULL OR jsonb_typeof(theme_palette) = 'object')
 ```
 
-`theme_text` is NOT required by the database, only by the coronation form, because
-tenures themed before this change have no reference on record. The Tenure page shows
-*"Theme text not recorded"* for those, with the form one tap away.
+`theme_text` and `coronated_on` are NOT required by the database, only by the
+coronation form, because tenures themed before this change have neither on record. The
+Tenure page shows *"Theme text not recorded"* / *"Coronation date not recorded"* for
+those, with the form one tap away.
+
+**The coronation date is not the start date** (decision from review). The retreat
+happens some time into the session, so `coronated_on` is a date the VP Admin enters —
+never derived from `start_date`, and never "the moment the form was submitted".
 
 ### Migration and backfill (MINOR release)
 
 In order, in one migration made with `supabase migration new tenure_identity_and_workforce`:
 
 1. Add the columns (above), `IF NOT EXISTS` so a replay is harmless.
-2. **Existing themes are honoured as coronations.** Rows with `theme IS NOT NULL` get
-   `coronated_at = COALESCE(start_date::timestamptz, created_at)`. `RAISE NOTICE` each
-   one (`session`, `theme`) so the release log says what was assumed.
+2. **Existing themes are coronations with an unknown date.** `coronated_on` stays NULL
+   (not guessed from the start date); `RAISE NOTICE` each one so the date gets entered.
 3. **Names are not copied anywhere.** A name is not tenure information (decision 1), and
    copying `"Staging"` into `theme` would falsely declare a coronation. `RAISE NOTICE`
    each `(session, name)` whose name differs from its theme, so the VP Admin knows which
@@ -175,9 +180,12 @@ Write gate: the same check that guards tenure edits today (VP Admin / System Adm
   `uploadThemeImage` beside `uploadAvatar`, same size/type checks).
 - **Palette** — optional; four colour pickers with a live preview of the sidebar and a
   button, and the measured contrast ratios shown as you pick.
-- Re-submitting edits the theme; `coronated_at` is kept from the first coronation.
-  "Remove theme" clears every theme column **and** `coronated_at` together (the CHECK
-  makes anything else impossible) behind a confirm.
+- **Coronation date** — required, a date picker (the day of the retreat). Defaults to
+  empty, never to today or the start date.
+- Re-submitting edits the theme and its details; `coronation_recorded_by` is whoever
+  last saved. "Remove theme" clears every theme column **and** `coronated_on` together
+  (the CHECK makes anything else impossible) behind a confirm. Until this form exists,
+  the Tenure edit modal's Theme field does the same clearing (step 2).
 
 react-hook-form + zod; inline errors; pending/disabled submit.
 
@@ -477,11 +485,13 @@ AGENTS.md                                    honorary offices; tenure has no nam
    - Birthdays take **profile ids**, not a unit (`rcf_birthdays(ids, month, year)`):
      the Brothers'/Sisters' rosters are computed from gender in the app, so the app
      resolves the roster and SQL only filters by month.
-2. **`src/lib/tenure.ts` + remove every `name` read/write** (table in §1), including
+2. ✅ **`src/lib/tenure.ts` + remove every `name` read/write** (table in §1), including
    handover and scripts. Mechanical; must land before any new UI.
-   **Must land before this branch reaches `stage`**: after step 1 the handover and
-   tenure forms can still write a `theme` without `coronated_at`, which the new CHECK
-   refuses.
+   ✅ Done. `name` is no longer read or written anywhere; the column is nullable and
+   stays until step 8. Legacy fallbacks kept on purpose: `restore-backup.mjs` reads
+   `manifest.tenure.name` from old backups, and handover records read `payload.name`
+   from intents begun before this change. `handover_intents.from_tenure_name` is now
+   written with `tenureFullLabel()` (surfaced as `fromTenure.label`).
 3. **Workforce switch-on** — drop `comingSoon`. (Secretariat already done in step 1.)
 4. **Workforce features** — 2a details, 2b birthdays, 2c log, 2d update link.
 5. **Coronation form + palette** — ends with the dashboard in the session's colours.
@@ -505,13 +515,13 @@ Steps 3–4 and 5 are independent once 1–2 are in.
    intent recorded before the change still renders its planned name.
 5. Coronation with theme + text only → coronated, brand colours. Add a palette → the
    dashboard repaints on first load (no flash). Remove the theme → every theme column and
-   `coronated_at` clear, brand returns. Public event pages and Lo! never change colour.
+   `coronated_on` clear, brand returns. Public event pages and Lo! never change colour.
    No row is written to `events`.
 6. `theme_text` accepts `John 1:1-3`, `Isaiah 1:2-3`, `1 John 4:7`, `Song of Solomon 2:4`;
    rejects `John` and `1:1-3`.
 7. A palette with white-on-primary below 4.5:1 is refused in the form **and** by the
    action (call it directly), with the ratio shown. `"#fff;}</style>"` is refused.
-8. SQL: `UPDATE tenures SET theme = NULL WHERE coronated_at IS NOT NULL` fails;
+8. SQL: clearing `theme` while `coronated_on` is set fails; a blank theme fails;
    setting `theme_banner_url` on an uncoronated tenure fails.
 9. A banner URL outside the Cloudinary cloud is refused by the action.
 10. **Assistants:** appoint an assistant (`is_lead = false`) to an exco office that

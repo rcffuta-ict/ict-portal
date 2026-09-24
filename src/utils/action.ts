@@ -1,6 +1,7 @@
 "use server"
 
 import type { Tenure } from "@/lib/types/portal";
+import { tenureLabel } from "@/lib/tenure";
 import { db } from "@/lib/db";
 import { requireAccess } from "@/lib/access-control";
 
@@ -20,10 +21,14 @@ export async function getActiveTenure(): Promise<Tenure | null> {
     }
 }
 
-export async function getActiveTenureName() {
+/**
+ * The active tenure's short label (its theme once coronated, its session until then),
+ * or null when there is no active tenure — so a footer can simply leave it out.
+ */
+export async function getActiveTenureLabel(): Promise<string | null> {
     try {
         const dt = await getActiveTenure();
-        return dt?.name || "No Active Tenure";
+        return dt ? tenureLabel(dt) : null;
     } catch (error) {
         console.error("Error fetching active tenure:", error);
         return null;

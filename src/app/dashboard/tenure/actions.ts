@@ -3,6 +3,7 @@
 
 import { requireModuleRead, requireModuleWrite, requireVpAdmin } from "@/lib/access-control";
 import { db } from "@/lib/db";
+import { tenureFullLabel } from "@/lib/tenure";
 import { getTenurePresidentName } from "@/lib/backup";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 import { computeLevel, LEVELS } from "@/lib/levels";
@@ -226,14 +227,11 @@ export async function createTenureAction(formData: FormData) {
         // Deactivate all existing tenures
         await db.from('tenures').update({ is_active: false }).neq('id', '0');
 
-        // Create new tenure (insert directly so we can persist the theme; the ict-lib
-        // createTenure helper doesn't accept it).
-        const theme = ((formData.get("theme") as string) || "").trim();
+        // A new tenure is a session, not yet coronated: the theme is unveiled at the
+        // retreat and recorded then, never at creation.
         const { error } = await db.from('tenures').insert({
-            name: formData.get("name") as string,
             session: formData.get("session") as string,
             start_date: new Date(formData.get("startDate") as string).toISOString(),
-            theme: theme || null,
             is_active: true,
         });
         if (error) return { success: false, error: error.message };
@@ -246,19 +244,32 @@ export async function createTenureAction(formData: FormData) {
 }
 
 /**
- * Updates an existing tenure's name and session
+ * Updates an existing tenure's session and theme.
+ *
+ * Clearing the theme un-coronates the tenure, so everything that belongs to the theme
+ * goes with it — the database refuses a theme text, banner or coronation date with no
+ * theme (tenures_theme_details_need_theme).
  */
 export async function updateTenureAction(formData: FormData) {
     await requireModuleWrite("tenure");
     try {
-        await db
+        const theme = ((formData.get("theme") as string) || "").trim() || null;
+        const { error } = await db
             .from('tenures')
             .update({
-                name: formData.get("name"),
                 session: formData.get("session"),
-                theme: ((formData.get("theme") as string) || "").trim() || null,
+                theme,
+                ...(theme ? {} : {
+                    theme_text: null,
+                    theme_banner_url: null,
+                    theme_icon_url: null,
+                    theme_palette: null,
+                    coronated_on: null,
+                    coronation_recorded_by: null,
+                }),
             })
             .eq('id', formData.get("id"));
+        if (error) return { success: false, error: error.message };
 
         revalidatePath('/dashboard/tenure');
         return { success: true };
@@ -339,7 +350,7 @@ export async function getHandoverPreviewAction(incomingSession: string) {
         await requireModuleWrite("tenure");
 
         const { data: tenure } = await db
-            .from("tenures").select("id, name, session").eq("is_active", true).maybeSingle();
+            .from("tenures").select("id, session, theme").eq("is_active", true).maybeSingle();
 
         const { data: sets } = await db
             .from("class_sets")
@@ -444,18 +455,16 @@ export async function handoverTenureAction(formData: FormData) {
     // A handover is the write-bypass tier's alone — not the wider tenure-write group.
     const ctx = await requireVpAdmin();
     try {
-        const name = ((formData.get("name") as string) || "").trim();
         const session = ((formData.get("session") as string) || "").trim();
         const startDate = formData.get("startDate") as string;
-        const theme = ((formData.get("theme") as string) || "").trim();
         const vpAdminProfileId = formData.get("vpAdminProfileId") as string;
         const ictCoordProfileId = formData.get("ictCoordProfileId") as string;
         const carryMembership = formData.get("carryMembership") !== "false";
         const revokeOutgoing = formData.get("revokeOutgoing") !== "false";
         const intentId = (formData.get("intentId") as string) || null;
 
-        if (!name || !session || !startDate) {
-            return { success: false, error: "New tenure name, session and start date are required." };
+        if (!session || !startDate) {
+            return { success: false, error: "The new session and its start date are required." };
         }
         if (!vpAdminProfileId || !ictCoordProfileId) {
             return { success: false, error: "You must appoint the incoming VP Admin and ICT Coordinator." };
@@ -507,11 +516,10 @@ export async function handoverTenureAction(formData: FormData) {
             .eq('is_active', true);
 
         const { data: newTenure, error: tErr } = await db.from('tenures')
+            // Opened uncoronated: a handover starts a session, the retreat names it.
             .insert({
-                name,
                 session,
                 start_date: new Date(startDate).toISOString(),
-                theme: theme || null,
                 is_active: true,
             })
             .select('id')
@@ -573,7 +581,7 @@ export async function handoverTenureAction(formData: FormData) {
                 intentId,
                 ctx,
                 "completed",
-                `Opened ${name} (${session}). ${carried} membership${carried === 1 ? "" : "s"} carried forward, ${revoked} outgoing login${revoked === 1 ? "" : "s"} revoked.`,
+                `Opened ${tenureFullLabel({ session })}. ${carried} membership${carried === 1 ? "" : "s"} carried forward, ${revoked} outgoing login${revoked === 1 ? "" : "s"} revoked.`,
             );
         }
 
@@ -1697,7 +1705,7 @@ export async function listHandoverIntentsAction() {
                 id, status, step, from_tenure_id, from_tenure_name, from_tenure_session,
                 to_tenure_id, initiated_by_name, completed_by_name, completed_at,
                 abandoned_reason, created_at, updated_at, payload,
-                to_tenure:tenures!handover_intents_to_tenure_id_fkey(name, session)
+                to_tenure:tenures!handover_intents_to_tenure_id_fkey(session, theme)
             `)
             .order("created_at", { ascending: false })
             .limit(50);
@@ -1715,21 +1723,24 @@ export async function listHandoverIntentsAction() {
         return {
             success: true as const,
             data: (data ?? []).map((r: any) => {
-                const to = one(r.to_tenure) as { name?: string; session?: string } | null;
+                const to = one(r.to_tenure) as { session: string; theme: string | null } | null;
                 return {
                     id: r.id,
                     status: r.status as "draft" | "in_progress" | "completed" | "abandoned",
                     step: r.step,
                     fromTenure: {
                         id: r.from_tenure_id,
-                        name: r.from_tenure_name,
+                        // A snapshot taken when the handover began — what the closing
+                        // tenure was called THEN, which a later coronation must not rewrite.
+                        label: r.from_tenure_name as string | null,
                         session: r.from_tenure_session,
                     },
                     toTenure: r.to_tenure_id
-                        ? { id: r.to_tenure_id, name: to?.name ?? null, session: to?.session ?? null }
+                        ? { id: r.to_tenure_id, label: to ? tenureFullLabel(to) : null, session: to?.session ?? null }
                         : null,
-                    // The incoming tenure a draft is HEADING for, before it exists.
-                    plannedName: (r.payload?.name as string) || null,
+                    // Handovers begun before tenures lost their names planned one; newer
+                    // ones plan only a session (plannedSession).
+                    legacyPlannedName: (r.payload?.name as string) || null,
                     plannedSession: (r.payload?.session as string) || null,
                     initiatedBy: r.initiated_by_name,
                     completedBy: r.completed_by_name,
@@ -1775,7 +1786,7 @@ export async function getHandoverIntentAction(intentId: string) {
                 payload: (intent.payload ?? {}) as Record<string, unknown>,
                 fromTenure: {
                     id: intent.from_tenure_id,
-                    name: intent.from_tenure_name,
+                    label: intent.from_tenure_name as string | null,
                     session: intent.from_tenure_session,
                 },
                 toTenureId: intent.to_tenure_id,
@@ -1813,7 +1824,7 @@ export async function createHandoverIntentAction() {
 
         const { data: tenure } = await db
             .from("tenures")
-            .select("id, name, session")
+            .select("id, session, theme")
             .eq("is_active", true)
             .maybeSingle();
 
@@ -1837,7 +1848,9 @@ export async function createHandoverIntentAction() {
             .from("handover_intents")
             .insert({
                 from_tenure_id: tenure.id,
-                from_tenure_name: tenure.name,
+                // Snapshot of what the tenure is called now; the column keeps its old
+                // name, but what it holds is the label.
+                from_tenure_name: tenureFullLabel(tenure),
                 from_tenure_session: tenure.session,
                 status: "draft",
                 initiated_by: actor.id,
@@ -1854,7 +1867,7 @@ export async function createHandoverIntentAction() {
             intentIdOf(created),
             ctx,
             "started",
-            `Began handing over ${tenure.name} (${tenure.session}).`,
+            `Began handing over ${tenureFullLabel(tenure)}.`,
         );
 
         revalidatePath("/dashboard/tenure/handover");
@@ -2070,7 +2083,7 @@ export async function getServiceHistoryAction(profileId: string) {
             .select(`
                 id, is_lead, created_at, ended_at, ended_reason,
                 position:leadership_positions(title, alias, slug, tier),
-                tenure:tenures(id, name, session, is_active, start_date),
+                tenure:tenures(id, session, theme, is_active, start_date),
                 unit:units(name),
                 class_set:class_sets(family_name, entry_year)
             `)
@@ -2089,7 +2102,7 @@ export async function getServiceHistoryAction(profileId: string) {
                 slug: position?.slug ?? null,
                 tier: position?.tier ?? null,
                 session: tenure?.session ?? null,
-                tenureName: tenure?.name ?? null,
+                tenureTheme: tenure?.theme ?? null,
                 tenureStart: tenure?.start_date ?? null,
                 isLead: r.is_lead !== false,
                 isCurrent: r.ended_at == null && tenure?.is_active === true,
