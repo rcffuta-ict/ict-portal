@@ -143,58 +143,67 @@ export function InsightPanels({
                 <Kpi icon={Crown} label="Offices filled" value={`${cabinet.filled}/${cabinet.total}`} />
             </dl>
 
-            <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-                {/* --- Units at a glance ------------------------------------------ */}
-                <Panel
-                    icon={Layers}
-                    title="Units at a glance"
-                    summary={
-                        emptyUnits.length || noExco.length
-                            ? [
-                                emptyUnits.length && `${emptyUnits.length} with no members`,
-                                noExco.length && `${noExco.length} with no Executive`,
-                            ].filter(Boolean).join(" · ")
-                            : "Every unit has members and an Executive."
-                    }
-                    action={<PanelLink href="/dashboard/units">Manage units</PanelLink>}
-                >
-                    <ul className="space-y-3">
-                        {workforceUnits.map((u) => (
-                            <li key={u.id}>
-                                <div className="flex items-baseline justify-between gap-3 text-sm">
-                                    <span className="min-w-0 truncate font-medium text-slate-800">{u.name}</span>
-                                    <span className="shrink-0 tabular-nums text-slate-600">{u.members}</span>
+            {/* --- Units at a glance ---------------------------------------------- */}
+            {/* Full width, with the units as a grid of tiles: a single column of every
+            unit was the longest thing on the page, and on a phone two tiles a row
+            halves the scroll to reach the panels below. */}
+            <Panel
+                icon={Layers}
+                title="Units at a glance"
+                summary={
+                    emptyUnits.length || noExco.length
+                        ? [
+                            emptyUnits.length && `${emptyUnits.length} with no members`,
+                            noExco.length && `${noExco.length} with no Executive`,
+                        ].filter(Boolean).join(" · ")
+                        : "Every unit has members and an Executive."
+                }
+                action={<PanelLink href="/dashboard/units">Manage units</PanelLink>}
+            >
+                <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5">
+                    {workforceUnits.map((u) => (
+                        <li
+                            key={u.id}
+                            className={`flex flex-col rounded-xl border p-3 ${
+                                u.members === 0 || !u.hasExco ? "border-amber-200 bg-amber-50/40" : "border-slate-100 bg-slate-50"
+                            }`}
+                        >
+                            <span className="line-clamp-2 text-sm font-medium leading-snug text-slate-800">{u.name}</span>
+                            <span className="mt-auto pt-2 text-xl font-bold tabular-nums text-rcf-navy">
+                                {u.members}
+                                <span className="sr-only"> member{u.members === 1 ? "" : "s"}</span>
+                            </span>
+                            <Meter
+                                value={u.members}
+                                max={maxUnit}
+                                label={`${u.name}: ${u.members} member${u.members === 1 ? "" : "s"}`}
+                                className="mt-1 h-1.5"
+                            />
+                            {(!u.hasExco || u.members === 0) && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                    {u.members === 0 && <Flag>No members</Flag>}
+                                    {!u.hasExco && <Flag>No Executive</Flag>}
                                 </div>
-                                <Meter
-                                    value={u.members}
-                                    max={maxUnit}
-                                    label={`${u.name}: ${u.members} member${u.members === 1 ? "" : "s"}`}
-                                    className="mt-1 h-1.5"
-                                />
-                                {(!u.hasExco || u.members === 0) && (
-                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                        {u.members === 0 && <Flag>No members</Flag>}
-                                        {!u.hasExco && <Flag>No Executive</Flag>}
-                                    </div>
-                                )}
-                            </li>
+                            )}
+                        </li>
+                    ))}
+                    {workforceUnits.length === 0 && <Empty>No units are set up yet.</Empty>}
+                </ul>
+                {genderUnits.length > 0 && (
+                    <p className="mt-4 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-500">
+                        <span className="font-semibold text-slate-600">By gender, not induction: </span>
+                        {genderUnits.map((u, i) => (
+                            <span key={u.id}>
+                                {i > 0 && " · "}
+                                {u.name} <span className="tabular-nums">{u.members}</span>
+                                {!u.hasExco && <span className="font-semibold text-amber-700"> (no Executive)</span>}
+                            </span>
                         ))}
-                        {workforceUnits.length === 0 && <Empty>No units are set up yet.</Empty>}
-                    </ul>
-                    {genderUnits.length > 0 && (
-                        <p className="mt-4 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-500">
-                            <span className="font-semibold text-slate-600">By gender, not induction: </span>
-                            {genderUnits.map((u, i) => (
-                                <span key={u.id}>
-                                    {i > 0 && " · "}
-                                    {u.name} <span className="tabular-nums">{u.members}</span>
-                                    {!u.hasExco && <span className="font-semibold text-amber-700"> (no Executive)</span>}
-                                </span>
-                            ))}
-                        </p>
-                    )}
-                </Panel>
+                    </p>
+                )}
+            </Panel>
 
+            <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
                 {/* --- Cabinet completeness ------------------------------------- */}
                 <Panel
                     icon={Crown}
@@ -468,7 +477,8 @@ function Row({ label, value, warn, hint }: { label: string; value: number; warn?
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-    return <li className="py-4 text-center text-sm text-slate-400">{children}</li>;
+    // col-span-full: it also sits in the units grid, where it must span every column.
+    return <li className="col-span-full py-4 text-center text-sm text-slate-400">{children}</li>;
 }
 
 /** Placeholder shapes while the figures load — the page doesn't jump when they land. */

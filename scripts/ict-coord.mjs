@@ -92,11 +92,16 @@ async function inspect(db) {
 
     let holders = [];
     if (tenure) {
-        const { data } = await db
+        const { data, error } = await db
             .from("leadership")
-            .select("id, is_lead, profiles(id, first_name, last_name, email)")
+            // `profiles!leadership_profile_id_fkey`, not plain `profiles`: `ended_by`
+            // is a second FK to profiles, and the bare embed is ambiguous (PGRST201).
+            // Ended appointments are service history and confer nothing, so skip them.
+            .select("id, is_lead, profiles!leadership_profile_id_fkey(id, first_name, last_name, email)")
             .eq("position_id", position.id)
-            .eq("tenure_id", tenure.id);
+            .eq("tenure_id", tenure.id)
+            .is("ended_at", null);
+        if (error) throw error;
         holders = data ?? [];
 
         for (const h of holders) {
@@ -200,6 +205,7 @@ async function seed(db, password) {
         .eq("tenure_id", tenure.id)
         .eq("position_id", position.id)
         .eq("profile_id", profile.id)
+        .is("ended_at", null)
         .maybeSingle();
 
     if (!existing) {

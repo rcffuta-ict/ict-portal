@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ChevronLeft, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { getUnitMemberDetailAction } from "../../../actions";
 import { MemberDetailView } from "@/components/dashboard/member-detail-view";
+import { Breadcrumb } from "@/components/dashboard/breadcrumb";
 import { UpdateLink } from "../../../components/update-link";
 
 export const metadata: Metadata = {
@@ -25,20 +25,10 @@ export default async function UnitMemberPage({
     const { unitId, profileId } = await params;
     const res = await getUnitMemberDetailAction(unitId, profileId);
 
-    const back = (
-        <Link
-            href="/dashboard/units"
-            className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-rcf-navy focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
-        >
-            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-            Workforce
-        </Link>
-    );
-
     if (!res.success) {
         return (
             <div className="space-y-4">
-                {back}
+                <Breadcrumb items={[{ label: "Workforce", href: "/dashboard/units" }, { label: "Member" }]} />
                 <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-8 text-center">
                     <ShieldAlert className="h-10 w-10 text-amber-500" aria-hidden="true" />
                     <h1 className="text-lg font-bold text-rcf-navy">Not available</h1>
@@ -52,11 +42,13 @@ export default async function UnitMemberPage({
 
     return (
         <div className="space-y-6 pb-16">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                {back}
-                <span className="text-slate-300" aria-hidden="true">/</span>
-                <span className="font-medium text-slate-700">{res.unitName}</span>
-            </div>
+            <Breadcrumb
+                items={[
+                    { label: "Workforce", href: "/dashboard/units" },
+                    { label: res.unitName, href: `/dashboard/units/${unitId}` },
+                    { label: res.data.profile?.firstName || "Member" },
+                ]}
+            />
 
             <MemberDetailView detail={res.data} />
 

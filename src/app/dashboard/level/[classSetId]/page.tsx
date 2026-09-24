@@ -7,7 +7,7 @@ import {
     listLevelInvitesAction,
 } from "../actions";
 import { GenerationDetail } from "../components/generation-detail";
-import { Breadcrumb } from "../components/breadcrumb";
+import { Breadcrumb } from "@/components/dashboard/breadcrumb";
 
 /**
  * A single generation's page: members, tokens and token activity.

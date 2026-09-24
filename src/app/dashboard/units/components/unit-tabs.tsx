@@ -8,7 +8,7 @@ export interface UnitTab<T extends string> {
     icon: LucideIcon;
 }
 
-/** The tab bar inside a unit dialog. Scrolls sideways on a narrow phone rather than wrapping. */
+/** The tab bar on a unit's page. Scrolls sideways on a narrow phone rather than wrapping. */
 export function UnitTabs<T extends string>({
     tabs,
     active,
