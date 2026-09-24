@@ -29,19 +29,28 @@ export interface UnitOverview {
 }
 
 /**
- * Every unit and team, with how many members each holds (across all tenures).
+ * Every unit and team, with how many members each holds in the given tenure.
+ *
+ * Tenure-scoped: membership rows are per tenure, and counting every tenure's rows made a
+ * unit read as bigger each session it existed. With no tenure, every count is zero.
  *
  * The Brothers' and Sisters' units are counted from `profiles.gender` instead of from
  * `membership_units`, because nobody is inducted into them -- see `genderCategory` in
  * src/config/fellowship-units.ts. Their membership row count is always zero, and
  * reporting that would put "0 members" beside a unit that contains half the fellowship.
  */
-export async function getAllUnitsOverview(): Promise<UnitOverview[]> {
-    const { data, error } = await db
-        .from("units")
-        .select("*, members:membership_units(count)")
-        .order("name");
+export async function getAllUnitsOverview(tenureId: string | null): Promise<UnitOverview[]> {
+    const [{ data, error }, { data: memberships, error: mError }] = await Promise.all([
+        db.from("units").select("*").order("name"),
+        tenureId
+            ? db.from("membership_units").select("unit_id").eq("tenure_id", tenureId)
+            : Promise.resolve({ data: [] as { unit_id: string }[], error: null }),
+    ]);
     if (error) throw new Error(error.message);
+    if (mError) throw new Error(mError.message);
+
+    const counts = new Map<string, number>();
+    for (const m of memberships ?? []) counts.set(m.unit_id, (counts.get(m.unit_id) ?? 0) + 1);
 
     const rows = data ?? [];
     const genderCounts = rows.some((u) => genderForUnitSlug(u.slug))
@@ -53,8 +62,7 @@ export async function getAllUnitsOverview(): Promise<UnitOverview[]> {
         return {
             ...u,
             isGenderCategory: gender !== null,
-            // PostgREST returns an aggregate as a one-element array: [{ count: n }].
-            memberCount: gender ? genderCounts[gender] : (u.members?.[0]?.count ?? 0),
+            memberCount: gender ? genderCounts[gender] : (counts.get(u.id) ?? 0),
         };
     }) as UnitOverview[];
 }

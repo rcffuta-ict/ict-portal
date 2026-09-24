@@ -134,7 +134,6 @@ const toolItems: SidebarItem[] = [
         icon: SquaresUnite,
         section: "tools",
         module: "workforce",
-        comingSoon: true,
         color: "bg-rcf-navy",
         description: "Manage unit / team members.",
     },
