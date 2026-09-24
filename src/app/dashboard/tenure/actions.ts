@@ -1212,8 +1212,18 @@ export async function togglePositionAction(id: string, currentStatus: boolean, d
 /**
  * Searches for members by name, email, or phone number
  * Returns formatted results with unit/team memberships
+ *
+ * Returns contact details, so it is gated like the Tenure console that calls it (the
+ * unit dialog and the handover wizard). It had no check at all — every export of a
+ * "use server" file is a callable endpoint, so without one anybody could search the
+ * roster for emails and phone numbers.
  */
 export async function searchMemberAction(query: string) {
+    try {
+        await requireModuleRead("tenure");
+    } catch {
+        return [];
+    }
 
     const { data, error } = await db
         .rpc('search_members_detailed', { 
