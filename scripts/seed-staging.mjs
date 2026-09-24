@@ -301,18 +301,17 @@ async function main() {
     section("1. Active tenure");
 
     const session = flagValue("session") ?? sessionFor();
-    const name = flagValue("name") ?? "Staging";
 
     const { data: existing, error: readError } = await db
         .from("tenures")
-        .select("id, name, session, start_date")
+        .select("id, session, theme, start_date")
         .eq("is_active", true)
         .maybeSingle();
     if (readError) throw new Error(`Could not read tenures: ${readError.message}`);
 
     let tenure = existing;
     if (tenure) {
-        ok(`Already active: ${c.bold(tenure.name)} — ${tenure.session}`);
+        ok(`Already active: ${c.bold(tenure.theme ?? tenure.session)}${tenure.theme ? ` — ${tenure.session}` : " — awaiting coronation"}`);
         info(c.grey("Kept as it is. This script never replaces an active tenure."));
         if (tenure.session !== session) {
             warn(`Its session (${tenure.session}) is not the current one (${session}).`);
@@ -321,16 +320,17 @@ async function main() {
         }
     } else {
         // start_date is a DATE column; the session's own start year, not today, so the
-        // tenure reads correctly if this is run mid-session.
+        // tenure reads correctly if this is run mid-session. Created uncoronated: a
+        // tenure has no name, and its theme is recorded at coronation from the portal.
         const startDate = `${session.slice(0, 4)}-08-01`;
         const { data: created, error } = await db
             .from("tenures")
-            .insert({ name, session, start_date: startDate, is_active: true })
-            .select("id, name, session, start_date")
+            .insert({ session, start_date: startDate, is_active: true })
+            .select("id, session, theme, start_date")
             .single();
         if (error) throw new Error(`Could not create the tenure: ${error.message}`);
         tenure = created;
-        ok(`Created ${c.bold(tenure.name)} — ${tenure.session}, starting ${tenure.start_date}`);
+        ok(`Created ${c.bold(tenure.session)} — starting ${tenure.start_date}, awaiting coronation`);
     }
 
     // --- 2. Generations -----------------------------------------------------

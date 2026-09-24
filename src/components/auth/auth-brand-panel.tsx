@@ -6,10 +6,10 @@ import { Badge } from "../ui/badge";
 import { Copyright } from "../ui/copyright";
 
 interface AuthBrandPanelProps {
-    tenureName?: string | null;
+    tenureLabel?: string | null;
 }
 
-export function AuthBrandPanel({ tenureName }: AuthBrandPanelProps) {
+export function AuthBrandPanel({ tenureLabel }: AuthBrandPanelProps) {
     return (
         <div className="relative hidden h-full w-full flex-col justify-between overflow-hidden bg-rcf-navy p-12 text-white lg:flex">
             {/* --- BACKGROUND ANIMATIONS --- */}
@@ -108,7 +108,7 @@ export function AuthBrandPanel({ tenureName }: AuthBrandPanelProps) {
                     transition={{ delay: 0.6, duration: 0.8 }}
                     className="flex items-center gap-4 text-xs font-medium text-gray-400"
                 >
-                    <Copyright tenure={tenureName} variant="light" />
+                    <Copyright tenure={tenureLabel} variant="light" />
                 </motion.div>
             </div>
         </div>

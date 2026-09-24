@@ -12,7 +12,7 @@ interface IntentSummary {
     status: string;
     step: number;
     payload: Record<string, unknown>;
-    fromTenure: { id: string | null; name: string | null; session: string | null };
+    fromTenure: { id: string | null; label: string | null; session: string | null };
     toTenureId: string | null;
     initiatedBy: string | null;
     completedBy: string | null;
@@ -47,8 +47,10 @@ export function HandoverRecord({
     events: EventRow[];
 }) {
     const completed = intent.status === "completed";
-    const plannedName = (intent.payload?.name as string) || null;
     const plannedSession = (intent.payload?.session as string) || null;
+    // Handovers begun before tenures lost their names planned one; newer ones plan a
+    // session only.
+    const planned = (intent.payload?.name as string) || plannedSession;
 
     return (
         <>
@@ -87,9 +89,9 @@ export function HandoverRecord({
                         completed ? "text-emerald-900" : "text-slate-700"
                     }`}
                 >
-                    {intent.fromTenure.name ?? "Unknown"}
+                    {intent.fromTenure.label ?? "Unknown"}
                     <ArrowRight className="h-4 w-4 opacity-60" aria-hidden="true" />
-                    {plannedName ?? "—"}
+                    {planned ?? "—"}
                 </h1>
 
                 <p

@@ -11,12 +11,14 @@ import { CompactPreloader } from "@/components/ui/preloader";
 import { getSidebarItems, eventSidebarItems } from "@/config/sidebar-items";
 import type { SidebarItem } from "@/config/sidebar-items";
 import { useMemo, useState, useEffect } from "react";
+import { tenureFullLabel } from "@/lib/tenure";
 import { getEvents } from "@/app/events/actions";
 import { formatEventShortDate, parseEventDate } from "@/lib/event-utils";
 
 
 export default function DashboardHome() {
-    const tenureName = useTenureStore(s => s.activeTenure?.name || null);
+    const activeTenure = useTenureStore(s => s.activeTenure);
+    const tenureLabel = activeTenure ? tenureFullLabel(activeTenure) : null;
     const user = useProfileStore(s => s.user);
     const userFirstName = user?.profile.firstName || "Melchizedeck";
     const [dynamicEvents, setDynamicEvents] = useState<SidebarItem[]>([]);
@@ -95,10 +97,10 @@ export default function DashboardHome() {
                 <h1 className="text-3xl font-bold tracking-tight text-rcf-navy">
                     Welcome back, {userFirstName} 👋
                 </h1>
-                {tenureName && (
+                {tenureLabel && (
                     <p className="text-gray-500">
                         {/* Rebranding Tenure • 2nd Semester 2024/2025 */}
-                        {tenureName}
+                        {tenureLabel}
                     </p>
                 )}
             </div>

@@ -169,7 +169,7 @@ export default function TenureDashboard() {
 
             <div className="min-h-100">
                 {activeTab === "tenure" && (
-                    <TenureTab data={data} onSuccess={refresh} />
+                    <TenureTab data={data} onSuccess={refresh} onNavigate={setActiveTab} />
                 )}
                 {activeTab === "structure" && (
                     <StructureTab data={data} onSuccess={refresh} />

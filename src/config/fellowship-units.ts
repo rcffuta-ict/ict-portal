@@ -217,13 +217,6 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
         description: "Runs the fellowship's trade, sales and commercial ventures.",
     },
     {
-        slug: "secretariat",
-        name: "Secretariat",
-        type: "TEAM",
-        positionAlias: "Secretariat Keeper",
-        description: "Keeps the fellowship's office, its records and its correspondence.",
-    },
-    {
         slug: "protocol",
         name: "Protocol Team",
         type: "TEAM",
