@@ -5,7 +5,40 @@ becomes the session's identity, and the Workforce module finally opens to the pe
 actually run the units.
 
 Written to be picked up remotely — every section says what exists today, what changes,
-and how to tell it worked.
+and how to tell it worked. Every claim about the current code was checked against the
+tree at `0c4768a`; line numbers are from that commit.
+
+---
+
+## 0. Decisions (settled — do not re-open while implementing)
+
+1. **A tenure is its Session, its Theme and its Text** — plus dates, status and the
+   coronation assets. **It has no name.** `tenures.name` is dropped, not migrated
+   somewhere else.
+2. **No theme means not yet coronated.** Coronation (the retreat) is where the theme is
+   unveiled. An uncoronated tenure reads **"2026/2027 · Awaiting coronation"** — the
+   honest state of a young session, not a warning. Nothing is *gated* on coronation.
+3. **Coronation is not an app-managed event.** No `events` row. The portal records only
+   its outcome: theme, text, assets, palette, when, and by whom.
+4. **`theme_text` is a Bible reference** (`John 1:1-3`, `Isaiah 1:2-3`), not the verse.
+5. **The theme is required at coronation; the assets are not.** Banner, icon and palette
+   are each optional and each falls back to the brand on its own. A coronation can be
+   recorded on retreat day before the designer has finished the banner, and a missing
+   asset never leaves the portal unstyled.
+6. **The palette repaints the dashboard only**, through one mechanism that another layout
+   can adopt later. Public event pages and Lo! stay on brand navy/gold.
+7. **Honorary offices are offices that control no unit or team.** The Secretariat Keeper
+   is one; the General Secretary and Financial Secretary already are. An honorary office
+   is expressed the way the catalogue already expresses it — **no privilege tags** —
+   which by the existing rule (`defaultGrantsLogin`, `leadership-positions.ts:96`) also
+   means **no portal login** by default. No new flag is invented.
+8. **Birthdays are shown per month.** A member born on **29 February is celebrated on
+   28 February** in years that are not leap years (on the 29th in leap years).
+9. **Update links are never minted by an exco.** They are the level coordinator's
+   credential; an exco may only copy one that exists.
+10. **Two releases.** The app stops reading `name` in a MINOR release; the column is
+    dropped in the following MAJOR release (`pnpm release -- --major`). A rollback of the
+    first never meets code that expects a missing column.
 
 ---
 
@@ -21,38 +54,47 @@ CREATE TABLE public.tenures (
 );
 ```
 
-`name` is NOT NULL and carries whatever somebody typed — "Staging", "Dominion". It is
-read in roughly a dozen places: `src/utils/action.ts:26`, the dashboard overview, the
-insurance page, and the handover payloads (`from_tenure_name`, `plannedName`).
+`name` is read or written in ~40 places, not a dozen. The full list to change:
+
+| where | what |
+|---|---|
+| `src/utils/action.ts:26` | `getActiveTenureName()` → `tenureLabel()` (feeds the auth layout + `Copyright`) |
+| `src/app/dashboard/(overview)/page.tsx:19` | store read of `activeTenure.name` |
+| `src/app/dashboard/settings/insurance/page.tsx:80` | `tenure?.name` |
+| `src/app/dashboard/tenure/components/tenure-tab.tsx:68,226` | display + the edit form's **Name** input (remove it) |
+| `src/app/dashboard/tenure/components/cabinet-tab.tsx:47` | "Active Tenure: …" |
+| `src/app/dashboard/tenure/components/handover-wizard.tsx` | `form.name` + `form.theme` inputs, validation at :185, summary rows — see *Handover* below |
+| `src/app/dashboard/tenure/components/handover-index.tsx`, `handover-record.tsx` | `fromTenure.name`, `plannedName` |
+| `src/app/dashboard/tenure/actions.ts` | :232 create, :255 update, :342 select, :509 handover insert, :1697–1857 handover intents |
+| `src/lib/backup.ts:154,156` | selects `name` into the backup manifest |
+| `scripts/seed-staging.mjs:307–369` | creates the tenure with a name and prints it |
+| `scripts/restore-backup.mjs:120,152` | prints `manifest.tenure.name` — **keep reading it as a fallback**: every backup taken before this change carries it |
+| `scripts/ict-coord.mjs`, `scripts/backup.mjs` | check each for `name` |
+| `src/lib/stores/tenure.store.ts` | the tenure type |
+
+Grep `\.name\b` near `tenure` / `Tenure` again before closing step 2 — this list is a
+starting point, not a proof.
 
 ### The change
 
-A tenure is identified by three things and nothing else:
-
 | field | required | meaning |
 |---|---|---|
-| `session` | yes | `2026/2027`. The spine — every level in the fellowship is computed from it. |
-| `theme` | **no** | `Arise and Shine`. Unveiled at coronation. |
-| `theme_text` | no | The Bible reference the theme is drawn from — `John 1:1-3`, `Isaiah 1:2-3`. A reference, not the verse itself. |
+| `session` | yes | `2026/2027`. The spine — every level is computed from it. |
+| `theme` | at coronation | `Arise and Shine`. NULL until coronated. |
+| `theme_text` | at coronation (form) | `John 1:1-3`. A reference, stored as typed. |
 
-**`name` is dropped.** It was a third name for a thing that already had two, and the two
-it had were better.
+**The label rule, in one place** — `src/lib/tenure.ts`:
 
-**The label rule, in one place:** `tenureLabel(t) = t.theme || t.session`. A new helper
-in `src/lib/tenure.ts`, used everywhere `tenure.name` is read today. No component
-decides this for itself, or the fellowship ends up with screens that disagree about what
-the session is called.
+```ts
+tenureLabel(t)      // t.theme ?? t.session                 → "Arise and Shine" | "2026/2027"
+tenureFullLabel(t)  // "Arise and Shine · 2026/2027"  |  "2026/2027 · Awaiting coronation"
+isCoronated(t)      // t.coronated_at != null
+```
 
-### Coronation
+No component decides this for itself. Short label for tight spaces (sidebar, copyright),
+full label wherever a tenure is *named* (overview, insurance, handover records, backups).
 
-**No theme means the tenure has not been coronated.** Coronation (the retreat service) is
-where the theme is unveiled, so the absence of a theme is not missing data — it is a
-true statement about where the tenure is in its life.
-
-The portal should say so rather than showing a blank: a tenure without a theme reads as
-**"2026/2027 · Awaiting coronation"**, and the Tenure page offers the coronation form.
-
-New columns:
+### Columns
 
 ```sql
 ALTER TABLE public.tenures
@@ -62,69 +104,130 @@ ALTER TABLE public.tenures
     ADD COLUMN theme_palette     jsonb,
     ADD COLUMN coronated_at      timestamptz,
     ADD COLUMN coronated_by      uuid REFERENCES public.profiles(id) ON DELETE SET NULL;
-ALTER TABLE public.tenures DROP COLUMN name;
 ```
 
-`coronated_at` is stored rather than inferred from `theme IS NOT NULL`, because "when
-were we coronated" is a fact worth keeping and a theme can be edited afterwards.
+**Constraints** — the state the database can be in, stated once:
 
-**`theme_text` is a reference, not prose.** `John 1:1-3`, `Isaiah 1:2-3` — book, chapter,
-verse or verse range. Validated loosely (`<book> <chapter>:<verse>[-<verse>]`) so a typo
-is caught at entry, but not against a canon list: abbreviations and spellings vary, and a
-form that argues with somebody about how to spell "Song of Solomon" is worse than one
-that accepts it. Stored as typed; never parsed for meaning.
+```sql
+-- Coronated exactly when there is a theme.
+CHECK ((theme IS NULL) = (coronated_at IS NULL))
+-- Nothing theme-shaped exists without a theme.
+CHECK (theme IS NOT NULL OR (theme_text IS NULL AND theme_banner_url IS NULL
+                             AND theme_icon_url IS NULL AND theme_palette IS NULL))
+-- The palette, if present, is an object (shape + contrast are checked in the app).
+CHECK (theme_palette IS NULL OR jsonb_typeof(theme_palette) = 'object')
+```
 
-**A theme is all-or-nothing.** A theme always has a banner, an icon and a palette, so the
-coronation form takes all of them together and a partial theme is not a state the system
-can be in. Enforced by a CHECK: either every theme column is NULL, or `theme`,
-`theme_banner_url`, `theme_icon_url` and `theme_palette` are all present.
+`theme_text` is NOT required by the database, only by the coronation form, because
+tenures themed before this change have no reference on record. The Tenure page shows
+*"Theme text not recorded"* for those, with the form one tap away.
 
-### The palette, adopted all round
+### Migration and backfill (MINOR release)
 
-`theme_palette` is jsonb of the shape:
+In order, in one migration made with `supabase migration new tenure_identity_and_workforce`:
+
+1. Add the columns (above), `IF NOT EXISTS` so a replay is harmless.
+2. **Existing themes are honoured as coronations.** Rows with `theme IS NOT NULL` get
+   `coronated_at = COALESCE(start_date::timestamptz, created_at)`. `RAISE NOTICE` each
+   one (`session`, `theme`) so the release log says what was assumed.
+3. **Names are not copied anywhere.** A name is not tenure information (decision 1), and
+   copying `"Staging"` into `theme` would falsely declare a coronation. `RAISE NOTICE`
+   each `(session, name)` whose name differs from its theme, so the VP Admin knows which
+   tenures to coronate from the Tenure page. The values also survive in every backup
+   taken before the release — **take one** (`pnpm backup`) before applying to production.
+4. `ALTER COLUMN name DROP NOT NULL` — so the new code, which never writes it, can
+   create tenures. The column stays for one release.
+5. Add the three CHECKs.
+6. The Workforce/Secretariat/birthday pieces from sections 2–3 (same migration keeps the
+   MINOR a single step).
+
+### Drop (MAJOR release, the next one)
+
+A separate migration, `drop_tenure_name`: `ALTER TABLE public.tenures DROP COLUMN IF EXISTS name;`
+Released with `--major`. Before writing it, grep the other applications that share this
+database (AGENTS.md: four hold FKs to `profiles`) for `tenures` — if any reads `name`,
+it must move first.
+
+`handover_intents.from_tenure_name` **stays**. It is a snapshot taken at the time of the
+handover, not a reference; from now on it is written with `tenureFullLabel()`.
+
+### Handover
+
+Handover opens a new session; it does not coronate one. So the wizard **loses both its
+Name and its Theme inputs** and asks only for session and start date. The new tenure is
+created uncoronated and reads *"Awaiting coronation"* until the retreat. `payload.name`
+disappears from new intents; `handover-record.tsx` falls back to `payload.name` only
+when rendering intents recorded before this change, and otherwise shows the planned
+session.
+
+### Coronation form
+
+`src/app/dashboard/tenure/components/coronation-form.tsx`, opened from the Tenure page.
+Write gate: the same check that guards tenure edits today (VP Admin / System Admin via
+`requireModuleWrite`), re-checked in the server action — never trusted from the UI.
+
+- **Theme** — required, 2–80 chars.
+- **Theme text** — required, validated loosely:
+  `^(?:[1-3]\s?)?[A-Za-z][A-Za-z .']+\s\d{1,3}:\d{1,3}(?:[-–]\d{1,3})?$`.
+  Accepts `John 1:1-3`, `Isaiah 1:2-3`, `1 John 4:7`, `Song of Solomon 2:4`;
+  rejects `John`, `1:1-3`. Not checked against a canon list; stored as typed.
+- **Banner, icon** — optional; upload through `src/lib/cloudinary.ts` (add
+  `uploadThemeImage` beside `uploadAvatar`, same size/type checks).
+- **Palette** — optional; four colour pickers with a live preview of the sidebar and a
+  button, and the measured contrast ratios shown as you pick.
+- Re-submitting edits the theme; `coronated_at` is kept from the first coronation.
+  "Remove theme" clears every theme column **and** `coronated_at` together (the CHECK
+  makes anything else impossible) behind a confirm.
+
+react-hook-form + zod; inline errors; pending/disabled submit.
+
+### The palette
 
 ```json
-{ "primary": "#181240", "accent": "#fbbf24", "surface": "#f8fafc", "onPrimary": "#ffffff" }
+{ "primary": "#181240", "primaryLight": "#2a2257", "accent": "#fbbf24" }
 ```
 
-The brand tokens live in the `@theme` block of `src/app/globals.css`
-(`--color-rcf-navy`, `--color-rcf-navy-light`, `--color-rcf-gold`). Tailwind v4 reads
-those at build time, so the palette cannot *replace* them — but CSS custom properties
-set at runtime on `<html>` can override what the utilities resolve to.
+Three keys, one per brand token — because those are the three tokens the app actually
+uses (`--color-rcf-navy`, `--color-rcf-navy-light`, `--color-rcf-gold` in
+`src/app/globals.css`). The earlier `surface` / `onPrimary` keys are dropped: nothing
+reads a surface token, and text on navy is a hard-coded `text-white` in ~250 places, so
+white is what the contrast check must assume. `primaryLight` may be omitted and is then
+derived from `primary` (mix 12% white).
 
-The dashboard layout emits a `<style>` block setting `--color-rcf-navy` and friends from
-the active tenure's palette. Every existing `bg-rcf-navy` then follows the theme with no
-component changes at all.
+**`src/lib/palette.ts`** (pure, importable by both client form and server action):
 
-**Scope: the dashboard, built so it can spread.** The palette repaints the members'
-dashboard — that is where a leader spends their time and where the session's identity
-belongs. Public event pages and Lo! keep brand navy and gold for now, since they are seen
-by people who are not in the fellowship. The mechanism is a single provider emitting
-custom properties, so extending it to another layout later is one line there, not a
-rewrite.
+- `parsePalette(json)` → palette | null. Every value must match `^#[0-9a-fA-F]{6}$`
+  exactly. **This is a security boundary, not tidiness**: the values are written into a
+  `<style>` block, so anything looser allows CSS injection or a `</style>` breakout.
+- `checkPalette(p)` → `{ ok, failures: [{ pair, ratio, needed }] }`, WCAG 2.1 AA:
+  - white on `primary` ≥ 4.5 (sidebar, buttons, headers)
+  - white on `primaryLight` ≥ 4.5 (hover states)
+  - `accent` on `primary` ≥ 3.0 (gold highlights and icons on navy — large/graphic)
+- A failing palette is refused **in the form and again in the server action**, with the
+  measured ratio shown ("White on primary is 2.9:1 — needs 4.5:1").
 
-Three constraints, and they are not negotiable:
+**Where it's applied.** `src/app/dashboard/layout.tsx` is a `"use client"` component, so
+it cannot emit the style on the server as the first draft assumed. Instead:
 
-- **Falls back to the brand.** No tenure, no theme, or a malformed palette → the
-  `@theme` defaults stand. The portal must never render unstyled because a palette was
-  half-entered.
-- **Contrast is checked, not trusted.** A palette that fails WCAG AA against the
-  surfaces it will sit on is rejected at entry with the measured ratio shown, because
-  the alternative is a session where nobody can read the sidebar. The check lives in
-  `src/lib/palette.ts` and runs both in the form and in the server action.
-- **Never `tailwind.config.js`.** This is a CSS-first Tailwind v4 project (AGENTS.md).
+1. Move the current client layout body to `src/app/dashboard/dashboard-shell.tsx`
+   (unchanged, still `"use client"`).
+2. Make `layout.tsx` a server component that reads the active tenure's palette
+   (`getActiveTenure()`), runs `parsePalette` + `checkPalette`, and renders
+   `<ThemeStyle palette={…} />` then `<DashboardShell>{children}</DashboardShell>`.
+3. `src/components/layout/theme-style.tsx` renders
+   `<style>{":root{--color-rcf-navy:…;--color-rcf-navy-light:…;--color-rcf-gold:…}"}</style>`
+   — or nothing at all when there is no valid palette, so the `@theme` defaults stand.
 
-### Images
+Tailwind v4 utilities resolve through `var(--color-rcf-*)`, so every `bg-rcf-navy`
+follows with no component changes. Server-rendered means the right colours are in the
+first paint — no navy flash on a slow connection. Extending to another layout later is
+one `<ThemeStyle>` line.
 
-Banner and icon upload through the existing Cloudinary setup
-(`NEXT_PUBLIC_CLOUDINARY_*`, as the avatar uploader already does) — not a new
-dependency, not base64 in a column.
-
-### Migration and backfill
-
-`name` is dropped, so the data in it must go somewhere first. Backfill: where `theme` is
-NULL and `name` is not a session-shaped string, copy `name` into `theme`. Most tenures
-were named after their theme anyway. Report what moved rather than doing it silently.
+**Image URLs are validated server-side**: accept only
+`https://res.cloudinary.com/<NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME>/…`. The upload is
+unsigned and client-side; without this check anyone who reaches the action can make
+every dashboard load an image from a server of their choosing. Render with `next/image`
+(add the Cloudinary host to `images.remotePatterns` if it isn't there).
 
 ---
 
@@ -132,77 +235,143 @@ were named after their theme anyway. Report what moved rather than doing it sile
 
 ### What exists today
 
-- `src/config/sidebar-items.tsx:133` — the Workforce item carries **`comingSoon: true`**.
-  That flag is the only thing switching the module off.
-- `module_access` already has the right row:
-  `('workforce', ARRAY['CENTRAL','EXCO'], ARRAY['EXCO'], 'OWN')`.
-- `/dashboard/units` already exists: `admin-view`, `leader-view`, `unit-manager`,
-  `level-view`.
-- **Assistants already qualify.** `canManageUnit()` in `src/lib/access-control.ts` reads
-  EXCO privilege scopes and never looks at `is_lead`, and privileges come from the
-  POSITION — which assistants hold. Nothing to build; worth a test so it stays true.
+- `src/config/sidebar-items.tsx:137` — Workforce carries **`comingSoon: true`**, the only
+  thing switching it off.
+- `module_access` already has `('workforce', ARRAY['CENTRAL','EXCO'], ARRAY['EXCO'], 'OWN')`.
+- `/dashboard/units` already has `admin-view`, `leader-view`, `unit-manager`,
+  `level-view`, `appoint-panel`, `unit-leadership-card`, `unit-positions-manager`.
+- **Assistants already qualify.** `canManageUnit()` (`access-control.ts:186`) reads EXCO
+  privilege scopes from the POSITION and never looks at `is_lead`.
 
-So "activate" is: drop `comingSoon`, then build the features below behind the access
-checks that already exist.
+"Activate" = drop `comingSoon`, then build 2a–2d behind the checks that already exist.
 
-### Units that do not recruit
+### Honorary offices — the Secretariat Keeper
 
-Three units take no members, for two different reasons:
+**Today** the Secretariat is a **TEAM** in `src/config/fellowship-units.ts:220`, and the
+seed generator derives `exco-secretariat` from it with `EXCO:secretariat` and
+`grants_login = true`. That is why the Keeper would appear in Workforce.
 
-- **Brothers' / Sisters'** — already done. `genderCategory` in
-  `src/config/fellowship-units.ts`; membership is computed from `profiles.gender`, the
-  add form is replaced by an explanation, and `addWorkerAction` refuses.
-- **Secretariat** — new, and a different kind. The office exists to honour the holder
-  with an executive seat; it manages nothing in the portal. So it needs its own flag,
-  `portalManaged: false`, and it is **not** the same as `genderCategory`: the Sisters'
-  Unit has a computed roster, the Secretariat has no roster at all.
+**The change** — make it honorary the way `gen-sec` and `fin-sec` already are:
 
-  `portalManaged: false` means: no add form, no roster, no Workforce entry for its
-  Exco, and `addWorkerAction` refuses. The office keeps its place in the catalogue, its
-  tier and its Exco appointment.
+1. **Remove the `secretariat` entry from `FELLOWSHIP_UNITS`.** An honorary office
+   controls no team, and a team nobody manages is dead weight in every picker.
+2. **Add `exco-secretariat` to the fixed offices** in `src/config/leadership-positions.ts`,
+   next to `gen-sec`: **same slug** (existing `leadership` rows and service history point
+   at it), title `Secretariat Keeper`, tier `EXECUTIVE`, `privileges: []`, description
+   *"An executive seat honouring the Secretariat Keeper. Honorary in the portal — no
+   access unless the VP Admin grants it."* With no tags, `defaultGrantsLogin` returns
+   false — no new flag, no special case.
+3. `pnpm db:gen-seed`. The parser needs **no change** (no new key). Confirm the unit
+   count guard passes and `exco-secretariat` now appears among the fixed offices.
 
-### Worker vs. team member
+**The seed alone does not reach live databases** — it never deletes and sets
+`grants_login` on INSERT only. So the migration (section 1, step 6) also:
 
-Already the rule, and the module must keep saying it plainly:
+- deletes the `position_privileges` row `(exco-secretariat, EXCO, 'secretariat')`;
+- sets `exco-secretariat`'s title/description/tier as above;
+- sets `grants_login = false` for `exco-secretariat` **only if it is still `true`** and
+  `RAISE NOTICE`s that it did. This overrides a VP Admin choice exactly once, which is
+  acceptable because nobody could have chosen it deliberately — the office only arrived
+  in `20260920162209`;
+- **revokes current holders' access the way `deprovisionLoginIfUnappointed`
+  (`src/lib/auth/provision.ts:134`) does**: for each current (active tenure,
+  `ended_at IS NULL`) holder of `exco-secretariat` who holds **no other** current office
+  with `grants_login`, revoke their `auth_sessions` exactly as `revokeAllSessions` does
+  (read it first — mirror its columns and reason) and delete their `profile_login`.
+  Report the count. Someone who is Keeper *and* a unit exco keeps their login;
+- deletes the `secretariat` row from `units` **only if** no `membership_units` or
+  `position_privileges` row references it; otherwise leaves it and `RAISE NOTICE`s why.
 
-- A member is a **worker** once they belong to a **UNIT**. One unit per member per
-  tenure, enforced by `enforce_single_unit_membership`, and conflicts queue a transfer
-  for the VP Admin rather than failing.
-- **TEAMs are unconstrained** — anyone can be on any number of teams, and team
-  membership does not make somebody a worker.
+The Keeper stays on the cabinet screen, in the Executive tier, on their service record.
+The VP Admin can still switch the login on from the cabinet screen if it's ever needed.
 
-### Features
+**Brothers' / Sisters'** are unchanged: computed from `profiles.gender`, add form
+replaced by an explanation, `addWorkerAction` refuses. Verify, don't rebuild.
 
-**a. Full member details.** An exco should see their own member the way a level
-coordinator sees theirs — bio, academics, contact, unit and teams, and the service
-record built in migration 0014. Reuse `MemberDetailView`; gate on `canManageUnit` for
-the member's unit rather than on the level.
+### Worker vs. team member (unchanged rule — keep saying it in the UI)
 
-**b. Birthdays this month.** `profiles.dob` exists and is now populated. A panel listing
-the unit's members with a birthday in the current month, sorted by day, with today
-highlighted. Server-side by month/day, not by fetching every DOB to the browser.
+- A **worker** belongs to a **UNIT** — one per member per tenure
+  (`enforce_single_unit_membership`); a conflict queues a transfer for the VP Admin.
+- **TEAMs are unconstrained** and do not make anyone a worker.
 
-**c. Logs.** Unit membership currently has no audit trail: `addWorker` and
-`removeWorker` write nothing. Add `membership_events` (profile, unit, tenure, action,
-actor, timestamp) and a per-unit log view, so "who added this person, and when" has an
-answer. Same shape as the existing `invite_events` / `login_events`.
+### 2a. Full member details
 
-**d. Update link — only when the level coordinator has one.**
+An exco sees their member the way a level coordinator does — bio, academics, contact,
+unit and teams, service record (0014). Reuse
+`src/app/dashboard/level/components/member-detail-view.tsx`; it's now needed by a second
+route, so **promote it to `src/components/dashboard/member-detail-view.tsx`** (AGENTS.md
+rule) and update the level import. New route
+`/dashboard/units/[unitId]/member/[profileId]`, gated by `canManageUnit(ctx, unitId)`
+**and** a check that the profile is actually in that unit this tenure — otherwise any
+exco could read any member by editing the URL.
 
-This is the subtle one. The update link is `/register?invite=<token>&reason=update`, and
-the token lives in `registration_invites`, scoped to a `class_set_id` and owned by that
-**level coordinator**. A unit's members span every level, so there is no single token for
-a unit.
+### 2b. Birthdays by month
 
-So: resolve the link **per member**, from that member's own generation. If their level
-coordinator has an active token (`is_active`, not revoked, not expired, uses remaining),
-the exco can copy it. **If there is no active token, there is no link** — and the UI says
-exactly that, naming the generation, rather than showing a dead button:
+`birthdays-panel.tsx` in the unit view: a month selector (defaults to this month,
+prev/next arrows), members of that unit with a birthday in the chosen month, sorted by
+day, today highlighted, empty state "No birthdays in March".
 
-> *No update link for 300 Level — their coordinator has not issued one.*
+Server-side, never shipping every DOB to the browser — supabase-js can't filter on
+`extract(month …)`, so a SQL function in the migration:
 
-The exco is **never** given the power to mint a token. The token is a credential scoped
-to a generation, and it belongs to whoever coordinates it.
+```sql
+public.rcf_unit_birthdays(p_unit_id uuid, p_tenure_id uuid, p_month int, p_year int)
+RETURNS TABLE (profile_id uuid, first_name text, last_name text, avatar_url text, celebrate_day int)
+```
+
+Rule for the celebrated day, written once in SQL:
+
+- `dob` is 29 Feb **and** `p_year` is not a leap year → listed in **February on the 28th**;
+- otherwise → the dob's own month and day.
+
+Returns name and day only — **never the year of birth** (age is personal). The action
+gates on `canManageUnit` before calling it. Birthdays are shown to the unit's managers
+only, not to other members.
+
+### 2c. Membership log
+
+New table in the migration, same shape as `invite_events` / `login_events`:
+
+```sql
+membership_events (id, profile_id, unit_id, tenure_id,
+                   action text CHECK (action IN ('added','removed','transferred_in',
+                                                  'transferred_out','carried_over')),
+                   actor_id uuid NULL, actor_name text, created_at)
+```
+
+RLS enabled and forced, no policies (house rule). Written from **every** path that
+changes `membership_units`, not just two:
+
+| path | where | event |
+|---|---|---|
+| `addWorker` | `src/lib/fellowship.ts:153` | `added` |
+| `removeWorker` | `src/lib/fellowship.ts:175` | `removed` — **read the row and write the event before the delete** |
+| `approveTransferAction` | `tenure/actions.ts:1606` | `transferred_out` + `transferred_in` |
+| handover carry-over | `tenure/actions.ts:625–645` | `carried_over`, one bulk insert per chunk, actor = the VP Admin |
+
+`membership-log.tsx`: newest first, 20 per page, "Ada Obi was added by John Musa ·
+3 Sep". Visible to `canManageUnit` for that unit.
+
+### 2d. Update link — only when the level coordinator has one
+
+The link is `/register?invite=<token>&reason=update`. Tokens live in
+`registration_invites`; the one a level coordinator issues is **`purpose = 'level'`**,
+and the partial unique index `registration_invites_one_active_level_token` guarantees at
+most one active per `class_set_id`.
+
+Resolve **per member**, from their own generation: active means `purpose = 'level'`,
+`is_active`, `revoked_at IS NULL`, `expires_at` null or future, `max_uses` null or
+`use_count < max_uses`. Ignore per-member (`target_profile_id`) tokens — those were
+issued for somebody specific.
+
+- Active token → **Copy update link** (`update-link.tsx`).
+- None → no button, and the words: *"No update link for 300 Level — their coordinator
+  has not issued one."*
+
+The token is resolved in the server action at click time, not embedded in the page, and
+each copy writes an `invite_events` row. That requires adding `'copied'` to
+`invite_events_action_check` in the migration (drop + re-add the constraint). An exco
+**never** mints a token — no code path from Workforce inserts into `registration_invites`.
 
 ---
 
@@ -210,34 +379,40 @@ to a generation, and it belongs to whoever coordinates it.
 
 ### What exists today
 
-`sessionStats` already returns `totalMembers`, `totalWorkers`, `totalMale`,
-`totalFemale`, `totalUnspecified`, `totalUnits`, `totalTeams`, `totalGenerations`, and
-`tenure-tab.tsx` shows four cards. It answers "how many", never "so what".
+`sessionStats` (`tenure/actions.ts`) returns totals; `tenure-tab.tsx` shows four cards.
+It answers "how many", never "so what".
 
 ### The change
 
-The page should let an admin see where the tenure needs attention. The example given is
-exactly right and becomes the headline:
+Headline first:
 
-> **110 members · 45 registered workers (41%)**
-> 65 members are not in any unit. Unit leaders may need to register their people, or the
+> **2026/2027 · Awaiting coronation**
+> **110 members · 45 workers (41%)**
+> 65 members are in no unit. Unit leaders may need to register their people, or the
 > next induction needs planning.
 
-Panels, each carrying its own "so what":
+Panels, stacked on mobile, each carrying its "so what" and linking to where it's fixed:
 
-| panel | what it shows | why an admin looks |
+| panel | shows | links to |
 |---|---|---|
-| **Workforce coverage** | workers / members, as a bar, with the shortfall named | the induction conversation |
-| **Units at a glance** | member count per unit, flagging empty ones and those with no Exco | a unit nobody has joined, or nobody leads |
-| **Cabinet completeness** | offices filled / vacant, by tier | who still needs appointing |
-| **Generations** | members per level, gender split, and how many of each level are workers | whether one generation is carrying the work |
-| **Access** | how many hold an office that grants login, and how many have never set a password | leaders who cannot actually get in |
-| **Coronation** | theme, text, banner, or "not yet coronated" | the identity of the session |
-| **Transfers** | pending unit transfers awaiting the VP Admin | a queue nobody is watching |
+| **Coronation** | theme + text + banner, or "Awaiting coronation" with the form | coronation form |
+| **Workforce coverage** | workers / members bar, shortfall named | Workforce |
+| **Units at a glance** | members per UNIT; flags empty units and units with no Exco | that unit |
+| **Cabinet completeness** | offices filled / vacant by tier (honorary offices counted, marked honorary) | cabinet tab |
+| **Generations** | members per level, gender split, workers per level | level page |
+| **Access** | holders of login-granting offices; how many never set a password | cabinet tab |
+| **Transfers** | pending transfers awaiting the VP Admin | transfers tab |
 
-Mobile-first: the coverage bar and headline first, panels stacked, no table wider than
-the screen. Every number links to the screen where something can be done about it — a
-statistic you cannot act on is decoration.
+**Definitions, fixed so the numbers agree everywhere:**
+
+- *member* — a profile counted by the existing `sessionStats.totalMembers`.
+- *worker* — distinct `profile_id` in `membership_units` for the **active tenure**,
+  joined to `units` with `type = 'UNIT' AND is_workforce`. (Brothers'/Sisters' have
+  `is_workforce = false` and are computed from gender — they must not count.)
+
+Compute everything in one server action with parallel queries (or one RPC if it grows
+past ~8 round trips); the page gets one payload. 360px: headline and bar first, no table
+wider than the screen — per-unit and per-level lists render as stacked rows, not tables.
 
 ---
 
@@ -245,105 +420,124 @@ statistic you cannot act on is decoration.
 
 **New**
 ```
-src/lib/tenure.ts                                   tenureLabel(), coronation helpers
-src/lib/palette.ts                                  palette parsing + WCAG AA contrast check
+src/lib/tenure.ts                                  tenureLabel, tenureFullLabel, isCoronated
+src/lib/palette.ts                                 parsePalette (strict hex), checkPalette (WCAG AA)
+src/components/layout/theme-style.tsx              the <style> emitter
+src/app/dashboard/dashboard-shell.tsx              current client layout body, moved
 src/app/dashboard/tenure/components/coronation-form.tsx
 src/app/dashboard/tenure/components/session-insight.tsx
+src/app/dashboard/units/[unitId]/member/[profileId]/page.tsx
 src/app/dashboard/units/components/birthdays-panel.tsx
 src/app/dashboard/units/components/membership-log.tsx
 src/app/dashboard/units/components/update-link.tsx
-supabase/migrations/<ts>_tenure_theme_and_membership_events.sql
+supabase/migrations/<ts>_tenure_identity_and_workforce.sql     (MINOR)
+supabase/migrations/<ts>_drop_tenure_name.sql                  (MAJOR, next release)
+```
+
+**Moved**
+```
+src/app/dashboard/level/components/member-detail-view.tsx
+  → src/components/dashboard/member-detail-view.tsx
 ```
 
 **Modified**
 ```
-src/config/sidebar-items.tsx          drop comingSoon from Workforce
-src/config/fellowship-units.ts        portalManaged: false on Secretariat
-src/app/dashboard/layout.tsx          emit the palette as CSS custom properties
-src/app/dashboard/tenure/actions.ts   tenure CRUD loses `name`, gains coronation; richer stats
-src/app/dashboard/tenure/components/tenure-tab.tsx   the insight panels
-src/app/dashboard/units/actions.ts    member detail, birthdays, log, per-member update link;
-                                      refuse Secretariat
-src/lib/fellowship.ts                 addWorker/removeWorker write membership_events
-src/utils/action.ts, (overview)/page.tsx, settings/insurance/page.tsx,
-  handover payloads                   tenure.name -> tenureLabel()
-db/seed/default.sql                   regenerate after the Secretariat flag
+src/app/dashboard/layout.tsx                 server component: palette + <DashboardShell>
+src/config/sidebar-items.tsx                 drop comingSoon from Workforce
+src/config/fellowship-units.ts               remove the secretariat TEAM
+src/config/leadership-positions.ts           exco-secretariat as a fixed honorary office
+db/seed/default.sql                          regenerated (pnpm db:gen-seed)
+src/lib/cloudinary.ts                        uploadThemeImage
+src/lib/fellowship.ts                        addWorker/removeWorker write membership_events
+src/lib/backup.ts                            manifest: session/theme/theme_text, no name
+src/lib/stores/tenure.store.ts               tenure type
+src/app/dashboard/tenure/actions.ts          no name; coronation action; handover without
+                                             name/theme; transfer + carry-over events;
+                                             richer stats
+src/app/dashboard/tenure/components/*        tenure-tab, cabinet-tab, handover-wizard,
+                                             handover-index, handover-record
+src/app/dashboard/units/actions.ts           member detail, birthdays, log, update link
+src/utils/action.ts, (overview)/page.tsx, settings/insurance/page.tsx
+scripts/seed-staging.mjs, scripts/restore-backup.mjs (fallback only),
+  scripts/ict-coord.mjs, scripts/backup.mjs
+next.config.ts                               Cloudinary remotePattern, if missing
+AGENTS.md                                    honorary offices; tenure has no name
 ```
 
 ---
 
 ## Order of work
 
-1. **Migration + backfill.** Everything else reads these columns.
-2. **`tenureLabel()` and the `name` removal** across the app. Mechanical, and it must
-   land before any UI is written against the old shape.
-3. **Coronation form + palette.** Ends with the portal wearing the session's colours.
-4. **Activate Workforce** (drop `comingSoon`, Secretariat flag) — smallest change, and
-   it unblocks people using the module while the rest is built.
-5. **Workforce features** — details, birthdays, log, update link.
+1. **Migration (MINOR)** — columns, backfill notices, `name` nullable, CHECKs,
+   Secretariat data fix, `membership_events`, `rcf_unit_birthdays`, `'copied'` action.
+   Everything else reads these.
+2. **`src/lib/tenure.ts` + remove every `name` read/write** (table in §1), including
+   handover and scripts. Mechanical; must land before any new UI.
+3. **Workforce switch-on** — `comingSoon`, Secretariat config + seed regen. Smallest
+   change; unblocks real use while the rest is built.
+4. **Workforce features** — 2a details, 2b birthdays, 2c log, 2d update link.
+5. **Coronation form + palette** — ends with the dashboard in the session's colours.
 6. **Tenure insight page.**
+7. Release MINOR. Coronate the active tenure from the UI.
+8. **Drop migration**, release MAJOR.
 
-Steps 4–6 are independent of 1–3 and can run in parallel with them.
+Steps 3–4 and 5 are independent once 1–2 are in.
 
 ---
 
 ## Verification
 
 1. `pnpm lint` per touched file against a `git stash` baseline; `pnpm build`.
-2. Migration replays from zero on `supabase/postgres:17.6.1.166` and is idempotent;
-   the backfill moves names into themes and reports what it moved.
-3. A tenure with no theme shows **"2026/2027 · Awaiting coronation"** everywhere a
-   tenure is named — overview, insurance page, handover records.
-4. Coronation with a full theme repaints the dashboard in the palette; removing the
-   theme returns it to brand navy/gold. No row is written to `events` — the retreat is
-   not an app-managed event.
-4b. `theme_text` accepts `John 1:1-3` and `Isaiah 1:2-3`; rejects `John` and `1:1-3`.
-5. A palette failing AA is refused at entry with the measured ratio.
-6. A partial theme (banner but no icon) is refused by the CHECK.
-7. **Assistants**: appoint an assistant to `exco-choir`, confirm they reach Workforce and
-   can add a member — `is_lead` must not matter anywhere.
-8. Secretariat Keeper sees the honour, no roster, and `addWorkerAction` refuses; its
-    seeded description no longer claims it adds members, and `grants_login` is false.
-9. Brothers'/Sisters' still show computed rosters and refuse additions.
-10. Update link: with an active 300 Level token, an exco can copy it for a 300 Level
-    member; revoke the token and the link disappears, naming the generation. An exco can
-    never mint one.
-11. Birthdays panel lists only the current month, sorted by day.
-12. Adding and removing a member writes `membership_events` rows naming the actor.
-13. Tenure page: workforce coverage matches
-    `select count(distinct profile_id) from membership_units join units ... where type='UNIT'`.
-14. 360px: the coverage bar, panels and log all stack with no horizontal scroll.
+2. Both migrations replay from zero on `supabase/postgres:17.6.1.166`, and re-running
+   the first is harmless. Notices list the assumed coronations and the dropped names.
+3. An uncoronated tenure shows **"2026/2027 · Awaiting coronation"** on the overview,
+   insurance page, cabinet tab, handover records and auth pages. `grep -rn "tenure.*\.name"`
+   finds nothing that reads the column.
+4. Handover creates an uncoronated tenure; the wizard has no name or theme field. An
+   intent recorded before the change still renders its planned name.
+5. Coronation with theme + text only → coronated, brand colours. Add a palette → the
+   dashboard repaints on first load (no flash). Remove the theme → every theme column and
+   `coronated_at` clear, brand returns. Public event pages and Lo! never change colour.
+   No row is written to `events`.
+6. `theme_text` accepts `John 1:1-3`, `Isaiah 1:2-3`, `1 John 4:7`, `Song of Solomon 2:4`;
+   rejects `John` and `1:1-3`.
+7. A palette with white-on-primary below 4.5:1 is refused in the form **and** by the
+   action (call it directly), with the ratio shown. `"#fff;}</style>"` is refused.
+8. SQL: `UPDATE tenures SET theme = NULL WHERE coronated_at IS NOT NULL` fails;
+   setting `theme_banner_url` on an uncoronated tenure fails.
+9. A banner URL outside the Cloudinary cloud is refused by the action.
+10. **Assistants:** appoint an assistant (`is_lead = false`) to an exco office that
+    grants login (e.g. `exco-choir`); they sign in, reach Workforce, add a member.
+11. **Secretariat Keeper:** on the cabinet screen in the Executive tier, marked honorary;
+    no Workforce entry; no `EXCO:secretariat` privilege; `grants_login = false`; a
+    holder with no other office loses their login and sessions; a holder who is also a
+    unit exco keeps theirs. The Secretariat is gone from team pickers.
+12. Brothers'/Sisters' still show computed rosters and refuse additions.
+13. Member detail: an exco opens their own unit's member; editing the URL to another
+    unit's member is refused.
+14. Birthdays: only the chosen month, sorted by day, today highlighted, no birth years in
+    the payload. A 29 Feb member shows under February on the **28th** in 2027 and on the
+    29th in 2028.
+15. Update link: with an active 300 Level `level` token, an exco copies it and an
+    `invite_events` `copied` row names them. Revoke it → the button is replaced by the
+    "No update link for 300 Level" line. No Workforce path inserts a token.
+16. Add, remove, approve a transfer, and run a staging handover → `membership_events`
+    rows for each, naming the actor.
+17. Tenure page worker count equals
+    `select count(distinct mu.profile_id) from membership_units mu join units u on u.id = mu.unit_id
+     where mu.tenure_id = <active> and u.type = 'UNIT' and u.is_workforce`.
+18. 360px: headline, coverage bar, panels, birthdays and log all stack with no
+    horizontal scroll.
 
 ---
 
-## Decisions taken
+## Security notes (call out in the PR)
 
-1. **`theme_text` is a Bible reference** — `John 1:1-3`, `Isaiah 1:2-3`. Not the verse
-   text, not a description.
-2. **The palette repaints the dashboard**, and is built so other areas can adopt it
-   without rework. Public pages stay on brand colours for now.
-3. **Coronation is NOT an app-managed event.** It is a retreat, held outside the portal,
-   and there is no event record to create. The portal only records its *outcome* — the
-   theme, its text, its assets, its palette, and when it happened.
-
-   The custom matters here: **nothing really begins until the retreat is done.** So
-   "awaiting coronation" is the honest headline state of a young tenure, not a warning
-   or an error, and the Tenure page should read that way — a session waiting to start,
-   not a record somebody forgot to finish. No feature is *gated* on coronation; the
-   portal reports the state, it does not enforce the custom.
-4. **The Secretariat Keeper is the one honorary office** (`exco-secretariat`, alias
-   already "Secretariat Keeper" in `src/config/fellowship-units.ts:223`). More may follow;
-   they take the same `portalManaged: false` flag.
-
-   Two consequences to handle in the same change:
-
-   - Its seeded description, *"Leads Secretariat. Adds and removes its members
-     directly."*, becomes false. `gen-default-seed.mjs` builds that sentence from a
-     template, so honorary offices need their own wording — something like *"An
-     executive seat honouring the Secretariat Keeper. Manages nothing in the portal."*
-   - **`grants_login` should be `false`** for an honorary office. A login provisioned for
-     somebody with nothing to administer is an account that exists for no reason, and
-     accounts that exist for no reason are the ones nobody notices being misused. This is
-     a seed default, not a lock — the VP Admin owns the column per office and the change
-     is retroactive, so it can be switched on if the Keeper turns out to need the portal
-     after all.
+- `<style>` injection: palette values are strict `#rrggbb`, validated server-side.
+- Remote images: only the project's own Cloudinary cloud.
+- Update-link tokens: resolved server-side at click time, copies logged, never minted
+  by an exco.
+- Member detail and birthdays: gated per unit, re-checked in the action, no birth year.
+- The Secretariat migration revokes logins and sessions — it touches `profile_login`
+  and `auth_sessions` directly, so it mirrors `provision.ts` exactly and reports counts.
+- `membership_events` is RLS-forced with no policies, like every other table.
