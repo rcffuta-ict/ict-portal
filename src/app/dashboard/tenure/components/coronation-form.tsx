@@ -231,7 +231,7 @@ export function CoronationForm({
                             )}
                             <ImagePicker
                                 label="Banner"
-                                hint="Wide, about 1600×600. The middle is what shows on a phone."
+                                hint="2400×800 (3:1). Keep text and faces in the middle — phones crop the sides, desktops crop the top and bottom."
                                 value={bannerUrl || ""}
                                 fallback={DEFAULT_TENURE_BANNER}
                                 shape="banner"
@@ -240,7 +240,7 @@ export function CoronationForm({
                             />
                             <ImagePicker
                                 label="Icon"
-                                hint="Square, at least 256×256."
+                                hint="Square, 512×512. Keep the mark away from the corners — they are rounded."
                                 value={iconUrl || ""}
                                 shape="icon"
                                 error={errors.iconUrl?.message}
