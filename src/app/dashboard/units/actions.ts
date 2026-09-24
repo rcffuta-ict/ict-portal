@@ -12,107 +12,113 @@ import {
 } from "@/lib/fellowship";
 import { isUndisableablePosition } from "@/config/leadership-positions";
 import { getActiveTenure } from "@/utils/action";
+import type { ProfileContext } from "@/lib/auth/profile-context";
 import {
     requireContext,
+    requireModuleRead,
+    requireModuleWrite,
     requireAccess,
     requireVpAdmin,
     canManageUnit,
     canManageLevel,
 } from "@/lib/access-control";
 import { ensureLoginProvisioned, resetLoginPassword } from "@/lib/auth/provision";
-import { computeLevel } from "@/lib/levels";
 import { isGenderCategoryUnit } from "@/config/fellowship-units";
 
 // ============================================================================
-// DATA LOADER (session/context driven — no more email guessing)
+// DATA LOADER
 // ============================================================================
+
+type ManagedUnit = { id: string; slug: string; name: string; type: "UNIT" | "TEAM" };
+
+/**
+ * The units and teams this session may manage, read from its EXCO privilege tags.
+ *
+ * Tags, not `leadership.unit_id`: an Exco office is appointed from the cabinet with no
+ * unit on the row, and what it governs is its `EXCO:<slug>` scope — the same thing
+ * canManageUnit() reads, so the list shown and the permission checked cannot disagree.
+ * Assistants hold the office's tags too, so they qualify; `is_lead` is never consulted.
+ * An honorary office carries no tags and so manages nothing.
+ *
+ * Not exported: this file is "use server", and every export is a callable endpoint.
+ */
+async function managedUnitsOf(ctx: ProfileContext): Promise<ManagedUnit[]> {
+    const scopes = ctx.leadership
+        .flatMap((l) => l.privileges ?? [])
+        .filter((p) => p.tag === "EXCO")
+        .map((p) => p.scope);
+    if (scopes.length === 0) return [];
+
+    const everything = scopes.some((s) => s == null || s.toLowerCase() === "all");
+    const query = db.from("units").select("id, slug, name, type").order("name");
+    const { data } = everything
+        ? await query
+        : await query.in("slug", scopes.filter((s): s is string => !!s));
+    return (data ?? []) as ManagedUnit[];
+}
+
+/** May this session READ a unit's roster? Admin read tier, or it manages the unit. */
+async function canViewUnit(ctx: ProfileContext, unitId: string): Promise<boolean> {
+    return ctx.isAdmin || (await canManageUnit(ctx, unitId));
+}
+
 export async function getUnitModuleData() {
-    const ctx = await requireContext();
+    const ctx = await requireModuleRead("workforce");
     const tenure = await getActiveTenure();
     const tenureId = tenure?.id ?? null;
-    const session = tenure?.session ?? null;
 
-    // Managed units/teams come straight from the enriched leadership context.
-    const managedUnits = ctx.leadership
-        .filter((l) => l.category === "UNIT" || l.category === "TEAM")
-        .map((l) => ({
-            id: l.unitId,
-            name: l.unitName,
-            type: l.category, // 'UNIT' | 'TEAM'
-            leadershipRole: l.title,
-        }))
-        .filter((u) => !!u.id);
-
-    // The context carries the POSITION's slug (`exco-sisters`), not the unit's, and the
-    // unit slug is what says whether the roster is editable. One lookup rather than
-    // deriving it by stripping "exco-", which would silently be wrong for any office
-    // that is not named after its unit.
-    if (managedUnits.length > 0) {
-        const { data: slugs } = await db
-            .from("units")
-            .select("id, slug")
-            .in("id", managedUnits.map((u) => u.id as string));
-        const bySlug = new Map((slugs ?? []).map((u: any) => [u.id, u.slug]));
-        for (const u of managedUnits) {
-            (u as any).slug = bySlug.get(u.id as string) ?? null;
-        }
-    }
-
-    // Managed levels (generations) — resolve their class_set details for display.
-    const levelLeaderships = ctx.leadership.filter((l) => l.category === "LEVEL" && l.classSetId);
-    let managedLevels: any[] = [];
-    if (levelLeaderships.length > 0) {
-        const ids = levelLeaderships.map((l) => l.classSetId);
-        const { data: sets } = await db
-            .from("class_sets")
-            .select("id, family_name, entry_year, is_foundation")
-            .in("id", ids as string[]);
-        managedLevels = (sets || []).map((s: any) => ({
-            classSetId: s.id,
-            familyName: s.family_name,
-            entryYear: s.entry_year,
-            isFoundation: s.is_foundation,
-            level: computeLevel(s.entry_year, s.is_foundation, session),
-        }));
-    }
+    // The System Admin and VP Admin may change any roster; the President sees every
+    // unit but is write-blocked everywhere, so their view is read-only.
+    const canWriteAll = ctx.isSysAdmin || ctx.isVpAdmin;
 
     if (ctx.isAdmin) {
-        const units = await getAllUnitsOverview();
-        const positions = await listPositions();
-        const unitPositions = positions.filter((p) => p.is_active && p.category === "UNIT");
+        const units = await getAllUnitsOverview(tenureId);
         return {
-            authorized: true,
+            authorized: true as const,
             role: "ADMIN" as const,
-            isAdmin: true,
             tenureId,
+            canWriteAll,
             units,
-            positions: unitPositions,
-            managedUnits,
-            managedLevels,
         };
     }
 
-    if (managedUnits.length > 0 || managedLevels.length > 0) {
-        return {
-            authorized: true,
-            role: "LEADER" as const,
-            isAdmin: false,
-            tenureId,
-            managedUnits,
-            managedLevels,
-        };
-    }
+    const managedUnits = await managedUnitsOf(ctx);
+    // Which office gives the authority, for the card. The first EXCO-tagged office is
+    // enough: two offices over the same unit is not a real configuration.
+    const excoOffice = ctx.leadership.find((l) =>
+        (l.privileges ?? []).some((p) => p.tag === "EXCO"));
 
-    return { authorized: true, role: "NONE" as const, isAdmin: false, tenureId };
+    return {
+        authorized: true as const,
+        role: managedUnits.length > 0 ? ("LEADER" as const) : ("NONE" as const),
+        tenureId,
+        canWriteAll: false,
+        managedUnits: managedUnits.map((u) => ({
+            ...u,
+            leadershipRole: excoOffice?.alias || excoOffice?.title || "Executive",
+        })),
+    };
 }
 
 // ============================================================================
 // UNIT / TEAM MEMBERSHIP
 // ============================================================================
+/**
+ * One unit's roster for the active tenure. Carries members' emails and phone numbers,
+ * so it is gated: the admin read tier, or somebody who manages this unit.
+ */
 export async function getUnitDetailsAction(unitId: string) {
-    const tenure = await getActiveTenure();
-    if (!tenure) return [];
-    return getUnitMembers(unitId, tenure.id);
+    try {
+        const ctx = await requireModuleRead("workforce");
+        if (!(await canViewUnit(ctx, unitId))) {
+            return { success: false as const, error: "You don't lead this unit/team.", data: [] };
+        }
+        const tenure = await getActiveTenure();
+        if (!tenure) return { success: false as const, error: "There is no active tenure.", data: [] };
+        return { success: true as const, data: await getUnitMembers(unitId, tenure.id) };
+    } catch (e: any) {
+        return { success: false as const, error: e.message, data: [] };
+    }
 }
 
 /**
@@ -130,14 +136,19 @@ export async function getUnitDetailsAction(unitId: string) {
  */
 export async function addWorkerAction(formData: FormData) {
     try {
-        const ctx = await requireContext();
+        const ctx = await requireModuleWrite("workforce");
         const unitId = formData.get("unitId") as string;
-        const tenureId = formData.get("tenureId") as string;
         const email = formData.get("email") as string;
 
         if (!(await canManageUnit(ctx, unitId))) {
             return { success: false, error: "You don't lead this unit/team." };
         }
+
+        // Always the ACTIVE tenure, resolved here. Taking it from the form would let a
+        // crafted request write into a closed tenure's roster.
+        const tenure = await getActiveTenure();
+        if (!tenure) return { success: false, error: "There is no active tenure." };
+        const tenureId = tenure.id;
 
         const { data: target } = await db
             .from("units")
@@ -229,7 +240,7 @@ export async function addWorkerAction(formData: FormData) {
 
 export async function removeWorkerAction(membershipId: string) {
     try {
-        await requireContext(); // any leader/admin; membership ownership checked by UI scope
+        const ctx = await requireModuleWrite("workforce");
         // A derived member carries no membership id, so there is nothing to remove and
         // nothing that would stay removed.
         if (!membershipId) {
@@ -239,6 +250,19 @@ export async function removeWorkerAction(membershipId: string) {
                     + "Correct the member's gender on their profile instead.",
             };
         }
+
+        // Authorized against the unit the membership actually belongs to — never
+        // against what the UI happened to show. Hiding a button is not a permission.
+        const { data: membership } = await db
+            .from("membership_units")
+            .select("unit_id")
+            .eq("id", membershipId)
+            .maybeSingle();
+        if (!membership) return { success: false, error: "That membership no longer exists." };
+        if (!(await canManageUnit(ctx, membership.unit_id))) {
+            return { success: false, error: "You don't lead this unit/team." };
+        }
+
         await removeWorker(membershipId);
         revalidatePath("/dashboard/units");
         return { success: true };
@@ -479,6 +503,9 @@ export async function resetLeaderLoginAction(leaderProfileId: string) {
 // ============================================================================
 export async function getUnitPositionsAction(unitId: string) {
     try {
+        // Catalogue data, no personal details. Signed-in only, not ADMIN: the Tenure
+        // console (readable by every CENTRAL office) opens this too.
+        await requireContext();
         const { data, error } = await db
             .from("unit_positions")
             .select(`id, role_type, position:leadership_positions(id, title, tier, description)`)
@@ -551,6 +578,8 @@ export async function removePositionFromUnitAction(unitPositionId: string) {
 
 export async function getUnitLeadershipAction(unitId: string, tenureId: string) {
     try {
+        // Returns leaders' contact details; admin-only, like the panels that call it.
+        await requireAccess("ADMIN");
         const { data: unitPositions, error: upError } = await db
             .from("unit_positions")
             .select(`id, role_type, position_id, position:leadership_positions(id, title, tier)`)
@@ -588,6 +617,7 @@ export async function getUnitLeadershipAction(unitId: string, tenureId: string) 
 
 export async function getAvailablePositionsAction() {
     try {
+        await requireContext(); // catalogue only; see getUnitPositionsAction
         const positions = await listPositions();
         const unitPositions = positions.filter((p) => p.is_active && p.category === "UNIT");
         return { success: true, data: unitPositions };

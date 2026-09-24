@@ -1,80 +1,131 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState } from "react";
-import { addWorkerAction, removeWorkerAction } from "../actions";
-import { Search, UserPlus, Trash2, Mail, Phone, User, Info } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { addWorkerAction, getUnitDetailsAction, removeWorkerAction } from "../actions";
+import { Search, UserPlus, Trash2, Mail, Phone, User, Info, Loader2, RefreshCw } from "lucide-react";
 import { isGenderCategoryUnit } from "@/config/fellowship-units";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 
+const addSchema = z.object({
+    email: z.string().trim().min(1, "Enter the member's email.").email("That isn't a valid email address."),
+});
+type AddValues = z.infer<typeof addSchema>;
+
+/**
+ * One unit's roster: load, add, remove.
+ *
+ * Loads its own members rather than taking them as a prop. It used to copy an
+ * `initialMembers` prop into state once — but the parent mounted it before the fetch
+ * came back, so the copy was always the empty list and a unit's members never showed.
+ *
+ * `readOnly` is for the President, who sees every unit but is write-blocked. The server
+ * refuses writes regardless; hiding the controls just avoids offering a button that
+ * always fails.
+ */
 export function UnitManager({
     unit,
-    initialMembers,
-    tenureId,
-    onSuccess,
-}: any) {
-    const [members, setMembers] = useState<any[]>(initialMembers);
-    // Brothers'/Sisters': the roster is computed from gender, so there is nothing here
-    // to add to or remove from. Hiding the controls is the honest thing to show -- the
-    // server refuses either way, and offering a button that always fails is worse than
-    // offering none.
-    const isDerived = isGenderCategoryUnit(unit.slug);
+    readOnly = false,
+    onChanged,
+}: {
+    unit: { id: string; name: string; slug?: string | null };
+    readOnly?: boolean;
+    /** Called after a successful add/remove, so the parent can refresh its counts. */
+    onChanged?: () => void;
+}) {
+    const [members, setMembers] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [search, setSearch] = useState("");
-    const [isAdding, setIsAdding] = useState(false);
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
 
-    const filtered = members.filter(
-        (m: any) =>
-            m.first_name.toLowerCase().includes(search.toLowerCase()) ||
-            m.last_name.toLowerCase().includes(search.toLowerCase()),
-    );
+    // Brothers'/Sisters': the roster is computed from gender, so there is nothing here
+    // to add to or remove from.
+    const isDerived = isGenderCategoryUnit(unit.slug ?? null);
+    const canEdit = !readOnly && !isDerived;
 
-    // Handler: Add Worker
-    const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setIsAdding(true);
-        const formData = new FormData(e.currentTarget);
-        formData.append("unitId", unit.id);
-        formData.append("tenureId", tenureId);
+    const {
+        register,
+        handleSubmit,
+        reset,
+        setError,
+        formState: { errors, isSubmitting },
+    } = useForm<AddValues>({ resolver: zodResolver(addSchema) });
 
-        const res = await addWorkerAction(formData);
-        setIsAdding(false);
+    const load = useCallback(async () => {
+        setLoading(true);
+        setLoadError(null);
+        const res = await getUnitDetailsAction(unit.id);
+        if (res.success) setMembers(res.data);
+        else setLoadError(res.error || "Couldn't load this roster.");
+        setLoading(false);
+    }, [unit.id]);
 
-        if (res.success) {
-            showAlert({
-                type: "success",
-                message: "Worker added successfully!",
-            });
-            (e.target as HTMLFormElement).reset();
-            onSuccess(); // Triggers parent refresh (which re-fetches initialMembers)
-        } else {
-            showAlert({ type: "error", message: res.error });
+    useEffect(() => {
+        // Deferred a tick so the fetch's setState calls happen outside the effect body.
+        const t = setTimeout(load, 0);
+        return () => clearTimeout(t);
+    }, [load]);
+
+    const onAdd = async (values: AddValues) => {
+        const fd = new FormData();
+        fd.append("unitId", unit.id);
+        fd.append("email", values.email);
+
+        const res = await addWorkerAction(fd);
+        if (!res.success) {
+            // Inline, on the field it is about — not only in a popup.
+            setError("email", { message: res.error || "Couldn't add that member." });
+            return;
         }
+        reset();
+        showAlert({
+            type: "success",
+            message: (res as any).pendingTransfer
+                ? (res as any).message
+                : "Worker added.",
+        });
+        await load();
+        onChanged?.();
     };
 
-    // Handler: Remove Worker
-    const handleRemove = (id: string) => {
+    const handleRemove = (membershipId: string, who: string) => {
         showAlert({
             type: "warning",
-            title: "Remove Worker?",
-            message:
-                "Are you sure you want to remove this member from the unit?",
+            title: "Remove worker?",
+            message: `Remove ${who} from ${unit.name}?`,
             confirmText: "Remove",
             onConfirm: async () => {
-                const res = await removeWorkerAction(id);
-                if (res.success) onSuccess();
-                else showAlert({ type: "error", message: res.error });
+                const res = await removeWorkerAction(membershipId);
+                if (!res.success) {
+                    showAlert({ type: "error", message: res.error || "Couldn't remove that member." });
+                    return;
+                }
+                await load();
+                onChanged?.();
             },
         });
     };
 
+    const q = search.toLowerCase();
+    const filtered = members.filter(
+        (m: any) =>
+            (m.first_name ?? "").toLowerCase().includes(q) ||
+            (m.last_name ?? "").toLowerCase().includes(q),
+    );
+
+    const emailId = `add-worker-email-${unit.id}`;
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-5">
             <AlertModal isOpen={isOpen} onClose={closeAlert} {...alertConfig} />
 
             {isDerived ? (
                 <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
                     <div className="text-xs leading-relaxed text-blue-900">
                         <p className="font-bold">This list is not edited — it is counted.</p>
                         <p className="mt-1 text-blue-800">
@@ -84,108 +135,155 @@ export function UnitManager({
                         </p>
                     </div>
                 </div>
-            ) : (
-                <>
-                    {/* Add Form */}
-                    <form
-                        onSubmit={handleAdd}
-                        className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex gap-3 items-end"
+            ) : canEdit ? (
+                <form
+                    onSubmit={handleSubmit(onAdd)}
+                    noValidate
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                >
+                    <label
+                        htmlFor={emailId}
+                        className="text-[11px] font-bold uppercase tracking-wide text-slate-500"
                     >
-                        <div className="flex-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase">
-                        Add New Worker
-                            </label>
-                            <input
-                                name="email"
-                                type="email"
-                                required
-                                placeholder="Enter member email..."
-                                className="w-full h-10 mt-1 px-3 rounded-lg border border-slate-300 text-sm outline-none focus:border-rcf-navy"
-                            />
-                        </div>
+                        Add a worker by email
+                    </label>
+                    <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                        <input
+                            id={emailId}
+                            type="email"
+                            inputMode="email"
+                            autoComplete="off"
+                            placeholder="member@example.com"
+                            aria-invalid={!!errors.email}
+                            aria-describedby={errors.email ? `${emailId}-error` : undefined}
+                            {...register("email")}
+                            className={`h-11 w-full rounded-lg border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-rcf-navy/20 ${
+                                errors.email ? "border-red-400 focus:border-red-500" : "border-slate-300 focus:border-rcf-navy"
+                            }`}
+                        />
                         <button
-                            disabled={isAdding}
-                            className="h-10 bg-rcf-navy text-white px-5 rounded-lg font-bold text-xs hover:bg-opacity-90 flex items-center gap-2"
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-rcf-navy px-5 text-sm font-bold text-white transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            <UserPlus className="h-4 w-4" />{" "}
-                            {isAdding ? "Adding..." : "Add"}
+                            {isSubmitting ? (
+                                <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                            ) : (
+                                <UserPlus className="h-4 w-4" aria-hidden="true" />
+                            )}
+                            {isSubmitting ? "Adding…" : "Add"}
                         </button>
-                    </form>
-                </>
-            )}
+                    </div>
+                    {errors.email && (
+                        <p id={`${emailId}-error`} role="alert" className="mt-1.5 text-xs font-medium text-red-600">
+                            {errors.email.message}
+                        </p>
+                    )}
+                </form>
+            ) : null}
 
-            {/* List Header */}
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                <h3 className="font-bold text-slate-700">{isDerived ? "Members" : "Workforce List"}</h3>
-                <div className="relative w-64">
-                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+            {/* List header — stacks on a phone so the filter never pushes off-screen. */}
+            <div className="flex flex-col gap-2 border-b border-slate-100 pb-2 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="font-bold text-slate-700">
+                    {isDerived ? "Members" : "Workforce list"}
+                    {!loading && !loadError && (
+                        <span className="ml-1.5 text-xs font-medium text-slate-400">({members.length})</span>
+                    )}
+                </h3>
+                <div className="relative w-full sm:w-64">
+                    <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
                     <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Filter list..."
-                        className="w-full pl-8 h-8 rounded-lg bg-slate-50 text-xs outline-none focus:ring-1 ring-rcf-navy"
+                        placeholder="Filter list…"
+                        aria-label={`Filter ${unit.name} members`}
+                        className="h-9 w-full rounded-lg bg-slate-50 pl-8 text-xs outline-none focus:ring-1 focus:ring-rcf-navy"
                     />
                 </div>
             </div>
 
-            {/* List */}
-            <div className="space-y-2">
-                {filtered.map((m: any) => (
-                    <div
-                        key={m.membershipId || m.id}
-                        className="flex items-center justify-between p-3 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors group"
+            {loading ? (
+                <p className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500" role="status">
+                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                    Loading members…
+                </p>
+            ) : loadError ? (
+                <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    <p>{loadError}</p>
+                    <button
+                        type="button"
+                        onClick={load}
+                        className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-red-700 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
                     >
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center font-bold text-blue-600 text-xs">
-                                {m.avatar_url ? (
-                                    <img
-                                        src={m.avatar_url}
-                                        className="h-full w-full rounded-full object-cover"
-                                    />
-                                ) : (
-                                    `${m.first_name[0]}${m.last_name[0]}`
-                                )}
-                            </div>
-                            <div>
-                                <p className="font-bold text-sm text-slate-900">
-                                    {m.first_name} {m.last_name}
-                                </p>
-                                <div className="flex items-center gap-3 text-[10px] text-slate-500">
-                                    <span className="flex items-center gap-1">
-                                        <Mail className="h-3 w-3" /> {m.email}
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                        <Phone className="h-3 w-3" />{" "}
-                                        {m.phone_number}
-                                    </span>
+                        <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Try again
+                    </button>
+                </div>
+            ) : (
+                <ul className="space-y-2">
+                    {filtered.map((m: any) => {
+                        const who = `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || "this member";
+                        return (
+                            <li
+                                key={m.membershipId || m.id}
+                                className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 transition-colors hover:bg-slate-50"
+                            >
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-xs font-bold text-blue-600">
+                                        {m.avatar_url ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={m.avatar_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+                                        ) : (
+                                            `${m.first_name?.[0] ?? ""}${m.last_name?.[0] ?? ""}`
+                                        )}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-bold text-slate-900">{who}</p>
+                                        <div className="flex flex-col text-[11px] text-slate-500 sm:flex-row sm:gap-3">
+                                            {m.email && (
+                                                <a href={`mailto:${m.email}`} className="flex min-w-0 items-center gap-1 hover:text-rcf-navy">
+                                                    <Mail className="h-3 w-3 shrink-0" aria-hidden="true" />
+                                                    <span className="truncate">{m.email}</span>
+                                                </a>
+                                            )}
+                                            {m.phone_number && (
+                                                <a href={`tel:${m.phone_number}`} className="flex items-center gap-1 hover:text-rcf-navy">
+                                                    <Phone className="h-3 w-3 shrink-0" aria-hidden="true" /> {m.phone_number}
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">
-                                {m.role}
-                            </span>
-                            {!m.derived && (
-                                <button
-                                    onClick={() => handleRemove(m.membershipId)}
-                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                ))}
+                                <div className="flex shrink-0 items-center gap-1">
+                                    <span className="hidden rounded border border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 sm:inline">
+                                        {m.role}
+                                    </span>
+                                    {canEdit && !m.derived && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemove(m.membershipId, who)}
+                                            aria-label={`Remove ${who}`}
+                                            className="rounded-full p-2.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                                        >
+                                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                        </button>
+                                    )}
+                                </div>
+                            </li>
+                        );
+                    })}
 
-                {filtered.length === 0 && (
-                    <div className="py-12 text-center text-slate-400 text-sm border-2 border-dashed border-slate-100 rounded-xl">
-                        <User className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                        {isDerived
-                            ? "No member is recorded with this gender yet."
-                            : "No members found in this unit."}
-                    </div>
-                )}
-            </div>
+                    {filtered.length === 0 && (
+                        <li className="rounded-xl border-2 border-dashed border-slate-100 py-12 text-center text-sm text-slate-400">
+                            <User className="mx-auto mb-2 h-8 w-8 opacity-20" aria-hidden="true" />
+                            {search
+                                ? "Nobody matches that filter."
+                                : isDerived
+                                    ? "No member is recorded with this gender yet."
+                                    : "No members in this unit yet."}
+                        </li>
+                    )}
+                </ul>
+            )}
         </div>
     );
 }

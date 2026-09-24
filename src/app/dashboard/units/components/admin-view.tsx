@@ -2,171 +2,148 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Layers, Users, X, Crown, UserCog } from "lucide-react";
+import { Search, Layers, Users, Crown, UserCog } from "lucide-react";
 import { UnitManager } from "./unit-manager";
 import { UnitPositionsManager } from "./unit-positions-manager";
 import { UnitLeadershipCard } from "./unit-leadership-card";
-import { getUnitDetailsAction } from "../actions";
+import { UnitModal } from "./unit-modal";
 
 type TabType = "workers" | "positions" | "leadership";
 
-export function AdminUnitView({ data, onSuccess }: any) {
+const TABS: { id: TabType; label: string; icon: typeof Users }[] = [
+    { id: "workers", label: "Workers", icon: Users },
+    { id: "positions", label: "Positions", icon: UserCog },
+    { id: "leadership", label: "Leadership", icon: Crown },
+];
+
+/**
+ * Every unit and team, for the admin read tier.
+ *
+ * `canWriteAll` is false for the President, who sees everything but changes nothing;
+ * the roster then opens read-only. The server enforces it either way.
+ */
+export function AdminUnitView({
+    data,
+    onSuccess,
+}: {
+    data: { units: any[]; tenureId: string | null; canWriteAll: boolean };
+    onSuccess: () => void;
+}) {
     const [search, setSearch] = useState("");
     const [selectedUnit, setSelectedUnit] = useState<any>(null);
-    const [modalMembers, setModalMembers] = useState<any[]>([]);
     const [activeTab, setActiveTab] = useState<TabType>("workers");
 
     const filtered = data.units.filter((u: any) =>
         u.name.toLowerCase().includes(search.toLowerCase()),
     );
 
-    const handleOpen = async (unit: any) => {
-        setSelectedUnit(unit);
-        // Fetch fresh members list for this unit
-        const members = await getUnitDetailsAction(unit.id);
-        setModalMembers(members);
+    const close = () => {
+        setSelectedUnit(null);
+        setActiveTab("workers");
     };
 
     return (
         <>
-            <div className="space-y-6">
-                {/* Toolbar */}
-                <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex">
-                    <div className="relative w-full md:w-80">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                        <input
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search units..."
-                            className="w-full pl-9 h-9 rounded-xl bg-slate-50 border-none text-sm focus:ring-2 focus:ring-rcf-navy outline-none"
-                        />
-                    </div>
+            <div className="space-y-5">
+                <div className="relative w-full md:w-80">
+                    <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
+                    <input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search units…"
+                        aria-label="Search units and teams"
+                        className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 text-sm outline-none focus:ring-2 focus:ring-rcf-navy"
+                    />
                 </div>
 
-                {/* Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {filtered.map((u: any) => (
-                        <div
-                            key={u.id}
-                            onClick={() => handleOpen(u)}
-                            className="group bg-white p-6 rounded-2xl border border-slate-200 hover:shadow-md cursor-pointer transition-all hover:-translate-y-1"
-                        >
-                            <div className="flex justify-between items-start mb-4">
-                                <div
-                                    className={`p-2.5 rounded-xl ${u.type === "UNIT" ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"}`}
-                                >
-                                    {u.type === "UNIT" ? (
-                                        <Layers className="h-5 w-5" />
-                                    ) : (
-                                        <Users className="h-5 w-5" />
-                                    )}
+                        <li key={u.id}>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedUnit(u)}
+                                className="w-full rounded-2xl border border-slate-200 bg-white p-5 text-left transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+                            >
+                                <div className="mb-3 flex items-start justify-between">
+                                    <div
+                                        className={`rounded-xl p-2.5 ${u.type === "UNIT" ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"}`}
+                                        aria-hidden="true"
+                                    >
+                                        {u.type === "UNIT" ? <Layers className="h-5 w-5" /> : <Users className="h-5 w-5" />}
+                                    </div>
+                                    <span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-600">
+                                        {u.type}
+                                    </span>
                                 </div>
-                                <span className="text-[10px] font-bold bg-slate-100 px-2 py-1 rounded text-slate-600 uppercase">
-                                    {u.type}
-                                </span>
-                            </div>
-                            <h3 className="font-bold text-lg text-slate-900">
-                                {u.name}
-                            </h3>
-                            <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
-                                <span>Total Workforce</span>
-                                <span className="font-bold text-slate-900 text-sm">
-                                    {u.memberCount}
-                                </span>
-                            </div>
-                        </div>
+                                <h3 className="text-lg font-bold text-slate-900">{u.name}</h3>
+                                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
+                                    <span>{u.isGenderCategory ? "Members (by gender)" : "This session"}</span>
+                                    <span className="text-sm font-bold text-slate-900">{u.memberCount}</span>
+                                </div>
+                            </button>
+                        </li>
                     ))}
-                </div>
+                    {filtered.length === 0 && (
+                        <li className="col-span-full rounded-2xl border-2 border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">
+                            No unit or team matches &ldquo;{search}&rdquo;.
+                        </li>
+                    )}
+                </ul>
             </div>
 
-            {/* Modal for Admin to Manage Unit */}
             {selectedUnit && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-150 flex flex-col overflow-hidden">
-                        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-bold text-slate-900">
-                                    {selectedUnit.name} Management
-                                </h3>
-                                <button onClick={() => {
-                                    setSelectedUnit(null);
-                                    setActiveTab("workers");
-                                }}>
-                                    <X className="h-6 w-6 text-slate-500" />
-                                </button>
-                            </div>
-                            
-                            {/* Tabs */}
-                            <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-                                <button
-                                    onClick={() => setActiveTab("workers")}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                                        activeTab === "workers"
-                                            ? "bg-white text-rcf-navy shadow-sm"
-                                            : "text-slate-600 hover:text-slate-900"
-                                    }`}
-                                >
-                                    <Users className="h-4 w-4" />
-                                    Workers
-                                </button>
-                                <button
-                                    onClick={() => setActiveTab("positions")}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                                        activeTab === "positions"
-                                            ? "bg-white text-rcf-navy shadow-sm"
-                                            : "text-slate-600 hover:text-slate-900"
-                                    }`}
-                                >
-                                    <UserCog className="h-4 w-4" />
-                                    Positions
-                                </button>
-                                <button
-                                    onClick={() => setActiveTab("leadership")}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                                        activeTab === "leadership"
-                                            ? "bg-white text-rcf-navy shadow-sm"
-                                            : "text-slate-600 hover:text-slate-900"
-                                    }`}
-                                >
-                                    <Crown className="h-4 w-4" />
-                                    Leadership
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Tab Content */}
-                        <div className="flex-1 overflow-y-auto p-6">
-                            {activeTab === "workers" && (
-                                <UnitManager
-                                    unit={selectedUnit}
-                                    initialMembers={modalMembers}
-                                    tenureId={data.tenureId}
-                                    onSuccess={() => {
-                                        onSuccess(); // Refresh Admin Grid counts
-                                        handleOpen(selectedUnit); // Refresh Modal list
-                                    }}
-                                />
-                            )}
-                            
-                            {activeTab === "positions" && (
-                                <UnitPositionsManager
-                                    unit={selectedUnit}
-                                    tenureId={data.tenureId}
-                                    onSuccess={onSuccess}
-                                />
-                            )}
-                            
-                            {activeTab === "leadership" && (
-                                <UnitLeadershipCard
-                                    unitId={selectedUnit.id}
-                                    unitName={selectedUnit.name}
-                                    unitType={selectedUnit.type}
-                                    tenureId={data.tenureId}
-                                />
-                            )}
-                        </div>
+                <UnitModal
+                    title={selectedUnit.name}
+                    subtitle={data.canWriteAll ? undefined : "Read-only"}
+                    onClose={close}
+                    wide
+                >
+                    {/* Tabs scroll sideways on a narrow phone rather than wrapping. */}
+                    <div role="tablist" className="-mx-1 mb-5 flex gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1">
+                        {TABS.map(({ id, label, icon: Icon }) => (
+                            <button
+                                key={id}
+                                type="button"
+                                role="tab"
+                                aria-selected={activeTab === id}
+                                onClick={() => setActiveTab(id)}
+                                className={`flex shrink-0 items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy ${
+                                    activeTab === id
+                                        ? "bg-white text-rcf-navy shadow-sm"
+                                        : "text-slate-600 hover:text-slate-900"
+                                }`}
+                            >
+                                <Icon className="h-4 w-4" aria-hidden="true" />
+                                {label}
+                            </button>
+                        ))}
                     </div>
-                </div>
+
+                    {activeTab === "workers" && (
+                        <UnitManager
+                            unit={selectedUnit}
+                            readOnly={!data.canWriteAll}
+                            onChanged={onSuccess}
+                        />
+                    )}
+
+                    {activeTab === "positions" && (
+                        <UnitPositionsManager
+                            unit={selectedUnit}
+                            tenureId={data.tenureId ?? ""}
+                            onSuccess={onSuccess}
+                        />
+                    )}
+
+                    {activeTab === "leadership" && (
+                        <UnitLeadershipCard
+                            unitId={selectedUnit.id}
+                            unitName={selectedUnit.name}
+                            unitType={selectedUnit.type}
+                            tenureId={data.tenureId ?? ""}
+                        />
+                    )}
+                </UnitModal>
             )}
         </>
     );

@@ -492,7 +492,20 @@ AGENTS.md                                    honorary offices; tenure has no nam
    `manifest.tenure.name` from old backups, and handover records read `payload.name`
    from intents begun before this change. `handover_intents.from_tenure_name` is now
    written with `tenureFullLabel()` (surfaced as `fromTenure.label`).
-3. **Workforce switch-on** — drop `comingSoon`. (Secretariat already done in step 1.)
+3. ✅ **Workforce switch-on** — `comingSoon` dropped, and `/dashboard/units` wired to
+   the real page (it was a ComingSoon placeholder too). Fixed on the way, because
+   switching on would have exposed them:
+   - `getUnitDetailsAction` and `getUnitLeadershipAction` had **no auth** and returned
+     emails/phones; `removeWorkerAction` let any signed-in user remove any membership.
+     Now: roster read = admin read tier or `canManageUnit`; remove is authorized
+     against the membership's real unit; add uses the ACTIVE tenure server-side.
+   - Execs saw nothing: managed units came from `leadership.unit_id`, which cabinet
+     appointments leave NULL. Now read from EXCO privilege scopes (same as
+     `canManageUnit`), so assistants qualify and honorary offices don't.
+   - Unit counts summed every tenure; now the active tenure only.
+   - `UnitManager` never showed members (copied a prop into state before the fetch
+     landed); it now loads its own roster with loading/error states, RHF+zod add form.
+   - President sees every unit read-only.
 4. **Workforce features** — 2a details, 2b birthdays, 2c log, 2d update link.
 5. **Coronation form + palette** — ends with the dashboard in the session's colours.
 6. **Tenure insight page.**
