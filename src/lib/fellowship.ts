@@ -175,6 +175,9 @@ export interface UnitMember {
     phone_number: string | null;
     department: string | null;
     avatar_url: string | null;
+    /** The member's generation — their level is computed from it against the session. */
+    class_set_id: string | null;
+    gender: string | null;
 }
 
 /**
@@ -199,7 +202,7 @@ export async function getUnitMembers(unitId: string, tenureId: string): Promise<
         .select(`
             id,
             role,
-            profile:profiles(id, first_name, last_name, email, phone_number, department, avatar_url)
+            profile:profiles(id, first_name, last_name, email, phone_number, department, avatar_url, class_set_id, gender)
         `)
         .eq("unit_id", unitId)
         .eq("tenure_id", tenureId);
@@ -221,12 +224,16 @@ export async function getUnitMembers(unitId: string, tenureId: string): Promise<
  * Unit" is not a thing the system can honour anyway.
  */
 async function getMembersByGender(gender: "male" | "female"): Promise<UnitMember[]> {
-    const { data, error } = await db
-        .from("profiles")
-        .select("id, first_name, last_name, email, phone_number, department, avatar_url")
-        .eq("gender", gender)
-        .order("first_name");
-    if (error) throw new Error(error.message);
+    // Paged (fetchAll): half the fellowship is easily past the API's silent 1000-row
+    // cap, and a short list here would read as members missing from the unit.
+    const data = await fetchAll<Record<string, unknown>>((from, to) =>
+        db.from("profiles")
+            .select("id, first_name, last_name, email, phone_number, department, avatar_url, class_set_id, gender")
+            .eq("gender", gender)
+            .order("first_name")
+            .order("id")
+            .range(from, to),
+    );
 
     return (data ?? []).map((p) => ({
         membershipId: "",

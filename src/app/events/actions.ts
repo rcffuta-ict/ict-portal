@@ -2,24 +2,45 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { requireAdminWrite } from "@/lib/access-control";
 import { parseGender } from "@/lib/gender";
+import { canManageEvents, eventAccessFor, NO_EVENT_ACCESS, type EventAccess } from "@/lib/event-access";
 
-/**
- * May the SESSION create or change events? The admin tier, minus the President.
- *
- * This used to take an `email` argument from the caller and ask whether that address
- * belonged to an admin — so anyone could call the action with an admin's address (the
- * staging one is in the repo) and get through. Identity comes from the session cookie,
- * never from the request body.
- */
-async function canManageEvents(): Promise<boolean> {
-    try {
-        await requireAdminWrite();
-        return true;
-    } catch {
-        return false;
+// Who may create and edit events: the System Admin (src/lib/event-access.ts). This used
+// to take an `email` argument from the caller and ask whether that address belonged to
+// an admin — so anyone could call it with an admin's address and get through. Identity
+// comes from the session cookie, never from the request body.
+
+/** A unit assigned to an event must exist; store its slug or nothing. */
+async function checkedConfig(config: any): Promise<{ config: any } | { error: string }> {
+    const unit = typeof config?.unit === "string" ? config.unit.trim() : "";
+    if (!unit) {
+        const rest = { ...(config ?? {}) };
+        delete rest.unit;
+        return { config: rest };
     }
+    const { data } = await db.from("units").select("slug").eq("slug", unit).maybeSingle();
+    if (!data) return { error: "That unit doesn't exist." };
+    return { config: { ...config, unit } };
+}
+
+/** What the current viewer may do on the events screens — drives buttons only. */
+export async function getEventsCapabilityAction(): Promise<{ canCreate: boolean }> {
+    return { canCreate: await canManageEvents() };
+}
+
+/** What the current viewer may do with one event — drives the admin link and console. */
+export async function getMyEventAccessAction(slug: string): Promise<EventAccess> {
+    const { data: event } = await db.from("events").select("config").eq("slug", slug).maybeSingle();
+    if (!event) return NO_EVENT_ACCESS;
+    const { read, write, manage } = await eventAccessFor(event.config);
+    return { read, write, manage };
+}
+
+/** Units to choose from when assigning one to an event. System Admin only. */
+export async function listEventUnitsAction() {
+    if (!(await canManageEvents())) return [];
+    const { data } = await db.from("units").select("slug, name, type").order("name");
+    return data ?? [];
 }
 
 export async function getEvents() {
@@ -85,38 +106,6 @@ export async function getEventBySlug(slug: string) {
   }
 }
 
-export async function getEventRegistrations(eventId: string) {
-  try {
-    const { data: registrations, error } = await db
-      .from('event_registrations')
-      .select('*')
-      .eq('event_id', eventId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching registrations:', error);
-      return {
-        success: false,
-        error: 'Failed to fetch registrations',
-        data: null
-      };
-    }
-
-    return {
-      success: true,
-      data: registrations || [],
-      error: null
-    };
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    return {
-      success: false,
-      error: 'An unexpected error occurred',
-      data: null
-    };
-  }
-}
-
 export async function createEvent(data: {
   title: string;
   slug: string;
@@ -129,7 +118,13 @@ export async function createEvent(data: {
 }) {
   try {
     if (!(await canManageEvents())) {
-        return { success: false, error: "Unauthorized: Admin access required" };
+        return { success: false, error: "Only the System Admin can create or edit events." };
+    }
+    // Only when config is being set: an edit that leaves it out must not wipe it.
+    if (data.config !== undefined) {
+      const checked = await checkedConfig(data.config);
+      if ("error" in checked) return { success: false, error: checked.error };
+      data = { ...data, config: checked.config };
     }
 
     // Basic validation
@@ -179,7 +174,13 @@ export async function updateEvent(id: string, data: {
 }) {
   try {
     if (!(await canManageEvents())) {
-        return { success: false, error: "Unauthorized: Admin access required" };
+        return { success: false, error: "Only the System Admin can create or edit events." };
+    }
+    // Only when config is being set: an edit that leaves it out must not wipe it.
+    if (data.config !== undefined) {
+      const checked = await checkedConfig(data.config);
+      if ("error" in checked) return { success: false, error: checked.error };
+      data = { ...data, config: checked.config };
     }
 
     if (!id) return { success: false, error: "Event ID is required" };

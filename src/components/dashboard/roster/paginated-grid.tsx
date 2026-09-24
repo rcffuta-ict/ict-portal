@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 export const GRID_PAGE_SIZE = 24;
 
 /**
- * The layout every Workforce listing shares: a grid of cards — one column on a phone,
+ * The layout the roster listings share (Workforce members, birthdays): a grid of cards — one column on a phone,
  * two from `sm`, three from `xl` — paged in the browser.
  *
  * Paged because Brothers' and Sisters' hold half the fellowship each, and rendering

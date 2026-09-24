@@ -3,7 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { listPositions, isPresidentPosition, positionGrantsLogin } from "@/lib/positions";
+import { listPositions } from "@/lib/positions";
 import {
     getAllUnitsOverview,
     getUnitMembers,
@@ -14,7 +14,6 @@ import {
 } from "@/lib/fellowship";
 import { getProfileContext } from "@/lib/auth/profile-context";
 import { computeLevel } from "@/lib/levels";
-import { isUndisableablePosition } from "@/config/leadership-positions";
 import { getActiveTenure } from "@/utils/action";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 import {
@@ -23,11 +22,9 @@ import {
     requireModuleWrite,
     requireAccess,
     requireAdminWrite,
-    requireVpAdmin,
     canManageUnit,
     canManageLevel,
 } from "@/lib/access-control";
-import { ensureLoginProvisioned, resetLoginPassword } from "@/lib/auth/provision";
 import { isGenderCategoryUnit } from "@/config/fellowship-units";
 
 // ============================================================================
@@ -62,9 +59,55 @@ async function managedUnitsOf(ctx: ProfileContext): Promise<ManagedUnit[]> {
     return (data ?? []) as ManagedUnit[];
 }
 
-/** May this session READ a unit's roster? Admin read tier, or it manages the unit. */
+/**
+ * Every generation's current level and name, keyed by class_set id. Level is never
+ * stored: it is the generation's override, or its entry year against the ACTIVE
+ * session — the same rule as everywhere else. Not exported: "use server" file.
+ */
+async function generationsBySet(session: string | null) {
+    const { data: sets } = await db
+        .from("class_sets")
+        .select("id, entry_year, is_foundation, level_override, family_name");
+    return new Map((sets ?? []).map((s: any) => [s.id as string, {
+        level: (s.level_override || computeLevel(s.entry_year, s.is_foundation, session)) as string | null,
+        generation: (s.family_name as string | null) ?? null,
+    }]));
+}
+
+/**
+ * Who holds an Exco office this tenure, and which: profile id → the office's alias.
+ * An Exco office is one carrying an EXCO privilege tag; ended appointments don't count.
+ * Not exported: "use server" file.
+ */
+async function excoOfficesThisTenure(tenureId: string): Promise<Map<string, string>> {
+    const { data } = await db
+        .from("leadership")
+        .select("profile_id, position:leadership_positions!inner(title, alias, position_privileges!inner(privilege))")
+        .eq("tenure_id", tenureId)
+        .is("ended_at", null)
+        .eq("position.position_privileges.privilege", "EXCO");
+    const map = new Map<string, string>();
+    for (const row of (data ?? []) as any[]) {
+        const pos = Array.isArray(row.position) ? row.position[0] : row.position;
+        if (!map.has(row.profile_id)) map.set(row.profile_id, pos?.alias || pos?.title || "Exco");
+    }
+    return map;
+}
+
+/**
+ * Sees every unit, read-only unless also a writer: the admin tier and the VPs (CENTRAL).
+ * The module's read config always included CENTRAL, but the unit pages only admitted
+ * the admin tier, so VP Church Growth could open Workforce and see nothing at all.
+ * Same rule as the Levels module's seesAllLevels.
+ */
+function seesAllUnits(ctx: ProfileContext): boolean {
+    return ctx.isAdmin || (ctx.leadership ?? []).some((l) =>
+        (l.privileges ?? []).some((p) => p.tag === "CENTRAL"));
+}
+
+/** May this session READ a unit's roster? Sees every unit, or manages this one. */
 async function canViewUnit(ctx: ProfileContext, unitId: string): Promise<boolean> {
-    return ctx.isAdmin || (await canManageUnit(ctx, unitId));
+    return seesAllUnits(ctx) || (await canManageUnit(ctx, unitId));
 }
 
 export async function getUnitModuleData() {
@@ -76,7 +119,7 @@ export async function getUnitModuleData() {
     // unit but is write-blocked everywhere, so their view is read-only.
     const canWriteAll = ctx.isSysAdmin || ctx.isVpAdmin;
 
-    if (ctx.isAdmin) {
+    if (seesAllUnits(ctx)) {
         const units = await getAllUnitsOverview(tenureId);
         return {
             authorized: true as const,
@@ -131,11 +174,12 @@ export async function getUnitPageAction(unitId: string) {
             success: true as const,
             unit: unit as ManagedUnit,
             tenureId: tenure?.id ?? null,
-            view: ctx.isAdmin ? ("ADMIN" as const) : ("LEADER" as const),
-            // The President reads every unit but changes none. The server refuses the
-            // writes regardless; this only hides controls that would always fail.
-            readOnly: ctx.isAdmin && !(ctx.isSysAdmin || ctx.isVpAdmin),
-            leadershipRole: ctx.isAdmin ? null : excoOffice?.alias || excoOffice?.title || "Executive",
+            view: seesAllUnits(ctx) ? ("ADMIN" as const) : ("LEADER" as const),
+            // The President and VP Church Growth read every unit but change none. The
+            // server refuses the writes regardless; this only hides controls that would
+            // always fail.
+            readOnly: seesAllUnits(ctx) && !(ctx.isSysAdmin || ctx.isVpAdmin),
+            leadershipRole: seesAllUnits(ctx) ? null : excoOffice?.alias || excoOffice?.title || "Executive",
         };
     } catch (e: any) {
         return { success: false as const, error: e.message };
@@ -157,7 +201,22 @@ export async function getUnitDetailsAction(unitId: string) {
         }
         const tenure = await getActiveTenure();
         if (!tenure) return { success: false as const, error: "There is no active tenure.", data: [] };
-        return { success: true as const, data: await getUnitMembers(unitId, tenure.id) };
+        const [members, bySet, excos] = await Promise.all([
+            getUnitMembers(unitId, tenure.id),
+            generationsBySet(tenure.session),
+            excoOfficesThisTenure(tenure.id),
+        ]);
+        return {
+            success: true as const,
+            data: members.map((m) => ({
+                ...m,
+                level: (m.class_set_id && bySet.get(m.class_set_id)?.level) || null,
+                generation: (m.class_set_id && bySet.get(m.class_set_id)?.generation) || null,
+                // Holds an Exco office this tenure (lead or assistant) — any unit's, not
+                // only this one's: the metric is "how many of our people are Excos".
+                excoOffice: excos.get(m.id) ?? null,
+            })),
+        };
     } catch (e: any) {
         return { success: false as const, error: e.message, data: [] };
     }
@@ -336,209 +395,6 @@ export async function getLevelMembersAction(classSetId: string) {
 // ============================================================================
 // LEADER APPOINTMENT + ROLE MANAGEMENT (VP Admin / ICT Coordinator)
 // ============================================================================
-
-/** Options for the appoint form: units/teams + generations (class sets). */
-export async function getAppointmentOptionsAction() {
-    try {
-        await requireAccess("ADMIN");
-        const [{ data: units }, { data: classSets }] = await Promise.all([
-            db.from("units").select("id, name, type").order("name"),
-            db.from("class_sets").select("id, family_name, entry_year").order("entry_year", { ascending: false }),
-        ]);
-        return { success: true, units: units || [], classSets: classSets || [] };
-    } catch (e: any) {
-        return { success: false, error: e.message, units: [], classSets: [] };
-    }
-}
-
-/** Search members to appoint (name / email / matric). */
-export async function searchMembersAction(query: string) {
-    try {
-        await requireAccess("ADMIN");
-        const q = (query || "").trim();
-        if (q.length < 2) return { success: true, data: [] };
-        const { data } = await db
-            .from("profiles")
-            .select("id, first_name, last_name, email, phone_number, avatar_url")
-            .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,matric_number.ilike.%${q}%`)
-            .limit(15);
-        return { success: true, data: data || [] };
-    } catch (e: any) {
-        return { success: false, error: e.message, data: [] };
-    }
-}
-
-/**
- * List all leadership roles (positions), including disabled.
- *
- * `category` is DERIVED from each position's privilege tags (migration 0013 dropped the
- * stored column), and `is_protected` replaces the old `is_default` flag.
- */
-export async function listRolesAction() {
-    try {
-        await requireAccess("ADMIN");
-        const positions = await listPositions();
-        const data = [...positions].sort(
-            (a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title),
-        );
-        return { success: true, data };
-    } catch (e: any) {
-        return { success: false, error: e.message, data: [] };
-    }
-}
-
-/** Create a new leadership role (with alias). */
-export async function createRoleAction(input: {
-    title: string;
-    alias?: string;
-    description?: string;
-}) {
-    try {
-        // Catalogue changes belong to the VP Admin, not to every ADMIN-tier role.
-        await requireVpAdmin();
-        if (!input.title?.trim()) return { success: false, error: "Title is required." };
-        // No `category` — it is derived from the privilege tags now. A role created here
-        // has none yet, so it reads as 'UNIT' until the VP Admin assigns them.
-        const { error } = await db.from("leadership_positions").insert({
-            title: input.title.trim(),
-            alias: input.alias?.trim() || null,
-            description: input.description?.trim() || null,
-            is_active: true,
-        });
-        if (error) throw error;
-        revalidatePath("/dashboard/units");
-        return { success: true };
-    } catch (e: any) {
-        return { success: false, error: e.message };
-    }
-}
-
-/**
- * Enable/disable a role. The VP Admin and ICT Coordinator can never be disabled — the
- * fellowship would be left unable to administer itself.
- *
- * Identified by IMMUTABLE SLUG rather than the dropped `is_default` column, so renaming
- * either office in the UI cannot quietly unprotect it.
- */
-export async function setRoleActiveAction(positionId: string, isActive: boolean) {
-    try {
-        // Catalogue changes belong to the VP Admin, not to every ADMIN-tier role.
-        await requireVpAdmin();
-        const { data: pos } = await db
-            .from("leadership_positions")
-            .select("slug")
-            .eq("id", positionId)
-            .maybeSingle();
-        if (isUndisableablePosition(pos?.slug) && !isActive) {
-            return { success: false, error: "The VP Admin and ICT Coordinator roles cannot be disabled." };
-        }
-        const { error } = await db
-            .from("leadership_positions")
-            .update({ is_active: isActive })
-            .eq("id", positionId);
-        if (error) throw error;
-        revalidatePath("/dashboard/units");
-        return { success: true };
-    } catch (e: any) {
-        return { success: false, error: e.message };
-    }
-}
-
-/**
- * Appoint a member to a leadership position, and auto-provision their login so
- * they can access the portal (they set their password via an admin-issued reset
- * link — see createResetInviteAction).
- */
-export async function appointLeaderAction(input: {
-    profileId: string;
-    positionId: string;
-    unitId?: string;
-    classSetId?: string;
-    residentialZoneId?: string;
-}) {
-    try {
-        const admin = await requireAdminWrite();
-        const tenure = await getActiveTenure();
-        if (!tenure) return { success: false, error: "No active tenure." };
-
-        // Done directly rather than through `ictAdmin.admin.assignLeader()`: the SDK
-        // enforces the single-President rule by reading `leadership_positions.category`,
-        // which migration 0013 dropped. The rule itself is unchanged — it just reads the
-        // PRESIDENT privilege tag, which is where that fact actually lives.
-        if (await isPresidentPosition(input.positionId)) {
-            const { data: sitting, error: presErr } = await db
-                .from("leadership")
-                .select("id, position:leadership_positions!inner(position_privileges!inner(privilege))")
-                .eq("tenure_id", tenure.id)
-                .is("ended_at", null)
-                .eq("position.position_privileges.privilege", "PRESIDENT")
-                .maybeSingle();
-            if (presErr) throw presErr;
-            if (sitting) {
-                return {
-                    success: false,
-                    error:
-                        "A President has already been appointed for this tenure. Remove the "
-                        + "current President before appointing a new one.",
-                };
-            }
-        }
-
-        const { error: assignError } = await db.from("leadership").insert({
-            tenure_id: tenure.id,
-            profile_id: input.profileId,
-            position_id: input.positionId,
-            unit_id: input.unitId || null,
-            class_set_id: input.classSetId || null,
-            residential_zone_id: input.residentialZoneId || null,
-        });
-        if (assignError) {
-            // The one-lead-per-office index (see the tighten_office_catalogue
-            // migration). Assistants are unlimited; only the lead seat is exclusive.
-            if (assignError.message?.includes("leadership_one_lead_per_position")) {
-                throw new Error(
-                    "This office already has a lead for this tenure. Add the member as an assistant instead.",
-                );
-            }
-            throw assignError;
-        }
-
-        // Auto-create the login (no password until they set one) — but only where the
-        // OFFICE grants access. Most of the fellowship's offices exist in the catalogue
-        // as a record of service and administer nothing here, so appointing to one must
-        // not mint an account. See leadership_positions.grants_login.
-        const created = (await positionGrantsLogin(input.positionId))
-            ? (await ensureLoginProvisioned(input.profileId, admin.id)).created
-            : false;
-
-        revalidatePath("/dashboard/units");
-        revalidatePath("/dashboard/tenure");
-        return { success: true, loginCreated: created };
-    } catch (e: any) {
-        return { success: false, error: e.message };
-    }
-}
-
-/**
- * Reset a leader's login (the "forgot password" path). Clears their password so
- * they set a new one on their next login. VP Admin / ICT Coordinator only.
- */
-export async function resetLeaderLoginAction(leaderProfileId: string) {
-    try {
-        await requireAdminWrite();
-        const { data: login } = await db
-            .from("profile_login")
-            .select("id")
-            .eq("profile_id", leaderProfileId)
-            .maybeSingle();
-        if (!login) return { success: false, error: "This member doesn't have a portal login." };
-
-        await resetLoginPassword(leaderProfileId);
-        return { success: true };
-    } catch (e: any) {
-        return { success: false, error: e.message };
-    }
-}
 
 // ============================================================================
 // UNIT POSITION MAPPING (leader/assistant designations per unit) — unchanged API
@@ -749,15 +605,17 @@ export async function getUnitMemberDetailAction(unitId: string, profileId: strin
         const auth = await authorizeUnitMember(unitId, profileId);
         if (!auth.ok) return { success: false as const, error: auth.error };
 
-        const [detail, { data: unit }] = await Promise.all([
+        const [detail, { data: unit }, { data: extra }] = await Promise.all([
             getProfileContext(profileId),
             db.from("units").select("id, name").eq("id", unitId).maybeSingle(),
+            // rcf_profile_context doesn't carry the date of birth; the page shows it.
+            db.from("profiles").select("dob").eq("id", profileId).maybeSingle(),
         ]);
         if (!detail) return { success: false as const, error: "Could not load this member." };
 
         return {
             success: true as const,
-            data: detail,
+            data: { ...detail, profile: { ...detail.profile, dob: extra?.dob ?? null } },
             unitName: unit?.name ?? "Unit",
             // UI convenience only — the update-link action re-checks it.
             canManage: await canManageUnit(auth.ctx, unitId),
@@ -905,7 +763,10 @@ export async function getUnitBirthdaysAction(unitId: string, month: number, year
         const tenure = await getActiveTenure();
         if (!tenure) return { success: true as const, data: [] };
 
-        const members = await getUnitMembers(unitId, tenure.id);
+        const [members, bySet] = await Promise.all([
+            getUnitMembers(unitId, tenure.id),
+            generationsBySet(tenure.session),
+        ]);
         const ids = members.map((m) => m.id);
         if (ids.length === 0) return { success: true as const, data: [] };
         // The roster is already in hand, so the card's details cost no extra query.
@@ -931,6 +792,7 @@ export async function getUnitBirthdaysAction(unitId: string, month: number, year
                     day: r.celebrate_day as number,
                     department: (m?.department as string | null) ?? null,
                     phone: (m?.phone_number as string | null) ?? null,
+                    level: (m?.class_set_id && bySet.get(m.class_set_id)?.level) || null,
                 };
             }),
         };

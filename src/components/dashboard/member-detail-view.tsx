@@ -34,7 +34,7 @@ export function MemberDetailView({ detail }: { detail: any }) {
                     <DetailRow label="Email" value={p.email} />
                     <DetailRow label="Phone" value={p.phoneNumber} />
                     <DetailRow label="Gender" value={p.gender} />
-                    <DetailRow label="Date of birth" value={p.dob} />
+                    <DetailRow label="Date of birth" value={formatDob(p.dob)} />
                 </DetailSection>
 
                 <DetailSection title="Academics">
@@ -93,4 +93,13 @@ function DetailRow({ label, value }: { label: string; value: any }) {
             </span>
         </div>
     );
+}
+
+/** "14 May 2003" from a Postgres date — in UTC, so no timezone can shift the day. */
+function formatDob(dob: string | null | undefined): string | null {
+    if (!dob) return null;
+    const [y, m, d] = dob.split("-").map(Number);
+    if (!y || !m || !d) return dob;
+    return new Intl.DateTimeFormat("en-NG", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+        .format(new Date(Date.UTC(y, m - 1, d)));
 }

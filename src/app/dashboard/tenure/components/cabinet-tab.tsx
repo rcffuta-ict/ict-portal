@@ -7,6 +7,7 @@ import {
     togglePositionAction,
     setPositionPrivilegesAction,
     removeUnitLeaderAction,
+    resetLeaderLoginAction,
 } from "../actions";
 import {
     Search,
@@ -19,6 +20,7 @@ import {
     Loader2,
     Pencil,
     RefreshCw,
+    KeyRound,
     X,
     ChevronRight,
 } from "lucide-react";
@@ -172,6 +174,33 @@ function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) 
      * office — replacing a lead is "end this one, appoint that one", and the office is
      * hidden from Appoint while it is filled, so this is the way in.
      */
+    const canResetLogins = !!data?.canResetLogins;
+    const grantsLogin = (leader: any) =>
+        !!(data?.positions ?? []).find((p: any) => p.id === leader.position_id)?.grants_login;
+
+    const handleResetLogin = (leader: any) => {
+        const who = `${leader.profile.first_name} ${leader.profile.last_name}`;
+        showAlert({
+            type: "warning",
+            title: `Reset ${leader.profile.first_name}'s login?`,
+            message: `${who}'s password is cleared and any open session is ended. Next time `
+                + "they sign in with their email, the login screen asks them to choose a new "
+                + "password. Tell them once it's done.",
+            confirmText: "Reset login",
+            onConfirm: async () => {
+                const res = await resetLeaderLoginAction(leader.profile.id);
+                if (!res.success) {
+                    showAlert({ type: "error", message: res.error });
+                    return;
+                }
+                showAlert({
+                    type: "success",
+                    message: `${leader.profile.first_name}'s login is reset. They can sign in with their email and choose a new password.`,
+                });
+            },
+        });
+    };
+
     const handleRevoke = async (leader: any, thenReplace = false) => {
         keepHistoryRef.current = true;
         const who = `${leader.profile.first_name} ${leader.profile.last_name}`;
@@ -271,11 +300,21 @@ function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) 
                                     />
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    {canRevoke ? (
-                                        <div className="flex justify-end gap-2">
+                                    {canRevoke || canResetLogins ? (
+                                        <div className="flex flex-wrap justify-end gap-2">
+                                            {canResetLogins && grantsLogin(l) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleResetLogin(l)}
+                                                    aria-label={`Reset the login of ${l.profile.first_name} ${l.profile.last_name}`}
+                                                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+                                                >
+                                                    <KeyRound className="h-3.5 w-3.5" aria-hidden="true" /> Reset login
+                                                </button>
+                                            )}
                                             {/* Replace only for a lead: an assistant's
                                                 office stays open for others anyway. */}
-                                            {l.is_lead !== false && (
+                                            {canRevoke && l.is_lead !== false && (
                                                 <button
                                                     type="button"
                                                     onClick={() => handleRevoke(l, true)}
@@ -285,14 +324,16 @@ function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) 
                                                     <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Replace
                                                 </button>
                                             )}
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRevoke(l)}
-                                                aria-label={`Revoke ${l.profile.first_name} ${l.profile.last_name} as ${l.position.title}`}
-                                                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Revoke
-                                            </button>
+                                            {canRevoke && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRevoke(l)}
+                                                    aria-label={`Revoke ${l.profile.first_name} ${l.profile.last_name} as ${l.position.title}`}
+                                                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Revoke
+                                                </button>
+                                            )}
                                         </div>
                                     ) : (
                                         <span className="text-xs text-slate-400">View only</span>

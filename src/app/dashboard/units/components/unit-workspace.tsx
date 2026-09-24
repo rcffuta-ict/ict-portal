@@ -6,19 +6,19 @@ import { Users, Crown, UserCog, Cake, History } from "lucide-react";
 import { UnitManager } from "./unit-manager";
 import { UnitPositionsManager } from "./unit-positions-manager";
 import { UnitLeadershipCard } from "./unit-leadership-card";
-import { UnitTabs, type UnitTab } from "./unit-tabs";
+import { WorkspaceTabs, type WorkspaceTab } from "@/components/dashboard/roster/workspace-tabs";
 import { BirthdaysPanel } from "./birthdays-panel";
 import { MembershipLog } from "./membership-log";
 
 type UnitTabId = "members" | "birthdays" | "log" | "positions" | "leadership";
 
-const LEADER_TABS: UnitTab<UnitTabId>[] = [
+const LEADER_TABS: WorkspaceTab<UnitTabId>[] = [
     { id: "members", label: "Members", icon: Users },
     { id: "birthdays", label: "Birthdays", icon: Cake },
     { id: "log", label: "Log", icon: History },
 ];
 
-const ADMIN_TABS: UnitTab<UnitTabId>[] = [
+const ADMIN_TABS: WorkspaceTab<UnitTabId>[] = [
     ...LEADER_TABS,
     { id: "positions", label: "Positions", icon: UserCog },
     { id: "leadership", label: "Leadership", icon: Crown },
@@ -46,7 +46,11 @@ export function UnitWorkspace({
     initialTab?: string;
 }) {
     const router = useRouter();
-    const tabs = view === "ADMIN" ? ADMIN_TABS : LEADER_TABS;
+    // Positions carries add/remove controls the server refuses to read-only viewers
+    // (the President, VP Church Growth), so they don't get the tab at all.
+    const tabs = view === "ADMIN"
+        ? ADMIN_TABS.filter((t) => t.id !== "positions" || !readOnly)
+        : LEADER_TABS;
     const [tab, setTab] = useState<UnitTabId>(
         () => tabs.find((t) => t.id === initialTab)?.id ?? "members",
     );
@@ -60,13 +64,13 @@ export function UnitWorkspace({
     };
 
     return (
-        <div>
-            <UnitTabs tabs={tabs} active={tab} onChange={change} />
+        <div className="space-y-5">
+            <WorkspaceTabs tabs={tabs} active={tab} onChange={change} label="Unit sections" />
 
             {tab === "members" && (
                 <UnitManager unit={unit} readOnly={readOnly} onChanged={() => router.refresh()} />
             )}
-            {tab === "birthdays" && <BirthdaysPanel unitId={unit.id} />}
+            {tab === "birthdays" && <BirthdaysPanel unitId={unit.id} unitName={unit.name} />}
             {tab === "log" && <MembershipLog unitId={unit.id} />}
             {tab === "positions" && (
                 <UnitPositionsManager unit={unit} tenureId={tenureId ?? ""} onSuccess={() => router.refresh()} />

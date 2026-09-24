@@ -6,6 +6,7 @@ import { Users, KeyRound, History, Lock } from "lucide-react";
 import { MembersGrid } from "./members-grid";
 import { TokenManager } from "./token-manager";
 import { TokenActivity } from "./token-activity";
+import { WorkspaceTabs, type WorkspaceTab } from "@/components/dashboard/roster/workspace-tabs";
 
 type TabId = "members" | "tokens" | "activity";
 
@@ -34,45 +35,19 @@ export function GenerationDetail({
     const canWrite = !!generation.canWrite;
     const [tab, setTab] = useState<TabId>("members");
 
-    const tabs: { id: TabId; label: string; icon: any }[] = [
+    const tabs: WorkspaceTab<TabId>[] = [
         { id: "members", label: "Members", icon: Users },
         ...(canWrite
             ? ([
                 { id: "tokens", label: "Tokens", icon: KeyRound },
                 { id: "activity", label: "Activity", icon: History },
-            ] as { id: TabId; label: string; icon: any }[])
+            ] as WorkspaceTab<TabId>[])
             : []),
     ];
 
     return (
         <div className="space-y-5">
-            {tabs.length > 1 && (
-                <div
-                    role="tablist"
-                    aria-label="Generation sections"
-                    className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1"
-                >
-                    {tabs.map((t) => {
-                        const on = tab === t.id;
-                        return (
-                            <button
-                                key={t.id}
-                                role="tab"
-                                aria-selected={on}
-                                onClick={() => setTab(t.id)}
-                                className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy ${
-                                    on
-                                        ? "bg-rcf-navy text-white shadow-sm"
-                                        : "border border-slate-200 bg-white text-slate-600 hover:text-rcf-navy"
-                                }`}
-                            >
-                                <t.icon className="h-4 w-4" />
-                                {t.label}
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
+            <WorkspaceTabs tabs={tabs} active={tab} onChange={setTab} label="Generation sections" />
 
             {!canWrite && (
                 <p className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
