@@ -29,6 +29,11 @@ import {
 import { isGenderCategoryUnit } from "@/config/fellowship-units";
 import { MAX_EMAILS_PER_ADD, parseEmailList } from "@/lib/email-list";
 import { profilePath } from "@/lib/level-token";
+import { canReadModule, getModuleAccessConfig } from "@/lib/module-access";
+import { getAcademicSettings, listRounds, loadMembers, loadRecords, classSetsById } from "@/lib/academics-db";
+import { buildSemesterReport, recordExportRows } from "@/lib/academics-report";
+import { getDepartments, getFaculties } from "@/lib/departments-db";
+import { bySemester, isValidSession, semesterKey, semesterLabel } from "@/lib/academics";
 
 // ============================================================================
 // DATA LOADER
@@ -800,6 +805,144 @@ export async function getUnitBirthdaysAction(unitId: string, month: number, year
                     phone: (m?.phone_number as string | null) ?? null,
                     level: (m?.class_set_id && bySet.get(m.class_set_id)?.level) || null,
                 };
+            }),
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message, data: [] };
+    }
+}
+
+/**
+ * Whether this viewer may see individual members' results for this unit: anyone who can
+ * read the Academics module, or the unit's HEADS (who manage it) when the Academic Unit
+ * allows it. A read-only viewer outside the Academics module gets totals. Not exported:
+ * "use server" file.
+ */
+async function unitHeadSeesIndividuals(
+    ctx: ProfileContext,
+    unitId: string,
+    allowed: boolean,
+    config: Awaited<ReturnType<typeof getModuleAccessConfig>>,
+): Promise<boolean> {
+    if (canReadModule(ctx, "academics", config)) return true;
+    return allowed && (await canManageUnit(ctx, unitId));
+}
+
+/**
+ * Workforce → Academics: one semester's results for this unit's members.
+ *
+ * Same gate as the roster (canViewUnit). The totals are always returned; the NAMES and
+ * grades only to the unit's heads when the Academic Unit allows it
+ * (academic_settings.unit_heads_see_individuals), or to anyone who can read the
+ * Academics module anyway. Decided here, on the server: with the switch off, the
+ * individual rows never leave it.
+ *
+ * `session`/`semester` pick the semester; left off, the open round's (or the latest).
+ */
+export async function getUnitAcademicsAction(unitId: string, session?: string, semester?: number) {
+    try {
+        const ctx = await requireModuleRead("workforce");
+        if (!(await canViewUnit(ctx, unitId))) {
+            return { success: false as const, error: "You don't lead this unit/team." };
+        }
+        const tenure = await getActiveTenure();
+        if (!tenure) return { success: false as const, error: "There is no active tenure." };
+
+        const [roster, rounds, settings, config] = await Promise.all([
+            getUnitMembers(unitId, tenure.id),
+            listRounds(),
+            getAcademicSettings(),
+            getModuleAccessConfig(),
+        ]);
+        const ids = roster.map((m) => m.id);
+        const [members, records, classSets, departments, faculties] = await Promise.all([
+            loadMembers(ids),
+            loadRecords(ids),
+            classSetsById(),
+            getDepartments(true),
+            getFaculties(),
+        ]);
+
+        // The semesters to choose from: every round, and any semester these members
+        // have results for without one. Newest first.
+        const options = new Map<string, { session: string; semester: number; label: string }>();
+        for (const r of rounds) options.set(semesterKey(r.session, r.semester), { session: r.session, semester: r.semester, label: r.label });
+        for (const r of records) {
+            const k = semesterKey(r.session, r.semester);
+            if (!options.has(k)) options.set(k, { session: r.session, semester: r.semester, label: semesterLabel(r.session, r.semester) });
+        }
+        const semesters = [...options.values()].sort(bySemester).reverse();
+
+        const fallback = rounds.find((r) => r.isOpen) ?? semesters[0] ?? null;
+        const chosen =
+            session && isValidSession(session) && (semester === 1 || semester === 2)
+                ? { session, semester }
+                : fallback
+                    ? { session: fallback.session, semester: fallback.semester }
+                    : null;
+
+        const individuals = await unitHeadSeesIndividuals(ctx, unitId, settings.unitHeadsSeeIndividuals, config);
+
+        return {
+            success: true as const,
+            semesters,
+            individuals,
+            report: chosen
+                ? buildSemesterReport({
+                    session: chosen.session,
+                    semester: chosen.semester,
+                    members,
+                    classSets,
+                    records,
+                    departments,
+                    facultyNames: new Map(faculties.map((f) => [f.code, f.name])),
+                    includeIndividuals: individuals,
+                })
+                : null,
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+/**
+ * Workforce → Academics → "Full record": every semester on record for every member of
+ * this unit, for a unit head reporting to the authorities. Under exactly the same rule
+ * as the names on the tab (unitHeadSeesIndividuals); refused otherwise.
+ */
+export async function exportUnitAcademicRecordsAction(unitId: string) {
+    try {
+        const ctx = await requireModuleRead("workforce");
+        if (!(await canViewUnit(ctx, unitId))) {
+            return { success: false as const, error: "You don't lead this unit/team.", data: [] };
+        }
+        const [tenure, settings, config] = await Promise.all([
+            getActiveTenure(),
+            getAcademicSettings(),
+            getModuleAccessConfig(),
+        ]);
+        if (!tenure) return { success: false as const, error: "There is no active tenure.", data: [] };
+        if (!(await unitHeadSeesIndividuals(ctx, unitId, settings.unitHeadsSeeIndividuals, config))) {
+            return { success: false as const, error: "The Academic Unit shows totals only here.", data: [] };
+        }
+        const roster = await getUnitMembers(unitId, tenure.id);
+        const ids = roster.map((m) => m.id);
+        const [members, records, classSets, departments, faculties] = await Promise.all([
+            loadMembers(ids),
+            loadRecords(ids),
+            classSetsById(),
+            getDepartments(true),
+            getFaculties(),
+        ]);
+        return {
+            success: true as const,
+            data: recordExportRows({
+                members,
+                classSets,
+                records,
+                departments,
+                facultyNames: new Map(faculties.map((f) => [f.code, f.name])),
+                session: tenure.session,
             }),
         };
     } catch (e: any) {

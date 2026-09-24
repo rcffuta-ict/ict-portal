@@ -61,12 +61,12 @@ function pick(set: string): string {
 }
 
 /**
- * Short, human-copyable level token: `rcf-xxxxx`, always with at least two digits
- * in the body. NOT a secret — it's a shared, revocable link for a whole generation,
- * so readability beats entropy here. Collisions are handled by the caller retrying
- * against the table's UNIQUE constraint.
+ * Short, human-copyable token: `rcf-xxxxx` for a level, `acd-xxxxx` for an academics
+ * results round, always with at least two digits in the body. NOT a secret — it's a
+ * shared, revocable link for a whole group, so readability beats entropy here.
+ * Collisions are handled by the caller retrying against the table's UNIQUE constraint.
  */
-function generateShortToken(): string {
+export function generateShortToken(prefix: "rcf" | "acd" = "rcf"): string {
     const chars = [pick(SHORT_DIGITS), pick(SHORT_DIGITS)];
     while (chars.length < SHORT_BODY_LENGTH) chars.push(pick(SHORT_ALPHABET));
     // Fisher-Yates, so the two guaranteed digits aren't always in front.
@@ -74,7 +74,7 @@ function generateShortToken(): string {
         const j = randomBytes(1)[0] % (i + 1);
         [chars[i], chars[j]] = [chars[j], chars[i]];
     }
-    return `rcf-${chars.join("")}`;
+    return `${prefix}-${chars.join("")}`;
 }
 
 /**

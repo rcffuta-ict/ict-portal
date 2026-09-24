@@ -7,7 +7,8 @@ import { UnitManager } from "./unit-manager";
 import { UnitExecutives } from "./unit-executives";
 import { WorkspaceTabs, type WorkspaceTab } from "@/components/dashboard/roster/workspace-tabs";
 import { BirthdaysPanel } from "./birthdays-panel";
-import { ComingSoon } from "@/components/dashboard/coming-soon";
+import { GroupAcademics } from "@/components/academics/group-academics";
+import { exportUnitAcademicRecordsAction, getUnitAcademicsAction } from "../actions";
 
 type UnitTabId = "members" | "leadership" | "birthdays" | "academics";
 
@@ -17,7 +18,7 @@ const TABS: WorkspaceTab<UnitTabId>[] = [
     { id: "members", label: "Members", icon: Users },
     { id: "leadership", label: "Leadership", icon: Crown },
     { id: "birthdays", label: "Birthdays", icon: Cake },
-    { id: "academics", label: "Academics", icon: GraduationCap, badge: "Soon" },
+    { id: "academics", label: "Academics", icon: GraduationCap },
 ];
 
 /**
@@ -60,10 +61,10 @@ export function UnitWorkspace({
             {tab === "leadership" && <UnitExecutives unit={unit} />}
             {tab === "birthdays" && <BirthdaysPanel unitId={unit.id} unitName={unit.name} />}
             {tab === "academics" && (
-                <ComingSoon
-                    title="Academics"
-                    icon={GraduationCap}
-                    description={`Academic records for ${unit.name}'s members are coming soon. The ICT team is working on it.`}
+                <GroupAcademics
+                    groupName={unit.name}
+                    load={(session, semester) => getUnitAcademicsAction(unit.id, session, semester)}
+                    exportRecords={() => exportUnitAcademicRecordsAction(unit.id)}
                 />
             )}
         </div>

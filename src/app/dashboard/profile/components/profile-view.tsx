@@ -4,10 +4,13 @@ import { User, MapPin, BookOpen, Shield, Loader2 } from "lucide-react";
 import { useProfileStore } from "@/lib/stores/profile.store";
 import clsx from "clsx";
 import { extractUserProfileInfo } from "@/lib/utils";
+import { useDepartments } from "@/lib/hooks/useDepartments";
 import { IdentityCard } from "@/components/ui/IdentityCard";
+import { MyResults } from "./my-results";
 
 export function ProfileView() {
     const userProfile = useProfileStore((state) => state.user);
+    const { departments } = useDepartments();
 
     // Guard: if no user data loaded yet
     if (!userProfile) {
@@ -22,7 +25,7 @@ export function ProfileView() {
     }
 
     // Destructure for easier access
-    const user = extractUserProfileInfo(userProfile);
+    const user = extractUserProfileInfo(userProfile, departments);
 
 
     return (
@@ -68,6 +71,8 @@ export function ProfileView() {
                         <InfoItem label="Entry Year" value={user.entryYear} />
                     </div>
                 </InfoSection>
+
+                <MyResults />
 
                 {/* Location Section */}
                 <InfoSection title="Location" icon={MapPin}>

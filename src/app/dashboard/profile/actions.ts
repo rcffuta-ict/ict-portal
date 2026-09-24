@@ -8,6 +8,8 @@ import { updateLocationInfo } from "@/lib/fellowship";
 import { getSessionProfileId } from "@/lib/auth/session";
 import { requireSysAdmin } from "@/lib/access-control";
 import { parseGender } from "@/lib/gender";
+import { getAcademicSettings, loadRecords } from "@/lib/academics-db";
+import { bySemester, classOf, semesterLabel } from "@/lib/academics";
 
 /**
  * Update a member's own profile.
@@ -103,5 +105,33 @@ export async function updateProfileAction(formData: FormData, targetId?: string)
              return { success: false, error: messages };
         }
         return { success: false, error: e.message };
+    }
+}
+
+/**
+ * The signed-in member's own semester results, for the "My results" card. Only when the
+ * Academic Unit has switched it on (academic_settings.members_see_own); otherwise
+ * `enabled: false` and no grades. Always the caller's own record, from the session.
+ */
+export async function getMyResultsAction() {
+    try {
+        const profileId = await getSessionProfileId();
+        if (!profileId) return { success: false as const, error: "You need to sign in again." };
+        const settings = await getAcademicSettings();
+        if (!settings.membersSeeOwn) return { success: true as const, enabled: false as const, records: [] };
+        const records = (await loadRecords([profileId])).sort(bySemester).reverse();
+        return {
+            success: true as const,
+            enabled: true as const,
+            records: records.map((r) => ({
+                id: r.id,
+                label: semesterLabel(r.session, r.semester),
+                gpa: r.gpa,
+                cgpa: r.cgpa,
+                classLabel: classOf(r.cgpa)?.label ?? null,
+            })),
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message || "Couldn't load your results." };
     }
 }

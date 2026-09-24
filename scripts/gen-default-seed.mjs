@@ -287,12 +287,17 @@ function render() {
     L.push("-- src/lib/modules.ts (POLICY_FIXED_MODULES) -- President, VPs and System Admin");
     L.push("-- read; only the System Admin and VP Admin write. Kept so the table has a row");
     L.push("-- for every module, with values that match what the code enforces.");
+    L.push("--");
+    L.push("-- academics: the Academic Coord (EXCO:academic) reads and writes it by default.");
+    L.push("-- Faculties and departments are NOT seeded here: they are data the Academic Unit");
+    L.push("-- maintains, seeded once by the academics_module migration.");
     L.push("INSERT INTO public.module_access (module, read_slugs, write_slugs, write_scope)");
     L.push("VALUES");
     L.push("    ('tenure',    ARRAY['CENTRAL'],          ARRAY[]::text[],  'ALL'),");
     L.push("    ('zones',     ARRAY['CENTRAL','ZONE'],   ARRAY['ZONE'],    'OWN'),");
     L.push("    ('workforce', ARRAY['CENTRAL','EXCO'],   ARRAY['EXCO'],    'OWN'),");
-    L.push("    ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN')");
+    L.push("    ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN'),");
+    L.push("    ('academics', ARRAY['EXCO:academic'],    ARRAY['EXCO:academic'], 'ALL')");
     L.push("ON CONFLICT (module) DO NOTHING;");
     L.push("");
     L.push("COMMIT;");

@@ -6,6 +6,9 @@ import { getInviteByToken, consumeInvite, logInviteEvent } from "@/lib/invites";
 import { parseGender } from "@/lib/gender";
 import { parseLevelTokenInput } from "@/lib/level-token";
 import { parseEmailList } from "@/lib/email-list";
+import { getDepartments } from "@/lib/departments-db";
+import { findProfileByEmail } from "@/lib/profile-lookup";
+import { findDepartment } from "@/lib/departments";
 
 /**
  * /profile: create or update a member's record, by level token.
@@ -82,18 +85,6 @@ export async function openLevelTokenAction(raw: string) {
     return { ...res, token };
 }
 
-/**
- * The profile with this email, ignoring case (older records may have capitals).
- * Null for anything that isn't a plain address, which also keeps ILIKE's `%` out; `_`
- * is still a wildcard there, so the matches are re-checked exactly.
- */
-async function findProfileByEmail<T extends { email: string | null }>(email: string, columns: string) {
-    const [clean] = parseEmailList(email).emails;
-    if (!clean) return null;
-    const { data } = await db.from("profiles").select(columns).ilike("email", clean).limit(5);
-    return ((data ?? []) as unknown as T[]).find((p) => p.email?.toLowerCase() === clean) ?? null;
-}
-
 const PREFILL_COLUMNS =
     "id, first_name, last_name, middle_name, email, phone_number, gender, dob, matric_number, department, faculty, school_address, home_address, residential_zone_id, avatar_url";
 
@@ -142,6 +133,19 @@ export async function lookupLevelMemberAction(token: string, email: string) {
     }
 }
 
+/**
+ * Public: the department list for the forms. Reference data about the university, so
+ * it needs no token, and it carries nothing about any member. Deactivated departments
+ * come too (flagged) so a member recorded against one still sees its name.
+ */
+export async function listDepartmentsAction() {
+    try {
+        return { success: true as const, data: await getDepartments(true) };
+    } catch (e: any) {
+        return { success: false as const, error: e.message || "Couldn't load departments.", data: [] };
+    }
+}
+
 /** Public: fetch residential zones for the location step (service role — RLS deny). */
 export async function getZonesAction() {
     try {
@@ -167,8 +171,9 @@ function mapProfileColumns(p: RegistrationPayload) {
         gender: parseGender(p.gender),
         dob: p.dob || null,
         matric_number: p.matricNumber?.trim() || null,
+        // Already resolved to the course code by submitRegistrationAction. The database
+        // trigger (rcf_sync_profile_department) sets department_id and the school.
         department: p.department || null,
-        faculty: p.faculty || null,
         school_address: p.schoolAddress?.trim() || null,
         home_address: p.homeAddress?.trim() || null,
         residential_zone_id: p.residentialZoneId || null,
@@ -198,6 +203,14 @@ export async function submitRegistrationAction(
         const emails = parseEmailList(payload.email).emails;
         if (emails.length !== 1) {
             return { success: false, error: "Enter one valid email address." };
+        }
+
+        // The department must be one on the list, stored as its course code. The form
+        // offers only those, but this endpoint is public, so it's checked here too.
+        if (payload.department) {
+            const dept = findDepartment(payload.department, await getDepartments());
+            if (!dept) return { success: false, error: "Choose your department from the list." };
+            payload = { ...payload, department: dept.alias };
         }
 
         const columns = { ...mapProfileColumns(payload), email: emails[0] };

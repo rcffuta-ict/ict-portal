@@ -19,6 +19,7 @@ import {
     MapPin,
     Users,
     GraduationCap,
+    BookOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -72,6 +73,7 @@ const MODULE_ICON: Record<ModuleId, LucideIcon> = {
     zones: MapPin,
     workforce: Users,
     level: GraduationCap,
+    academics: BookOpen,
 };
 
 const KIND_PILL: Record<AccessTokenKind, string> = {

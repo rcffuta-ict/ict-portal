@@ -1,6 +1,6 @@
 /**
  * Data-driven module access — the single source of truth for who may READ / WRITE
- * each Tool module (tenure | zones | workforce | level).
+ * each Tool module (tenure | zones | workforce | level | academics).
  *
  * Access is configured at runtime in the `module_access` table (see migration 0006),
  * managed by the System Admin (src/app/dashboard/settings). Each module lists

@@ -2,13 +2,15 @@
 "use client";
 
 import { useState } from "react";
-import { Users, KeyRound, History, Lock } from "lucide-react";
+import { Users, KeyRound, History, Lock, BookOpen } from "lucide-react";
 import { MembersGrid } from "./members-grid";
 import { TokenManager } from "./token-manager";
 import { TokenActivity } from "./token-activity";
 import { WorkspaceTabs, type WorkspaceTab } from "@/components/dashboard/roster/workspace-tabs";
+import { GroupAcademics } from "@/components/academics/group-academics";
+import { exportLevelAcademicRecordsAction, getLevelAcademicsAction } from "../actions";
 
-type TabId = "members" | "tokens" | "activity";
+type TabId = "members" | "academics" | "tokens" | "activity";
 
 /**
  * A generation's workspace. Members are visible to anyone who can READ the level;
@@ -37,6 +39,9 @@ export function GenerationDetail({
 
     const tabs: WorkspaceTab<TabId>[] = [
         { id: "members", label: "Members", icon: Users },
+        // Totals for anyone who can read the level; names only as academic_settings
+        // allows (decided by getLevelAcademicsAction).
+        { id: "academics", label: "Academics", icon: BookOpen },
         ...(canWrite
             ? ([
                 { id: "tokens", label: "Tokens", icon: KeyRound },
@@ -62,6 +67,13 @@ export function GenerationDetail({
                     initialMembers={initialMembers}
                     initialTotal={initialTotal}
                     initialStats={initialStats}
+                />
+            )}
+            {tab === "academics" && (
+                <GroupAcademics
+                    groupName={generation.familyName || generation.level || "generation"}
+                    load={(session, semester) => getLevelAcademicsAction(generation.classSetId, session, semester)}
+                    exportRecords={() => exportLevelAcademicRecordsAction(generation.classSetId)}
                 />
             )}
             {tab === "tokens" && canWrite && (

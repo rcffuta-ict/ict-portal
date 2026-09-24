@@ -5,7 +5,8 @@ import { SkeletonCard, SkeletonRegion } from "@/components/ui/skeleton";
 
 export interface StatItem {
     label: string;
-    value: number;
+    /** A count, or preformatted text such as a mean CGPA ("3.84") or a rate ("72%"). */
+    value: number | string;
     icon: LucideIcon;
     /** Icon chip colours, e.g. "text-sky-600 bg-sky-50". */
     tone: string;

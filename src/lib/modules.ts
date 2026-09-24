@@ -5,7 +5,7 @@
  * any server-only imports so it can be bundled for the browser.
  */
 
-export const MODULES = ["tenure", "zones", "workforce", "level"] as const;
+export const MODULES = ["tenure", "zones", "workforce", "level", "academics"] as const;
 export type ModuleId = (typeof MODULES)[number];
 
 export type WriteScope = "ALL" | "OWN";
@@ -84,6 +84,10 @@ export const MODULE_META: Record<ModuleId, { label: string; description: string 
     level: {
         label: "Levels",
         description: "Level (generation) members and invite links.",
+    },
+    academics: {
+        label: "Academics",
+        description: "Results rounds, members' GPA/CGPA, analytics and departments.",
     },
 };
 
