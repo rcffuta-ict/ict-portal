@@ -30,6 +30,7 @@ import { LevelStep } from "./appoint/level-step";
 import { MemberStep } from "./appoint/member-step";
 import { normalizePrivileges } from "@/lib/privileges";
 import type { Privilege } from "@/lib/modules";
+import { tenureFullLabel } from "@/lib/tenure";
 
 export function CabinetTab({ data, onSuccess }: any) {
     const [mode, setMode] = useState<"LIST" | "APPOINT" | "CONFIGURE">("LIST");
@@ -44,7 +45,7 @@ export function CabinetTab({ data, onSuccess }: any) {
                     <div>
                         <h3 className="font-bold text-slate-900">Leadership Management</h3>
                         <p className="text-xs text-slate-500">
-                            Active Tenure: {data?.activeTenure?.name}
+                            Active Tenure: {data?.activeTenure ? tenureFullLabel(data.activeTenure) : "—"}
                         </p>
                     </div>
 

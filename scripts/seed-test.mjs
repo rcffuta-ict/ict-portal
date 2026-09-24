@@ -442,7 +442,7 @@ async function main() {
     // --- active tenure ---
     const { data: tenure, error: tenureErr } = await db
         .from("tenures")
-        .select("id, name, session")
+        .select("id, session, theme")
         .eq("is_active", true)
         .maybeSingle();
     if (tenureErr) throw new Error(`Could not read tenures: ${tenureErr.message}`);
@@ -454,8 +454,8 @@ async function main() {
     }
     section("Active tenure");
     kv([
-        ["Name", tenure.name],
         ["Session", tenure.session],
+        ["Theme", tenure.theme ?? "awaiting coronation"],
     ]);
 
     section("Generations");
