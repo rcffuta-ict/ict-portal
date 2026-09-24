@@ -312,7 +312,7 @@ export async function getMemberDetailAction(profileId: string) {
 //
 // A LEVEL TOKEN belongs to the generation, not to a person or a purpose. One token
 // backs both flows — the *link* is assembled at share time
-// (`/register?invite=<token>&reason=register|update`) — so the raw token stays a plain
+// (`/profile?invite=<token>&reason=register|update`) — so the raw token stays a plain
 // string a coordinator can paste anywhere. Generate/revoke needs WRITE on the level;
 // listing is the same, since a token is a credential and shouldn't be visible to
 // read-only viewers.

@@ -123,7 +123,7 @@ Rules that trip people up:
 - A leader signs in with **email + password**. Their **first** sign-in asks them to choose
   the password. There is no default password and nobody ever sends one.
 - A sign-in lasts **7 days**. **5 wrong passwords lock the account for 15 minutes.**
-- There is no self-service "forgot password". The **VP Admin or System Admin presses
+- There is no self-service "forgot password" (and no page for it). The **VP Admin or System Admin presses
   "Reset login"** on the cabinet roster (§5.3). That clears the password and ends the
   person's open sessions, and they choose a new password at their next sign-in.
 
@@ -229,7 +229,9 @@ After the retreat, **Tenure → Tenure Profile → Record coronation**:
 ### 4.4 Getting members into the record (level coordinators)
 
 - **Levels → your generation → Tokens → Generate token.** A generation has **one** active
-  token, and it covers both new registrations and updates. Share the link it gives you.
+  token (like `RCF-7KX2P`), and it covers both new registrations and updates. Share the
+  link it gives you, or just the token: members can go to **`/profile`**, type it in (capitals
+  or not) and choose *I'm new* or *I'm registered*. Old `/register` links still work.
 - **Generating again replaces the old token.** Every link built from the old one dies at
   once. That is how you recover from a leaked link. **Revoke** turns it off without a
   replacement.
@@ -308,12 +310,19 @@ A grid of units (or, for an Exco, just theirs). Open one for its page:
     tenure).
   - **Finding people:** search by name and filter by level.
   - **Export CSV** downloads exactly what's shown (filtered, if a filter is on).
-  - **Changing the roster:** Excos (and the VP Admin and System Admin) **add a worker by
-    email**, or remove one. Adding someone already in another unit queues a transfer
-    instead.
+  - **Changing the roster:** Excos (and the VP Admin and System Admin) **add workers by
+    email** (one, or paste a whole list: a spreadsheet column, a WhatsApp message or
+    `Name <email>` lines all work; case doesn't matter), or remove one. Each address gets
+    its own result: added, sent for transfer, already there, or no member found (those
+    stay in the box to fix and resend). Adding someone already in another unit queues a
+    transfer instead. At most 200 per add.
+- **Leadership.** The unit's members who hold an Exco office this tenure (whichever unit
+  the office belongs to), leads first. A unit's offices are managed from **Tenure**, not
+  here.
 - **Birthdays.** One month at a time, with today's celebrants first. **Export** the month.
-- **Log.** Every add and remove.
-- **Positions / Leadership.** Admin tier only.
+- **Academics.** Coming soon.
+
+Every add and remove is still recorded (the membership log); it just isn't a tab.
 
 Tapping a member opens their full record. From there an Exco can copy the member's
 **update link**, which belongs to the level coordinator; the Exco can share it but never

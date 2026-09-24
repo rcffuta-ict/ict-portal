@@ -2,26 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Crown, UserCog, Cake, History } from "lucide-react";
+import { Users, Crown, Cake, GraduationCap } from "lucide-react";
 import { UnitManager } from "./unit-manager";
-import { UnitPositionsManager } from "./unit-positions-manager";
-import { UnitLeadershipCard } from "./unit-leadership-card";
+import { UnitExecutives } from "./unit-executives";
 import { WorkspaceTabs, type WorkspaceTab } from "@/components/dashboard/roster/workspace-tabs";
 import { BirthdaysPanel } from "./birthdays-panel";
-import { MembershipLog } from "./membership-log";
+import { ComingSoon } from "@/components/dashboard/coming-soon";
 
-type UnitTabId = "members" | "birthdays" | "log" | "positions" | "leadership";
+type UnitTabId = "members" | "leadership" | "birthdays" | "academics";
 
-const LEADER_TABS: WorkspaceTab<UnitTabId>[] = [
+// Every viewer gets the same tabs: each one is read from the roster the viewer can
+// already open. (The membership log is still recorded, just not a tab here.)
+const TABS: WorkspaceTab<UnitTabId>[] = [
     { id: "members", label: "Members", icon: Users },
-    { id: "birthdays", label: "Birthdays", icon: Cake },
-    { id: "log", label: "Log", icon: History },
-];
-
-const ADMIN_TABS: WorkspaceTab<UnitTabId>[] = [
-    ...LEADER_TABS,
-    { id: "positions", label: "Positions", icon: UserCog },
     { id: "leadership", label: "Leadership", icon: Crown },
+    { id: "birthdays", label: "Birthdays", icon: Cake },
+    { id: "academics", label: "Academics", icon: GraduationCap, badge: "Soon" },
 ];
 
 /**
@@ -33,26 +29,17 @@ const ADMIN_TABS: WorkspaceTab<UnitTabId>[] = [
  */
 export function UnitWorkspace({
     unit,
-    tenureId,
-    view,
     readOnly,
     initialTab,
 }: {
     unit: { id: string; slug: string; name: string; type: "UNIT" | "TEAM" };
-    tenureId: string | null;
-    view: "ADMIN" | "LEADER";
     readOnly: boolean;
-    /** Straight from the URL, so anything; an unknown or out-of-view tab opens Members. */
+    /** Straight from the URL, so anything; an unknown tab (an old ?tab=log) opens Members. */
     initialTab?: string;
 }) {
     const router = useRouter();
-    // Positions carries add/remove controls the server refuses to read-only viewers
-    // (the President, VP Church Growth), so they don't get the tab at all.
-    const tabs = view === "ADMIN"
-        ? ADMIN_TABS.filter((t) => t.id !== "positions" || !readOnly)
-        : LEADER_TABS;
     const [tab, setTab] = useState<UnitTabId>(
-        () => tabs.find((t) => t.id === initialTab)?.id ?? "members",
+        () => TABS.find((t) => t.id === initialTab)?.id ?? "members",
     );
 
     const change = (next: UnitTabId) => {
@@ -65,22 +52,18 @@ export function UnitWorkspace({
 
     return (
         <div className="space-y-5">
-            <WorkspaceTabs tabs={tabs} active={tab} onChange={change} label="Unit sections" />
+            <WorkspaceTabs tabs={TABS} active={tab} onChange={change} label="Unit sections" />
 
             {tab === "members" && (
                 <UnitManager unit={unit} readOnly={readOnly} onChanged={() => router.refresh()} />
             )}
+            {tab === "leadership" && <UnitExecutives unit={unit} />}
             {tab === "birthdays" && <BirthdaysPanel unitId={unit.id} unitName={unit.name} />}
-            {tab === "log" && <MembershipLog unitId={unit.id} />}
-            {tab === "positions" && (
-                <UnitPositionsManager unit={unit} tenureId={tenureId ?? ""} onSuccess={() => router.refresh()} />
-            )}
-            {tab === "leadership" && (
-                <UnitLeadershipCard
-                    unitId={unit.id}
-                    unitName={unit.name}
-                    unitType={unit.type}
-                    tenureId={tenureId ?? ""}
+            {tab === "academics" && (
+                <ComingSoon
+                    title="Academics"
+                    icon={GraduationCap}
+                    description={`Academic records for ${unit.name}'s members are coming soon. The ICT team is working on it.`}
                 />
             )}
         </div>

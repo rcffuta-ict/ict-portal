@@ -28,6 +28,14 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         return getSidebarSections(user || null, accessibleModules);
     }, [user, accessibleModules]);
 
+    // The item whose page we're on OR under: /dashboard/units/<id>/member/<id> is still
+    // Workforce. Longest match wins, so the /dashboard (Overview) item doesn't light up
+    // on every page.
+    const activeHref = sections
+        .flatMap((g) => g.items.map((i) => i.href))
+        .filter((h) => pathname === h || pathname.startsWith(`${h}/`))
+        .sort((a, b) => b.length - a.length)[0];
+
     const initials = user
         ? `${user.profile.firstName[0]}${user.profile.lastName[0]}`
         : "??";
@@ -91,7 +99,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                         </p>
                         <nav className="space-y-1">
                             {group.items.map((item) => {
-                                const isActive = pathname === item.href;
+                                const isActive = item.href === activeHref;
                                 const isDisabled = item.comingSoon;
 
                                 return (
@@ -106,6 +114,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                                             handleNavClick();
                                         }}
                                         aria-disabled={isDisabled || undefined}
+                                        aria-current={isActive && !isDisabled ? "page" : undefined}
                                         className={clsx(
                                             "group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-all duration-200",
                                             isDisabled

@@ -71,8 +71,6 @@ export default async function UnitPage({
 
             <UnitWorkspace
                 unit={unit}
-                tenureId={res.tenureId}
-                view={res.view}
                 readOnly={res.readOnly}
                 initialTab={tab}
             />
