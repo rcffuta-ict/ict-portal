@@ -6,29 +6,17 @@ import {
     createTenureAction,
     updateTenureAction,
 } from "../actions";
-import {
-    Save,
-    AlertCircle,
-    Users,
-    UsersRound,
-    Mars,
-    Venus,
-    UserRound,
-    CalendarCheck,
-    X,
-    ArrowRightLeft,
-} from "lucide-react";
+import { Save, AlertCircle, X, ArrowRightLeft } from "lucide-react";
 import Link from "next/link";
 import FormInput from "@/components/ui/FormInput";
-import { GENDER_UNSPECIFIED_LABEL } from "@/lib/gender";
 import { TenureHero } from "./tenure-hero";
 import { CoronationForm } from "./coronation-form";
+import { SessionInsight } from "./session-insight";
 
-export function TenureTab({ data, onSuccess }: any) {
+export function TenureTab({ data, onSuccess, onNavigate }: any) {
     const [isEditing, setIsEditing] = useState(false);
     const [isCoronating, setIsCoronating] = useState(false);
     const active = data?.activeTenure;
-    const stats = data?.sessionStats;
 
     async function handleCreate(formData: FormData) {
         if (confirm("Create new tenure? This will archive any active tenure.")) {
@@ -59,35 +47,7 @@ export function TenureTab({ data, onSuccess }: any) {
 
             {active ? (
                 <>
-                    {/* Session statistics */}
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <MetricCard label="Total Members" value={stats?.totalMembers ?? 0} icon={Users} color="text-blue-600" bg="bg-blue-50" />
-                        <MetricCard label="Workers" value={stats?.totalWorkers ?? 0} icon={UsersRound} color="text-emerald-600" bg="bg-emerald-50" />
-                        <MetricCard label="Male" value={stats?.totalMale ?? 0} icon={Mars} color="text-sky-600" bg="bg-sky-50" />
-                        <MetricCard label="Female" value={stats?.totalFemale ?? 0} icon={Venus} color="text-pink-600" bg="bg-pink-50" />
-                    </div>
-
-                    {/* Shown only when it is not zero: Male + Female short of Total is
-                        a discrepancy somebody will try to explain, and this is the
-                        explanation. */}
-                    {!!stats?.totalUnspecified && (
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                            <MetricCard
-                                label={`Gender ${GENDER_UNSPECIFIED_LABEL.toLowerCase()}`}
-                                value={stats.totalUnspecified}
-                                icon={UserRound}
-                                color="text-slate-600"
-                                bg="bg-slate-100"
-                                small
-                            />
-                        </div>
-                    )}
-
-                    <div className="grid gap-4 sm:grid-cols-3">
-                        <MetricCard label="Units" value={stats?.totalUnits ?? 0} icon={Users} color="text-indigo-600" bg="bg-indigo-50" small />
-                        <MetricCard label="Teams" value={stats?.totalTeams ?? 0} icon={Users} color="text-orange-600" bg="bg-orange-50" small />
-                        <MetricCard label="Start Date" value={new Date(active.start_date).toLocaleDateString()} icon={CalendarCheck} color="text-slate-600" bg="bg-slate-100" isDate small />
-                    </div>
+                    <SessionInsight refreshToken={data} onNavigate={onNavigate} />
 
                     {/* Handover / close */}
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
@@ -139,22 +99,6 @@ export function TenureTab({ data, onSuccess }: any) {
             {isCoronating && active && (
                 <CoronationForm tenure={active} onClose={() => setIsCoronating(false)} onSaved={onSuccess} />
             )}
-        </div>
-    );
-}
-
-function MetricCard({ label, value, icon: Icon, color, bg, isDate, small }: any) {
-    return (
-        <div className="flex items-start gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <div className={`rounded-xl p-3 ${bg} ${color}`}>
-                <Icon className="h-5 w-5" />
-            </div>
-            <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p>
-                <p className={`mt-1 font-bold text-slate-900 ${isDate || small ? "text-lg" : "text-3xl"}`}>
-                    {value}
-                </p>
-            </div>
         </div>
     );
 }

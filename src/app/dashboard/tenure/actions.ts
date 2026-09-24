@@ -14,6 +14,7 @@ import { db } from "@/lib/db";
 import { tenureFullLabel } from "@/lib/tenure";
 import { coronationSchema, type CoronationInput } from "@/lib/coronation";
 import { parsePalette } from "@/lib/palette";
+import { computeSessionInsight } from "@/lib/session-insight";
 import { getTenurePresidentName } from "@/lib/backup";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 import { computeLevel, LEVELS } from "@/lib/levels";
@@ -694,6 +695,24 @@ export async function closeTenureAction(tenureId: string) {
         return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };
+    }
+}
+
+// ============================================================================
+// SESSION INSIGHT
+// ============================================================================
+
+/**
+ * The Tenure page's "how is the session faring" panels, in one payload. Read access
+ * to the Tenure module, like the rest of the page. See src/lib/session-insight.ts for
+ * what each number means.
+ */
+export async function getSessionInsightAction() {
+    try {
+        await requireModuleRead("tenure");
+        return { success: true as const, data: await computeSessionInsight() };
+    } catch (e: any) {
+        return { success: false as const, error: e.message as string };
     }
 }
 
