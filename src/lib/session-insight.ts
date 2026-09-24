@@ -13,29 +13,10 @@
  *   honorary — an office with no privilege tags: it controls nothing in the portal.
  */
 import { db } from "@/lib/db";
+import { fetchAll } from "@/lib/fetch-all";
 import { computeLevel } from "@/lib/levels";
 import { genderForUnitSlug } from "@/config/fellowship-units";
 import { TIER_LABELS, TIER_ORDER, type PositionTier } from "@/config/leadership-positions";
-
-/**
- * Every row of a query, however many there are.
- *
- * PostgREST caps a single response at `max_rows` (1000 here, supabase/config.toml), and
- * it does so silently — a fellowship past 1000 members would simply stop growing in
- * every total. So large reads are paged until a short page comes back.
- */
-async function fetchAll<T>(
-    build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-    pageSize = 1000,
-): Promise<T[]> {
-    const rows: T[] = [];
-    for (let from = 0; ; from += pageSize) {
-        const { data, error } = await build(from, from + pageSize - 1);
-        if (error) throw new Error(error.message);
-        rows.push(...(data ?? []));
-        if (!data || data.length < pageSize) return rows;
-    }
-}
 
 type Gender = "male" | "female" | null;
 
