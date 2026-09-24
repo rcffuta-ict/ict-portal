@@ -29,6 +29,7 @@ import {
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 import FormInput from "@/components/ui/FormInput";
 import { BackupPicker } from "@/components/dashboard/backup-picker";
+import { tenureFullLabel } from "@/lib/tenure";
 
 /**
  * The handover wizard.
@@ -78,7 +79,7 @@ const STEPS = [
 const STEP_NOTES: Record<
     number,
     (s: {
-        form: { name: string; session: string; startDate: string; theme: string };
+        form: { session: string; startDate: string };
         vpAdmin: PickedMember | null;
         ictCoord: PickedMember | null;
         carryMembership: boolean;
@@ -86,7 +87,7 @@ const STEP_NOTES: Record<
     }) => string
 > = {
     0: () => "Backup confirmed.",
-    1: ({ form }) => `Incoming tenure set: ${form.name || "unnamed"} (${form.session}).`,
+    1: ({ form }) => `Incoming session set: ${form.session}, starting ${form.startDate}.`,
     2: ({ form }) => `Generation progression reviewed and accepted for ${form.session}.`,
     3: ({ vpAdmin, ictCoord }) =>
         `Appointed ${name(vpAdmin)} as VP Admin and ${name(ictCoord)} as ICT Coordinator.`,
@@ -108,18 +109,19 @@ export function HandoverWizard({
     intentId: string;
     initialStep: number;
     initialPayload: Record<string, unknown>;
-    currentTenure: { id: string; name: string; session: string };
+    /** `label` is the closing tenure's full label (theme · session, or awaiting coronation). */
+    currentTenure: { id: string; label: string; session: string };
 }) {
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
 
     // Resume exactly where this intent was left. A handover spans interruptions —
     // a meeting, a flat battery, a question someone had to go and ask — and starting
     // over each time is how a six-step procedure gets rushed.
+    // Drafts begun before tenures lost their names may still carry `name`/`theme`;
+    // they are simply not read. The theme is recorded at coronation, not here.
     const saved = (initialPayload ?? {}) as Partial<{
-        name: string;
         session: string;
         startDate: string;
-        theme: string;
         vpAdmin: PickedMember;
         ictCoord: PickedMember;
         carryMembership: boolean;
@@ -129,10 +131,8 @@ export function HandoverWizard({
 
     const [step, setStep] = useState(Math.min(initialStep ?? 0, STEPS.length - 1));
     const [form, setForm] = useState({
-        name: saved.name ?? "",
         session: saved.session ?? suggestNextSession(currentTenure.session),
         startDate: saved.startDate ?? new Date().toISOString().slice(0, 10),
-        theme: saved.theme ?? "",
     });
 
     const [preview, setPreview] = useState<any>(null);
@@ -182,21 +182,19 @@ export function HandoverWizard({
     const stepComplete = useMemo(
         () => [
             hasBackup,
-            !!form.name.trim() && !!session && !!form.startDate,
+            !!session && !!form.startDate,
             acknowledged && !!preview,
             !!vpAdmin && !!ictCoord,
             true, // both options have defaults; there is nothing to get wrong
             confirmText.trim() === session && !!session,
         ],
-        [hasBackup, form.name, session, form.startDate, acknowledged, preview, vpAdmin, ictCoord, confirmText],
+        [hasBackup, session, form.startDate, acknowledged, preview, vpAdmin, ictCoord, confirmText],
     );
 
     /** Everything worth resuming from. */
     const payload = () => ({
-        name: form.name,
         session: form.session,
         startDate: form.startDate,
-        theme: form.theme,
         vpAdmin,
         ictCoord,
         carryMembership,
@@ -237,10 +235,8 @@ export function HandoverWizard({
         setSubmitting(true);
         const fd = new FormData();
         fd.append("intentId", intentId);
-        fd.append("name", form.name.trim());
         fd.append("session", session);
         fd.append("startDate", form.startDate);
-        fd.append("theme", form.theme.trim());
         fd.append("vpAdminProfileId", vpAdmin.id);
         fd.append("ictCoordProfileId", ictCoord.id);
         fd.append("carryMembership", carryMembership ? "true" : "false");
@@ -261,7 +257,7 @@ export function HandoverWizard({
     };
 
     if (done) {
-        return <HandoverComplete name={form.name} session={session} result={done} />;
+        return <HandoverComplete session={session} result={done} />;
     }
 
     return (
@@ -276,7 +272,7 @@ export function HandoverWizard({
                             Tenure Handover
                         </p>
                         <h1 className="truncate text-lg font-bold text-rcf-navy">
-                            Closing {currentTenure.name}
+                            Closing {currentTenure.label}
                         </h1>
                         <p className="truncate text-xs text-slate-500">
                             Session {currentTenure.session} · step {step + 1} of {STEPS.length}
@@ -326,7 +322,7 @@ export function HandoverWizard({
                             ) : (
                                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                                 No backup has been taken during{" "}
-                                    <strong>{currentTenure.name}</strong> yet. Download one to continue —
+                                    <strong>{currentTenure.label}</strong> yet. Download one to continue —
                                 an older bundle wouldn&rsquo;t contain this tenure&rsquo;s appointments
                                 or transfers.
                                 </p>
@@ -335,7 +331,7 @@ export function HandoverWizard({
                             <div className="mt-5">
                                 <BackupPicker
                                     tenureId={currentTenure.id}
-                                    tenureName={currentTenure.name}
+                                    tenureLabel={currentTenure.label}
                                     presidentName={preview?.presidentName ?? null}
                                     // The download is fetched, so this fires once it lands —
                                     // give the audit row a moment, then re-check the gate.
@@ -356,16 +352,10 @@ export function HandoverWizard({
 
                     {step === 1 && (
                         <StepBody
-                            title="The incoming tenure"
-                            blurb="The session is the value that re-levels the whole fellowship. Everything else here is a label."
+                            title="The incoming session"
+                            blurb="The session is the value that re-levels the whole fellowship. The theme comes later — it is unveiled at coronation and recorded then."
                         >
                             <div className="grid gap-4 sm:grid-cols-2">
-                                <FormInput
-                                    label="Tenure name"
-                                    value={form.name}
-                                    placeholder="e.g. Dominion"
-                                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                                />
                                 <FormInput
                                     label="Session"
                                     value={form.session}
@@ -381,11 +371,6 @@ export function HandoverWizard({
                                     type="date"
                                     value={form.startDate}
                                     onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                                />
-                                <FormInput
-                                    label="Theme (optional)"
-                                    value={form.theme}
-                                    onChange={(e) => setForm({ ...form, theme: e.target.value })}
                                 />
                             </div>
 
@@ -521,8 +506,8 @@ export function HandoverWizard({
                             blurb="Last look. Nothing has changed yet."
                         >
                             <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                                <Row label="Closing">{currentTenure.name} ({currentTenure.session})</Row>
-                                <Row label="Opening">{form.name} ({session})</Row>
+                                <Row label="Closing">{currentTenure.label}</Row>
+                                <Row label="Opening">{tenureFullLabel({ session })}</Row>
                                 <Row label="VP Admin">{vpAdmin?.first_name} {vpAdmin?.last_name}</Row>
                                 <Row label="ICT Coordinator">{ictCoord?.first_name} {ictCoord?.last_name}</Row>
                                 <Row label="Becoming alumni">
@@ -565,7 +550,7 @@ export function HandoverWizard({
                                     ) : (
                                         <Flag className="h-4 w-4" aria-hidden="true" />
                                     )}
-                                    {submitting ? "Handing over…" : `Hand over to ${form.name || "the new tenure"}`}
+                                    {submitting ? "Handing over…" : `Hand over to ${session || "the new session"}`}
                                 </button>
                             </div>
                         </StepBody>
@@ -739,11 +724,9 @@ function Toggle({
 }
 
 function HandoverComplete({
-    name,
     session,
     result,
 }: {
-    name: string;
     session: string;
     result: { carried: number; revoked: number };
 }) {
@@ -751,10 +734,11 @@ function HandoverComplete({
         <div className="flex min-h-full flex-col items-center justify-center bg-emerald-50 p-6 text-center sm:p-8">
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" aria-hidden="true" />
             <h2 className="mt-3 text-xl font-bold text-emerald-900">
-                {name} is now the active tenure
+                {session} is now the active session
             </h2>
             <p className="mt-1 text-sm text-emerald-800">
-                Session {session}. Every generation has advanced.
+                Every generation has advanced. The session is awaiting coronation — record
+                its theme from the Tenure page once it is unveiled.
             </p>
 
             <dl className="mx-auto mt-5 max-w-sm space-y-1.5 text-left text-sm">

@@ -114,7 +114,7 @@ export default async function HandoverIntentPage({
                 initialPayload={intent.payload}
                 currentTenure={{
                     id: intent.fromTenure.id,
-                    name: intent.fromTenure.name ?? "Current tenure",
+                    label: intent.fromTenure.label ?? "Current tenure",
                     session: intent.fromTenure.session ?? "",
                 }}
             />

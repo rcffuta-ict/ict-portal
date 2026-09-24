@@ -24,6 +24,7 @@ import {
 import Link from "next/link";
 import FormInput from "@/components/ui/FormInput";
 import { GENDER_UNSPECIFIED_LABEL } from "@/lib/gender";
+import { isCoronated, tenureLabel } from "@/lib/tenure";
 
 export function TenureTab({ data, onSuccess }: any) {
     const [isEditing, setIsEditing] = useState(false);
@@ -65,14 +66,24 @@ export function TenureTab({ data, onSuccess }: any) {
                                 </button>
                             </div>
                             <h2 className="font-serif text-4xl font-bold leading-tight md:text-5xl">
-                                {active.name}
+                                {tenureLabel(active)}
                             </h2>
-                            <p className="text-xl font-light text-blue-200">
-                                {active.session} Session
-                            </p>
-                            {active.theme && (
-                                <p className="inline-flex items-center gap-2 rounded-full bg-yellow-400/15 px-3 py-1 text-sm font-medium text-yellow-200">
-                                    <Sparkles className="h-4 w-4" /> Theme: {active.theme}
+                            {isCoronated(active) ? (
+                                <>
+                                    <p className="text-xl font-light text-blue-200">
+                                        {active.session} Session
+                                    </p>
+                                    {active.theme_text && (
+                                        <p className="inline-flex items-center gap-2 rounded-full bg-yellow-400/15 px-3 py-1 text-sm font-medium text-yellow-200">
+                                            <Sparkles className="h-4 w-4" aria-hidden="true" /> {active.theme_text}
+                                        </p>
+                                    )}
+                                </>
+                            ) : (
+                                // Not a warning: nothing really begins until the retreat,
+                                // so this is the honest state of a young session.
+                                <p className="text-xl font-light text-blue-200">
+                                    Session · Awaiting coronation
                                 </p>
                             )}
                         </div>
@@ -167,9 +178,7 @@ export function TenureTab({ data, onSuccess }: any) {
                     >
                         <h3 className="text-lg font-bold text-slate-900">Configuration</h3>
                         <div className="space-y-4">
-                            <FormInput label="Tenure Name" name="name" required placeholder="e.g. The Dominion Tenure" />
-                            <FormInput label="Theme" name="theme" placeholder="e.g. Arise & Shine" />
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-4 sm:grid-cols-2">
                                 <FormInput label="Session" name="session" required placeholder="e.g. 2026/2027" />
                                 <FormInput label="Start Date" name="startDate" type="date" required />
                             </div>
@@ -223,7 +232,6 @@ function EditTenureModal({ tenure, onClose, onSuccess }: any) {
                     </button>
                 </div>
                 <form action={handleUpdate} className="p-6 space-y-5">
-                    <FormInput label="Name" name="name" defaultValue={tenure.name} required />
                     <FormInput label="Session" name="session" defaultValue={tenure.session} required />
                     <FormInput label="Theme" name="theme" defaultValue={tenure.theme || ""} placeholder="e.g. Arise & Shine" />
                     <button className="w-full py-2.5 rounded-xl bg-rcf-navy text-white font-bold text-sm">

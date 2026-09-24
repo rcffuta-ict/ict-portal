@@ -22,15 +22,27 @@ import type { Gender } from "@/lib/gender";
 // ---------------------------------------------------------------------------
 
 /** A row of `public.tenures`. */
+/**
+ * A row of `public.tenures`. A tenure has no name: it is its session, its theme and
+ * its text. Name it with `tenureLabel` / `tenureFullLabel` from `@/lib/tenure`.
+ */
 export interface Tenure {
     id: string;
-    name: string;
     session: string;
     /** ISO date string — a Postgres `date`, not a timestamp. */
     start_date: string;
     end_date: string | null;
     is_active: boolean;
+    /** Unveiled at coronation. NULL = not yet coronated. */
     theme: string | null;
+    /** The Bible reference the theme is drawn from, e.g. "John 1:1-3". */
+    theme_text?: string | null;
+    theme_banner_url?: string | null;
+    theme_icon_url?: string | null;
+    theme_palette?: Record<string, string> | null;
+    /** The day of the coronation retreat — not the start date. NULL when unknown. */
+    coronated_on?: string | null;
+    coronation_recorded_by?: string | null;
     created_at?: string;
 }
 

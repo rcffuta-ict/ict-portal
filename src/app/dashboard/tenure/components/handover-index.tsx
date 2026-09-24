@@ -20,9 +20,11 @@ export interface HandoverIntentRow {
     id: string;
     status: "draft" | "in_progress" | "completed" | "abandoned";
     step: number;
-    fromTenure: { id: string | null; name: string | null; session: string | null };
-    toTenure: { id: string; name: string | null; session: string | null } | null;
-    plannedName: string | null;
+    /** `label` is a snapshot of what the closing tenure was called when this began. */
+    fromTenure: { id: string | null; label: string | null; session: string | null };
+    toTenure: { id: string; label: string | null; session: string | null } | null;
+    /** Only on handovers begun before tenures lost their names. */
+    legacyPlannedName: string | null;
     plannedSession: string | null;
     initiatedBy: string | null;
     completedBy: string | null;
@@ -119,8 +121,9 @@ export function HandoverIndex({
                     </div>
 
                     <h2 className="mt-2 text-lg font-bold text-amber-900">
-                        {open.fromTenure.name ?? "Current tenure"}
-                        {open.plannedName ? ` → ${open.plannedName}` : " → …"}
+                        {open.fromTenure.label ?? "Current tenure"}
+                        {" → "}
+                        {open.legacyPlannedName ?? open.plannedSession ?? "…"}
                     </h2>
                     <p className="text-sm text-amber-800/90">
                         Started by {open.initiatedBy ?? "someone"} · last touched{" "}
@@ -205,9 +208,9 @@ export function HandoverIndex({
                                     <div className="flex flex-wrap items-center gap-2">
                                         <StatusPill status={intent.status} />
                                         <span className="text-sm font-bold text-slate-900">
-                                            {intent.fromTenure.name ?? "Unknown"}
+                                            {intent.fromTenure.label ?? "Unknown"}
                                             {" → "}
-                                            {intent.toTenure?.name ?? intent.plannedName ?? "—"}
+                                            {intent.toTenure?.label ?? intent.legacyPlannedName ?? intent.plannedSession ?? "—"}
                                         </span>
                                     </div>
 

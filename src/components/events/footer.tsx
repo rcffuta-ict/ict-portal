@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Copyright } from "@/components/ui/copyright";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getActiveTenureName } from "@/utils/action";
+import { getActiveTenureLabel } from "@/utils/action";
 import { LoLogo } from "../lo-app/LoLogo";
 import { Logo } from "../ui/logo";
 
@@ -23,7 +23,7 @@ export function GenericFooter() {
     const [tenure, setTenure] = useState<string | null>(null);
 
     useEffect(() => {
-        getActiveTenureName().then(setTenure);
+        getActiveTenureLabel().then(setTenure);
     }, []);
 
     const footerLinks = [
