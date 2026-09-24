@@ -36,6 +36,35 @@ import { promisify } from "node:util";
 const scrypt = promisify(_scrypt);
 
 const CHUNK = 500;
+
+/**
+ * Columns that older backups carry but the schema no longer has.
+ *
+ * Rows are upserted exactly as stored, so a column dropped since the backup was taken
+ * would fail the whole table ("Could not find the 'name' column") — and an old backup is
+ * precisely the one you reach for when something has gone wrong. These are stripped
+ * before writing, and the restore says so. Add a line whenever a migration drops a
+ * column from a backed-up table.
+ */
+const RETIRED_COLUMNS = {
+    // Tenures lost their name: a tenure is its session, theme and theme text.
+    tenures: ["name"],
+};
+
+function stripRetired(table, rows) {
+    const retired = RETIRED_COLUMNS[table];
+    if (!retired) return { rows, stripped: [] };
+    const stripped = retired.filter((col) => rows.some((r) => r && col in r));
+    if (stripped.length === 0) return { rows, stripped };
+    return {
+        rows: rows.map((r) => {
+            const copy = { ...r };
+            for (const col of stripped) delete copy[col];
+            return copy;
+        }),
+        stripped,
+    };
+}
 /** Bundles older/newer than this are refused rather than half-applied. */
 const SUPPORTED_FORMAT = 2;
 const SUPPORTED_ENVELOPE = 1;
@@ -170,8 +199,14 @@ async function main() {
     let totalRows = 0;
     let failures = 0;
 
-    for (const [table, rows] of Object.entries(tables)) {
+    for (const [table, stored] of Object.entries(tables)) {
         if (only && !only.has(table)) continue;
+        const { rows, stripped } = Array.isArray(stored)
+            ? stripRetired(table, stored)
+            : { rows: stored, stripped: [] };
+        if (stripped.length) {
+            console.log(`  ${table.padEnd(26)} dropping retired column(s): ${stripped.join(", ")}`);
+        }
         if (!Array.isArray(rows) || rows.length === 0) {
             console.log(`  ${table.padEnd(26)} — empty, skipped`);
             continue;
