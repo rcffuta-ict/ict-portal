@@ -29,7 +29,7 @@
 BEGIN;
 
 -- ----------------------------------------------------------------------------
--- 1. Units and teams (25: 18 units, 7 team).
+-- 1. Units and teams (24: 18 units, 6 team).
 --
 -- A member belongs to exactly ONE unit (the enforce_single_unit_membership
 -- trigger from 0001) but to any number of teams. That is the whole distinction:
@@ -65,7 +65,6 @@ VALUES
     ('evangelism', 'Evangelism Unit', 'UNIT', 'Leads outreach and soul-winning on and off campus.', true),
     ('brothers', 'Brothers'' Unit', 'UNIT', 'Every brother in the fellowship. Membership follows gender, not induction.', false),
     ('commerce', 'Commerce Team', 'TEAM', 'Runs the fellowship''s trade, sales and commercial ventures.', true),
-    ('secretariat', 'Secretariat', 'TEAM', 'Keeps the fellowship''s office, its records and its correspondence.', true),
     ('protocol', 'Protocol Team', 'TEAM', 'Receives and attends to guests, ministers and dignitaries.', true),
     ('transport', 'Transport Team', 'TEAM', 'Arranges movement for fellowship programmes and outreaches.', true),
     ('ict', 'Information and Communications Team', 'TEAM', 'Runs the infrastructure, and manages the fellowship''s systems and its communications.', true)
@@ -107,6 +106,9 @@ VALUES
      'EXECUTIVE', true, true, false),
     ('fin-sec', 'Financial Secretary', 'Fin Sec',
      'Keeps the fellowship''s accounts. Honorary in the portal — the finances are not held here, so no access unless the VP Admin grants it.',
+     'EXECUTIVE', true, true, false),
+    ('exco-secretariat', 'Secretariat Keeper', 'Secretariat Keeper',
+     'An executive seat honouring the Secretariat Keeper. Honorary in the portal — no access unless the VP Admin grants it.',
      'EXECUTIVE', true, true, false),
     ('ict-coord', 'ICT Coordinator', 'ICT Coord',
      'System Admin, and Executive of the Information and Communications Unit. Full read and write everywhere, including Settings and the Oracle.',
@@ -173,9 +175,6 @@ VALUES
      'EXECUTIVE', true, true, true),
     ('exco-commerce', 'Executive — Commerce Team', 'Director of Commerce',
      'Leads Commerce Team. Adds and removes its members directly.',
-     'EXECUTIVE', true, true, true),
-    ('exco-secretariat', 'Executive — Secretariat', 'Secretariat Keeper',
-     'Leads Secretariat. Adds and removes its members directly.',
      'EXECUTIVE', true, true, true),
     ('exco-protocol', 'Executive — Protocol Team', 'Protocol Officer',
      'Leads Protocol Team. Adds and removes its members directly.',
@@ -297,9 +296,6 @@ SELECT id, 'EXCO', 'brothers' FROM public.leadership_positions WHERE slug = 'exc
 ON CONFLICT DO NOTHING;
 INSERT INTO public.position_privileges (position_id, privilege, scope)
 SELECT id, 'EXCO', 'commerce' FROM public.leadership_positions WHERE slug = 'exco-commerce'
-ON CONFLICT DO NOTHING;
-INSERT INTO public.position_privileges (position_id, privilege, scope)
-SELECT id, 'EXCO', 'secretariat' FROM public.leadership_positions WHERE slug = 'exco-secretariat'
 ON CONFLICT DO NOTHING;
 INSERT INTO public.position_privileges (position_id, privilege, scope)
 SELECT id, 'EXCO', 'protocol' FROM public.leadership_positions WHERE slug = 'exco-protocol'

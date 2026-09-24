@@ -164,6 +164,19 @@ export const FIXED_POSITIONS: PositionSpec[] = [
         privileges: [],
     },
     {
+        // Honorary: an executive seat that controls no unit or team. It used to be
+        // derived from a `secretariat` TEAM with EXCO:secretariat, which put an office
+        // with nothing to manage into Workforce. The slug is kept because existing
+        // appointments and service records point at it.
+        slug: "exco-secretariat",
+        title: "Secretariat Keeper",
+        alias: "Secretariat Keeper",
+        tier: "EXECUTIVE",
+        description:
+            "An executive seat honouring the Secretariat Keeper. Honorary in the portal — no access unless the VP Admin grants it.",
+        privileges: [],
+    },
+    {
         slug: "ict-coord",
         title: "ICT Coordinator",
         alias: "ICT Coord",
