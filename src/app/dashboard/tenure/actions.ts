@@ -19,7 +19,14 @@ import { parsePalette } from "@/lib/palette";
 import { computeSessionInsight } from "@/lib/session-insight";
 import { getTenurePresidentName } from "@/lib/backup";
 import type { ProfileContext } from "@/lib/auth/profile-context";
-import { computeLevel, isEditableGenerationLevel, LEVELS, sessionStartYear } from "@/lib/levels";
+import {
+    computeLevel,
+    compareGenerations,
+    entryLevelName,
+    isEditableGenerationLevel,
+    LEVELS,
+    sessionStartYear,
+} from "@/lib/levels";
 import { validatePrivilegeSet, derivePositionKind, normalizePrivileges } from "@/lib/privileges";
 import {
     ensureLoginProvisioned,
@@ -184,7 +191,8 @@ export async function getAdminData() {
             addGender(famStats.get(p.class_set_id)!, p.gender);
         }
 
-        const families = (familiesRes.data || []).map((f: any) => {
+        // PDS/UABS first, then 100 Level to the oldest (compareGenerations).
+        const families = [...(familiesRes.data || [])].sort(compareGenerations).map((f: any) => {
             const s = famStats.get(f.id) || tally();
             return {
                 ...f,
@@ -386,7 +394,7 @@ export async function getHandoverPreviewAction(incomingSession: string) {
             .order("entry_year", { ascending: false });
 
         const current = tenure?.session ?? null;
-        const generations = (sets ?? []).map((s: any) => {
+        const generations = [...(sets ?? [])].sort(compareGenerations).map((s: any) => {
             const from = s.level_override || computeLevel(s.entry_year, s.is_foundation, current);
             // A pinned level_override does NOT advance — that is the point of pinning.
             const to = s.level_override
@@ -820,8 +828,12 @@ export async function createGenerationAction(formData: FormData) {
         if (!entryYear || Number.isNaN(entryYear)) {
             return { success: false, error: "A valid entry year is required." };
         }
-        const familyName = ((formData.get("familyName") as string) || "").trim();
         const isFoundation = formData.get("isFoundation") === "true";
+        // PDS/UABS always takes the active session's name; it is not chosen here.
+        const session = isFoundation ? (await getActiveTenure())?.session ?? null : null;
+        const familyName = session
+            ? entryLevelName(true, session)
+            : ((formData.get("familyName") as string) || "").trim();
 
         const { error } = await db
             .from('class_sets')

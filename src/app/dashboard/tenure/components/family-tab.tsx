@@ -90,6 +90,7 @@ export function FamilyTab({ data, onSuccess }: any) {
                         key={f.id}
                         f={f}
                         level={effectiveLevel(f)}
+                        session={session}
                         canWrite={canWrite}
                         onSuccess={onSuccess}
                     />
@@ -157,7 +158,7 @@ export function FamilyTab({ data, onSuccess }: any) {
     );
 }
 
-function GenerationCard({ f, level, canWrite, onSuccess }: any) {
+function GenerationCard({ f, level, session, canWrite, onSuccess }: any) {
     const [saving, setSaving] = useState(false);
     const [editing, setEditing] = useState(false);
     const canEdit = canWrite && isEditableGenerationLevel(level);
@@ -202,7 +203,8 @@ function GenerationCard({ f, level, canWrite, onSuccess }: any) {
                             {f.family_name || <span className="italic text-slate-400">Unnamed</span>}
                         </h3>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                            {f.entry_year} Entry Set{f.is_foundation ? " · Foundation" : ""}
+                            {/* A foundation generation's year is only a key; it belongs to the session. */}
+                            {f.is_foundation ? `${session ?? "This session"} · Foundation` : `${f.entry_year} Entry Set`}
                         </p>
                     </div>
                     {canEdit && (
