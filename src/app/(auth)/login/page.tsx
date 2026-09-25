@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { checkLeaderAction, loginAction, setInitialPasswordAction } from "./actions";
 
@@ -161,9 +160,8 @@ export default function LoginPage() {
                 <form onSubmit={onPasswordSubmit} className="space-y-6">
                     <div className="flex items-center justify-between ml-1 mb-1">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Password</label>
-                        <Link href="/forgot-password" className="relative z-10 text-xs font-medium text-rcf-navy hover:underline">
-                            Forgot password?
-                        </Link>
+                        {/* No self-service reset: the VP Admin resets logins from the Cabinet roster. */}
+                        <span className="text-xs text-slate-400">Forgot it? Ask the VP Admin.</span>
                     </div>
                     <FormInput
                         hideLabel

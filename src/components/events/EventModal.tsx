@@ -13,14 +13,14 @@ import {
     X,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
-import { createEvent, updateEvent } from "@/app/events/actions";
-import { useProfileStore } from "@/lib/stores/profile.store";
+import { createEvent, listEventUnitsAction, updateEvent } from "@/app/events/actions";
 import {
     EVENT_TIME_ZONE_LABEL,
     EventConfig,
     EventRecord,
     fromDateTimeLocalValue,
     getEventLocation,
+    getEventUnitSlug,
     getRegistrationConfig,
     toDateTimeLocalValue,
 } from "@/lib/event-utils";
@@ -40,6 +40,8 @@ interface EventFormData {
     venue: string;
     address: string;
     mapUrl: string;
+    /** Slug of the unit running the event ("" = none). Its leadership gets the console. */
+    unit: string;
     is_active: boolean;
     is_recurring: boolean;
     is_exclusive: boolean;
@@ -70,6 +72,7 @@ const EMPTY_FORM: EventFormData = {
     venue: "",
     address: "",
     mapUrl: "",
+    unit: "",
     is_active: true,
     is_recurring: false,
     is_exclusive: false,
@@ -105,9 +108,23 @@ function Toggle({
 export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const user = useProfileStore((e) => e.user);
     const reduceMotion = useReducedMotion();
     const isEditing = !!event;
+    const [units, setUnits] = useState<{ slug: string; name: string; type: string }[]>([]);
+
+    // Loaded when the form opens (the list is short, and only the System Admin sees it).
+    useEffect(() => {
+        if (!isOpen) return;
+        let cancelled = false;
+        listEventUnitsAction()
+            .then((u) => {
+                if (!cancelled) setUnits(u as { slug: string; name: string; type: string }[]);
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen]);
 
     const {
         register,
@@ -139,6 +156,7 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
             venue: location?.venue || "",
             address: location?.address || "",
             mapUrl: location?.mapUrl || "",
+            unit: getEventUnitSlug(event.config) ?? "",
             is_active: event.is_active,
             is_recurring: !!event.is_recurring,
             is_exclusive: !!event.is_exclusive,
@@ -180,6 +198,9 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
                 },
             };
 
+            // The server checks the unit exists; "" clears the assignment.
+            config.unit = data.unit || null;
+
             if (data.venue.trim()) {
                 config.location = {
                     venue: data.venue.trim(),
@@ -203,8 +224,8 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
 
             const result =
                 isEditing && event
-                    ? await updateEvent(event.id, payload, user?.profile.email || "")
-                    : await createEvent(payload, user?.profile.email || "");
+                    ? await updateEvent(event.id, payload)
+                    : await createEvent(payload);
 
             if (result.success) {
                 onSuccess?.();
@@ -316,7 +337,7 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
                                             <input
                                                 id="event-slug"
                                                 {...register("slug", { required: "Slug is required" })}
-                                                placeholder="singles-weekend-26"
+                                                placeholder="freshers-welcome-27"
                                                 readOnly={isEditing}
                                                 className={`${fieldClass} font-mono text-xs ${
                                                     isEditing
@@ -368,6 +389,26 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
                                         className={`${fieldClass} resize-y leading-relaxed`}
                                     />
                                 </div>
+                            </section>
+
+                            {/* Who runs it */}
+                            <section className="space-y-2 border-t border-slate-100 pt-6">
+                                <label className={labelClass} htmlFor="event-unit">
+                                    Run by
+                                </label>
+                                <select id="event-unit" {...register("unit")} className={fieldClass}>
+                                    <option value="">No unit — central leadership only</option>
+                                    {units.map((u) => (
+                                        <option key={u.slug} value={u.slug}>
+                                            {u.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs leading-relaxed text-slate-500">
+                                    The unit&rsquo;s Executive and assistants get this event&rsquo;s
+                                    admin console — registrants, questions and door check-in —
+                                    alongside the System Admin and the VPs. The President can view it.
+                                </p>
                             </section>
 
                             {/* Location */}

@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
     X,
     ArrowRight,
@@ -29,6 +30,7 @@ import {
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 import FormInput from "@/components/ui/FormInput";
 import { BackupPicker } from "@/components/dashboard/backup-picker";
+import { tenureFullLabel } from "@/lib/tenure";
 
 /**
  * The handover wizard.
@@ -43,7 +45,9 @@ import { BackupPicker } from "@/components/dashboard/backup-picker";
  *   3. Progression      — shown immediately after, so that consequence is unmissable.
  *   4. Offices          — the new tenure must never be left unadministrable.
  *   5. Everyone else    — membership and access, both opt-out.
- *   6. Commit           — a summary, then type the session to confirm.
+ *   6. Commit           — a summary, then type the session to confirm. This
+ *                         SCHEDULES the switch: it takes effect an hour later, and
+ *                         can be cancelled until then (handover-scheduled.tsx).
  *
  * On step 3: a member's level is never stored. It is computed from their generation's
  * entry year against the ACTIVE TENURE'S SESSION, so advancing the session moves every
@@ -78,7 +82,7 @@ const STEPS = [
 const STEP_NOTES: Record<
     number,
     (s: {
-        form: { name: string; session: string; startDate: string; theme: string };
+        form: { session: string; startDate: string };
         vpAdmin: PickedMember | null;
         ictCoord: PickedMember | null;
         carryMembership: boolean;
@@ -86,7 +90,7 @@ const STEP_NOTES: Record<
     }) => string
 > = {
     0: () => "Backup confirmed.",
-    1: ({ form }) => `Incoming tenure set: ${form.name || "unnamed"} (${form.session}).`,
+    1: ({ form }) => `Incoming session set: ${form.session}, starting ${form.startDate}.`,
     2: ({ form }) => `Generation progression reviewed and accepted for ${form.session}.`,
     3: ({ vpAdmin, ictCoord }) =>
         `Appointed ${name(vpAdmin)} as VP Admin and ${name(ictCoord)} as ICT Coordinator.`,
@@ -108,18 +112,19 @@ export function HandoverWizard({
     intentId: string;
     initialStep: number;
     initialPayload: Record<string, unknown>;
-    currentTenure: { id: string; name: string; session: string };
+    /** `label` is the closing tenure's full label (theme · session, or awaiting coronation). */
+    currentTenure: { id: string; label: string; session: string };
 }) {
     const { isOpen, alertConfig, showAlert, closeAlert } = useAlertModal();
 
     // Resume exactly where this intent was left. A handover spans interruptions —
     // a meeting, a flat battery, a question someone had to go and ask — and starting
     // over each time is how a six-step procedure gets rushed.
+    // Drafts begun before tenures lost their names may still carry `name`/`theme`;
+    // they are simply not read. The theme is recorded at coronation, not here.
     const saved = (initialPayload ?? {}) as Partial<{
-        name: string;
         session: string;
         startDate: string;
-        theme: string;
         vpAdmin: PickedMember;
         ictCoord: PickedMember;
         carryMembership: boolean;
@@ -129,10 +134,8 @@ export function HandoverWizard({
 
     const [step, setStep] = useState(Math.min(initialStep ?? 0, STEPS.length - 1));
     const [form, setForm] = useState({
-        name: saved.name ?? "",
         session: saved.session ?? suggestNextSession(currentTenure.session),
         startDate: saved.startDate ?? new Date().toISOString().slice(0, 10),
-        theme: saved.theme ?? "",
     });
 
     const [preview, setPreview] = useState<any>(null);
@@ -147,7 +150,7 @@ export function HandoverWizard({
     const [saving, setSaving] = useState(false);
     const [confirmText, setConfirmText] = useState("");
     const [submitting, setSubmitting] = useState(false);
-    const [done, setDone] = useState<null | { carried: number; revoked: number }>(null);
+    const router = useRouter();
 
     const session = form.session.trim();
 
@@ -182,21 +185,19 @@ export function HandoverWizard({
     const stepComplete = useMemo(
         () => [
             hasBackup,
-            !!form.name.trim() && !!session && !!form.startDate,
+            !!session && !!form.startDate,
             acknowledged && !!preview,
             !!vpAdmin && !!ictCoord,
             true, // both options have defaults; there is nothing to get wrong
             confirmText.trim() === session && !!session,
         ],
-        [hasBackup, form.name, session, form.startDate, acknowledged, preview, vpAdmin, ictCoord, confirmText],
+        [hasBackup, session, form.startDate, acknowledged, preview, vpAdmin, ictCoord, confirmText],
     );
 
     /** Everything worth resuming from. */
     const payload = () => ({
-        name: form.name,
         session: form.session,
         startDate: form.startDate,
-        theme: form.theme,
         vpAdmin,
         ictCoord,
         carryMembership,
@@ -237,32 +238,33 @@ export function HandoverWizard({
         setSubmitting(true);
         const fd = new FormData();
         fd.append("intentId", intentId);
-        fd.append("name", form.name.trim());
         fd.append("session", session);
         fd.append("startDate", form.startDate);
-        fd.append("theme", form.theme.trim());
         fd.append("vpAdminProfileId", vpAdmin.id);
         fd.append("ictCoordProfileId", ictCoord.id);
         fd.append("carryMembership", carryMembership ? "true" : "false");
         fd.append("revokeOutgoing", revokeOutgoing ? "true" : "false");
 
-        const res = await handoverTenureAction(fd);
-        setSubmitting(false);
+        let res: Awaited<ReturnType<typeof handoverTenureAction>>;
+        try {
+            res = await handoverTenureAction(fd);
+        } catch {
+            res = { success: false as const, error: "Couldn't reach the server. Nothing was changed; try again." };
+        }
 
         if (!res.success) {
+            setSubmitting(false);
             showAlert({
                 type: "error",
-                title: "Handover failed",
+                title: "Handover not scheduled",
                 message: res.error || "Unknown error. Nothing was changed.",
             });
             return;
         }
-        setDone({ carried: res.carried ?? 0, revoked: res.revoked ?? 0 });
+        // The page re-renders as the scheduled screen, with its countdown and Cancel.
+        // `submitting` stays on so the button can't be pressed again meanwhile.
+        router.refresh();
     };
-
-    if (done) {
-        return <HandoverComplete name={form.name} session={session} result={done} />;
-    }
 
     return (
         <>
@@ -276,7 +278,7 @@ export function HandoverWizard({
                             Tenure Handover
                         </p>
                         <h1 className="truncate text-lg font-bold text-rcf-navy">
-                            Closing {currentTenure.name}
+                            Closing {currentTenure.label}
                         </h1>
                         <p className="truncate text-xs text-slate-500">
                             Session {currentTenure.session} · step {step + 1} of {STEPS.length}
@@ -326,7 +328,7 @@ export function HandoverWizard({
                             ) : (
                                 <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                                 No backup has been taken during{" "}
-                                    <strong>{currentTenure.name}</strong> yet. Download one to continue —
+                                    <strong>{currentTenure.label}</strong> yet. Download one to continue —
                                 an older bundle wouldn&rsquo;t contain this tenure&rsquo;s appointments
                                 or transfers.
                                 </p>
@@ -335,7 +337,7 @@ export function HandoverWizard({
                             <div className="mt-5">
                                 <BackupPicker
                                     tenureId={currentTenure.id}
-                                    tenureName={currentTenure.name}
+                                    tenureLabel={currentTenure.label}
                                     presidentName={preview?.presidentName ?? null}
                                     // The download is fetched, so this fires once it lands —
                                     // give the audit row a moment, then re-check the gate.
@@ -356,16 +358,10 @@ export function HandoverWizard({
 
                     {step === 1 && (
                         <StepBody
-                            title="The incoming tenure"
-                            blurb="The session is the value that re-levels the whole fellowship. Everything else here is a label."
+                            title="The incoming session"
+                            blurb="The session is the value that re-levels the whole fellowship. The theme comes later — it is unveiled at coronation and recorded then."
                         >
                             <div className="grid gap-4 sm:grid-cols-2">
-                                <FormInput
-                                    label="Tenure name"
-                                    value={form.name}
-                                    placeholder="e.g. Dominion"
-                                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                                />
                                 <FormInput
                                     label="Session"
                                     value={form.session}
@@ -381,11 +377,6 @@ export function HandoverWizard({
                                     type="date"
                                     value={form.startDate}
                                     onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                                />
-                                <FormInput
-                                    label="Theme (optional)"
-                                    value={form.theme}
-                                    onChange={(e) => setForm({ ...form, theme: e.target.value })}
                                 />
                             </div>
 
@@ -434,10 +425,24 @@ export function HandoverWizard({
                                                     {g.pinned && (
                                                         <Pin className="h-3 w-3 text-slate-400" aria-label="Pinned — will not advance" />
                                                     )}
+                                                    {g.isFoundation && (
+                                                        <span className="text-[10px] font-semibold uppercase text-amber-700">emptied</span>
+                                                    )}
                                                 </span>
                                             </li>
                                         ))}
                                     </ul>
+
+                                    <p className="mt-4 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-700">
+                                        <Users className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                                        <span>
+                                            <strong>PDS/UABS and 100 Level start empty.</strong>{" "}
+                                            {preview.foundationMembers
+                                                ? `Last session's ${preview.foundationMembers} PDS/UABS member${preview.foundationMembers === 1 ? " is" : "s are"} unlinked from their generation and re-join through a level link once admitted. `
+                                                : ""}
+                                            {preview.firstYear ? `A ${preview.firstYear} generation is created for 100 Level if there isn't one.` : ""}
+                                        </span>
+                                    </p>
 
                                     {graduating.length > 0 && (
                                         <p className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
@@ -518,11 +523,11 @@ export function HandoverWizard({
                     {step === 5 && (
                         <StepBody
                             title="Ready to hand over"
-                            blurb="Last look. Nothing has changed yet."
+                            blurb="Last look. Nothing has changed yet, and nothing will for an hour after you confirm."
                         >
                             <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                                <Row label="Closing">{currentTenure.name} ({currentTenure.session})</Row>
-                                <Row label="Opening">{form.name} ({session})</Row>
+                                <Row label="Closing">{currentTenure.label}</Row>
+                                <Row label="Opening">{tenureFullLabel({ session })}</Row>
                                 <Row label="VP Admin">{vpAdmin?.first_name} {vpAdmin?.last_name}</Row>
                                 <Row label="ICT Coordinator">{ictCoord?.first_name} {ictCoord?.last_name}</Row>
                                 <Row label="Becoming alumni">
@@ -533,6 +538,12 @@ export function HandoverWizard({
                                 <Row label="Membership">
                                     {carryMembership ? `${preview?.membershipCount ?? 0} carried forward` : "Not carried — units start empty"}
                                 </Row>
+                                <Row label="PDS/UABS">
+                                    {preview?.foundationMembers ? `${preview.foundationMembers} unlinked` : "Empty"}
+                                </Row>
+                                <Row label="Results round">
+                                    {preview?.openRound ? `${preview.openRound} closed` : "None open"}
+                                </Row>
                                 <Row label="Outgoing access">
                                     {revokeOutgoing ? `${losing.length} login${losing.length === 1 ? "" : "s"} revoked` : "Left in place"}
                                 </Row>
@@ -541,10 +552,12 @@ export function HandoverWizard({
                             <div className="mt-5 rounded-2xl border border-red-200 bg-red-50/60 p-4">
                                 <h4 className="flex items-center gap-2 text-sm font-bold text-red-800">
                                     <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-                                This cannot be undone
+                                This cannot be undone once it takes effect
                                 </h4>
                                 <p className="mt-1 text-xs leading-relaxed text-red-700">
-                                Type the incoming session to confirm you mean it.
+                                It takes effect <strong>one hour</strong> after you confirm. Until then
+                                the outgoing cabinet keeps working, and you can still cancel. Type the
+                                incoming session to confirm you mean it.
                                 </p>
                                 <div className="mt-3">
                                     <FormInput
@@ -565,7 +578,7 @@ export function HandoverWizard({
                                     ) : (
                                         <Flag className="h-4 w-4" aria-hidden="true" />
                                     )}
-                                    {submitting ? "Handing over…" : `Hand over to ${form.name || "the new tenure"}`}
+                                    {submitting ? "Scheduling…" : `Hand over to ${session || "the new session"} in 1 hour`}
                                 </button>
                             </div>
                         </StepBody>
@@ -735,52 +748,6 @@ function Toggle({
                 <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{detail}</span>
             </span>
         </label>
-    );
-}
-
-function HandoverComplete({
-    name,
-    session,
-    result,
-}: {
-    name: string;
-    session: string;
-    result: { carried: number; revoked: number };
-}) {
-    return (
-        <div className="flex min-h-full flex-col items-center justify-center bg-emerald-50 p-6 text-center sm:p-8">
-            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" aria-hidden="true" />
-            <h2 className="mt-3 text-xl font-bold text-emerald-900">
-                {name} is now the active tenure
-            </h2>
-            <p className="mt-1 text-sm text-emerald-800">
-                Session {session}. Every generation has advanced.
-            </p>
-
-            <dl className="mx-auto mt-5 max-w-sm space-y-1.5 text-left text-sm">
-                <div className="flex justify-between gap-4 rounded-lg bg-white/70 px-3 py-2">
-                    <dt className="text-emerald-800">Memberships carried</dt>
-                    <dd className="font-bold text-emerald-900">{result.carried}</dd>
-                </div>
-                <div className="flex justify-between gap-4 rounded-lg bg-white/70 px-3 py-2">
-                    <dt className="text-emerald-800">Logins revoked</dt>
-                    <dd className="font-bold text-emerald-900">{result.revoked}</dd>
-                </div>
-            </dl>
-
-            <p className="mx-auto mt-5 max-w-md text-xs leading-relaxed text-emerald-800">
-                Next: fill the cabinet from the Tenure Manager. Every position except VP Admin
-                and ICT Coordinator is currently vacant, and appointing someone restores their
-                portal access automatically.
-            </p>
-
-            <a
-                href="/dashboard/tenure"
-                className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-emerald-700 px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-            >
-                Back to Tenure Manager
-            </a>
-        </div>
     );
 }
 

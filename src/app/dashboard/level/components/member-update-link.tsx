@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Link2, Copy, Check, KeyRound } from "lucide-react";
+import { profilePath } from "@/lib/level-token";
 
 /**
  * The update link for this member, built from the LEVEL'S ACTIVE TOKEN.
@@ -23,7 +24,7 @@ export function MemberUpdateLink({
 }) {
     const [copied, setCopied] = useState(false);
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const url = token ? `${origin}/register?invite=${token}&reason=update` : "";
+    const url = token ? `${origin}${profilePath(token, "update")}` : "";
 
     const copy = async () => {
         await navigator.clipboard.writeText(url);

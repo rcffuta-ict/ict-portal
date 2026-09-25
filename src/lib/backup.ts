@@ -27,6 +27,7 @@
 import { db } from "@/lib/db";
 import { csvCell } from "@/lib/csv";
 import { createZip, type ZipEntry } from "@/lib/zip";
+import { tenureFullLabel } from "@/lib/tenure";
 import {
     DEFAULT_TABLE_SELECTION,
     tablesForScope,
@@ -57,7 +58,15 @@ export interface BackupManifest {
     formatVersion: number;
     /** "tenure" = one tenure's data; "system" = the whole database, unfiltered. */
     scope: BackupScope;
-    tenure: { id: string | null; name: string | null; session: string | null; theme: string | null };
+    tenure: {
+        id: string | null;
+        session: string | null;
+        theme: string | null;
+        /** The tenure's full label when the backup was taken (see `tenureFullLabel`). */
+        label: string | null;
+        /** Only in backups taken before tenures lost their names. Read, never written. */
+        name?: string | null;
+    };
     label: string;
     takenAt: string;
     takenBy: { id: string; name: string } | null;
@@ -114,7 +123,7 @@ export async function getTenurePresidentName(tenureId: string | null): Promise<s
 
     const { data } = await db
         .from("leadership")
-        .select("profile:profiles(first_name, last_name), position:leadership_positions!inner(position_privileges!inner(privilege))")
+        .select("profile:profiles!leadership_profile_id_fkey(first_name, last_name), position:leadership_positions!inner(position_privileges!inner(privilege))")
         .eq("tenure_id", tenureId)
         .eq("position.position_privileges.privilege", "PRESIDENT")
         .limit(1);
@@ -151,9 +160,9 @@ export async function buildBackup(options: {
     const scope: BackupScope = options.scope ?? "tenure";
     const { data: tenure } = options.tenureId
         ? await db
-            .from("tenures").select("id, name, session, theme").eq("id", options.tenureId).maybeSingle()
+            .from("tenures").select("id, session, theme").eq("id", options.tenureId).maybeSingle()
         : await db
-            .from("tenures").select("id, name, session, theme").eq("is_active", true).maybeSingle();
+            .from("tenures").select("id, session, theme").eq("is_active", true).maybeSingle();
 
     const tenureId = tenure?.id ?? null;
 
@@ -196,11 +205,11 @@ export async function buildBackup(options: {
             scope,
             tenure: {
                 id: tenureId,
-                name: tenure?.name ?? null,
                 session: tenure?.session ?? null,
                 theme: tenure?.theme ?? null,
+                label: tenure ? tenureFullLabel(tenure) : null,
             },
-            label: backupLabel(tenure?.name ?? null, tenure?.theme ?? null, tenure?.session ?? null),
+            label: backupLabel(tenure?.theme ?? null, tenure?.session ?? null),
             takenAt: new Date().toISOString(),
             takenBy: options.takenBy,
             counts,
@@ -226,19 +235,18 @@ export function slugify(value: string): string {
 }
 
 /**
- * "dominion-arise-and-shine-2026-2027" — the human handle for this snapshot.
+ * "arise-and-shine-2026-2027" — the human handle for this snapshot.
  *
- * Name, theme and session together, because a filename is how someone finds the right
- * backup in a folder years later. The tenure is remembered by its theme at least as
- * often as by its name.
+ * Theme and session together, because a filename is how someone finds the right backup
+ * in a folder years later, and a tenure is remembered by its theme. Before coronation
+ * there is no theme, and the session alone is still unambiguous.
  */
 export function backupLabel(
-    name: string | null,
     theme: string | null,
     session: string | null,
 ): string {
     return (
-        [name, theme, session].filter(Boolean).map((v) => slugify(v as string)).filter(Boolean).join("-")
+        [theme, session].filter(Boolean).map((v) => slugify(v as string)).filter(Boolean).join("-")
         || "fellowship"
     );
 }
@@ -322,7 +330,7 @@ export function backupToCsvZip(backup: Backup): Buffer {
         {
             name: "README.txt",
             content: [
-                `RCF FUTA backup — ${backup.manifest.tenure.name ?? "unknown tenure"} (${backup.manifest.tenure.session ?? "?"})`,
+                `RCF FUTA backup — ${backup.manifest.tenure.label ?? "unknown tenure"}`,
                 `Taken ${backup.manifest.takenAt}${backup.manifest.takenBy ? ` by ${backup.manifest.takenBy.name}` : ""}`,
                 "",
                 "One CSV per table, under tables/. Open them in any spreadsheet app.",

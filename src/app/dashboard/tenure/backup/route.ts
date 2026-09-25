@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
                         takenAt: backup.manifest.takenAt,
                         hint: custom?.trim()
                             ? "A custom passphrase was set when this backup was taken."
-                            : `The name of the president of ${backup.manifest.tenure.name ?? "this tenure"}.`,
+                            : `The name of the president of ${backup.manifest.tenure.label ?? "this tenure"}.`,
                     },
                 ),
                 null,

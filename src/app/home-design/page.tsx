@@ -40,7 +40,7 @@ export default function HomeDesign() {
                             Sign In
                         </Link>
                         <Link
-                            href="/register"
+                            href="/profile"
                             className="px-4 py-2 text-sm font-medium bg-rcf-navy text-white hover:bg-rcf-navy-light rounded-md shadow-lg shadow-rcf-navy/20 transition-all"
                         >
                             Join Fellowship

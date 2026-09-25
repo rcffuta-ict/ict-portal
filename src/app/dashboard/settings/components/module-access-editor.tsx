@@ -19,11 +19,13 @@ import {
     MapPin,
     Users,
     GraduationCap,
+    BookOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
     MODULES,
     MODULE_META,
+    POLICY_FIXED_MODULES,
     CONFIGURABLE_PRIVILEGE_TOKENS,
     LEVEL_SCOPE_TOKENS,
     type ModuleId,
@@ -71,6 +73,7 @@ const MODULE_ICON: Record<ModuleId, LucideIcon> = {
     zones: MapPin,
     workforce: Users,
     level: GraduationCap,
+    academics: BookOpen,
 };
 
 const KIND_PILL: Record<AccessTokenKind, string> = {
@@ -256,7 +259,9 @@ export function ModuleAccessEditor({ config, positions, units, canWrite }: Props
                                             )}
                                         </span>
                                         <span className={clsx("block text-[11px] truncate", active ? "text-blue-100" : "text-gray-500")}>
-                                            {r.readTokens.length} read · {r.writeTokens.length} write · {r.writeScope}
+                                            {POLICY_FIXED_MODULES[m]
+                                                ? "Fixed by fellowship policy"
+                                                : `${r.readTokens.length} read · ${r.writeTokens.length} write · ${r.writeScope}`}
                                         </span>
                                     </span>
                                     <ChevronRight className={clsx("h-4 w-4 shrink-0", active ? "text-white/70" : "text-gray-300 group-hover:text-gray-400")} />
@@ -328,6 +333,41 @@ function ModuleDetail({
     onBack,
 }: DetailProps) {
     const meta = MODULE_META[module];
+    const fixed = POLICY_FIXED_MODULES[module];
+    // Access to this module is written into the code (POLICY_FIXED_MODULES), so there is
+    // nothing to edit — say who has it instead of showing tokens that are ignored.
+    if (fixed) {
+        return (
+            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div className="flex items-center gap-3 border-b border-gray-100 p-5">
+                    <button onClick={onBack} className="lg:hidden -ml-1 mr-1 text-gray-500" aria-label="Back to modules">
+                        <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <span className="inline-flex rounded-xl bg-rcf-navy p-3 text-white">
+                        <Icon className="h-5 w-5" />
+                    </span>
+                    <div className="flex-1">
+                        <h2 className="text-lg font-bold text-rcf-navy">{meta.label}</h2>
+                        <p className="text-sm text-gray-500">{meta.description}</p>
+                    </div>
+                </div>
+                <dl className="space-y-4 p-5 text-sm">
+                    <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+                        Access to this module is fixed by fellowship policy and can&rsquo;t be
+                        changed in Settings.
+                    </p>
+                    <div>
+                        <dt className="text-xs font-bold uppercase tracking-wide text-gray-500">Can open it</dt>
+                        <dd className="mt-1 text-slate-800">{fixed.read}</dd>
+                    </div>
+                    <div>
+                        <dt className="text-xs font-bold uppercase tracking-wide text-gray-500">Can make changes</dt>
+                        <dd className="mt-1 text-slate-800">{fixed.write}</dd>
+                    </div>
+                </dl>
+            </div>
+        );
+    }
     return (
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
             {/* Header */}

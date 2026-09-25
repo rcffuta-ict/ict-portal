@@ -10,6 +10,7 @@ import {
     revokeInviteAction,
 } from "../../invites/actions";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
+import { profilePath } from "@/lib/level-token";
 
 /**
  * Level-coordinator view: see the members in your generation and manage the
@@ -92,7 +93,7 @@ function LevelModal({ level, onClose }: { level: any; onClose: () => void }) {
     };
 
     const copy = async (token: string) => {
-        await navigator.clipboard.writeText(`${origin}/register?invite=${token}`);
+        await navigator.clipboard.writeText(`${origin}${profilePath(token)}`);
         setCopied(token);
         setTimeout(() => setCopied(null), 1500);
     };
@@ -147,7 +148,7 @@ function LevelModal({ level, onClose }: { level: any; onClose: () => void }) {
                         <div className="space-y-2">
                             {invites.map((i) => (
                                 <div key={i.id} className="flex items-center gap-2 p-2 border border-slate-100 rounded-lg bg-slate-50">
-                                    <code className="flex-1 text-xs text-slate-600 truncate">{origin}/register?invite={i.token}</code>
+                                    <code className="flex-1 text-xs text-slate-600 truncate">{origin}{profilePath(i.token)}</code>
                                     <span className="text-[10px] text-slate-400">{i.use_count} used</span>
                                     <button onClick={() => copy(i.token)} className="p-2 text-slate-400 hover:text-rcf-navy" aria-label="Copy link">
                                         {copied === i.token ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}

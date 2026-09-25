@@ -2,13 +2,17 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X, AlertCircle, CheckCircle2, Info, AlertTriangle, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type AlertType = "success" | "error" | "warning" | "info";
 
 interface AlertModalProps {
     isOpen: boolean;
-    onClose: () => void;
+    /**
+     * After a confirm, called with the id of the alert that was confirmed, so
+     * useAlertModal can ignore it when that confirm has already opened a new alert.
+     */
+    onClose: (confirmedAlertId?: number) => void;
     title?: string;
     message: string;
     type?: AlertType;
@@ -16,6 +20,16 @@ interface AlertModalProps {
     /** Label shown on the confirm button while an async `onConfirm` runs. */
     pendingText?: string;
     onConfirm?: () => void;
+    /**
+     * Which alert this is. Set by useAlertModal's showAlert; lets the modal tell that an
+     * `onConfirm` opened a NEW alert (a success or error message) rather than finishing.
+     */
+    alertId?: number;
+    /**
+     * Extra controls rendered under the message — a checkbox that changes what the
+     * confirm does, for instance. Kept optional so every existing caller is unaffected.
+     */
+    children?: React.ReactNode;
 }
 
 export function AlertModal({
@@ -23,10 +37,12 @@ export function AlertModal({
     onClose,
     title,
     message,
+    children,
     type = "info",
     confirmText = "OK",
     pendingText = "Working…",
     onConfirm,
+    alertId,
 }: AlertModalProps) {
     /**
      * True while an async `onConfirm` is still running. The modal stays open and fully
@@ -60,6 +76,7 @@ export function AlertModal({
 
     const handleConfirm = async () => {
         if (pending) return;
+        const confirming = alertId;
         if (onConfirm) {
             setPending(true);
             try {
@@ -70,7 +87,11 @@ export function AlertModal({
                 setPending(false);
             }
         }
-        onClose();
+        // Most confirms report back by opening another alert ("Done", or the error).
+        // Closing unconditionally here shut that report the instant it opened, so a
+        // failure looked exactly like nothing happening. The hook closes only if the
+        // confirmed alert is still the one showing.
+        onClose(confirming);
     };
 
     const config = {
@@ -114,13 +135,16 @@ export function AlertModal({
         <AnimatePresence>
             {isOpen && (
                 <>
-                    {/* Backdrop */}
+                    {/* Backdrop. Above every other modal (they sit at z-50 to z-[150]):
+                    an alert is usually raised FROM one, and at the same z-index the one
+                    later in the DOM wins, which put confirmations behind their form.
+                    Still below the toast and preview banner (z-[200]). */}
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={requestClose}
-                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 min-h-screen"
+                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[160] flex items-center justify-center p-4 min-h-screen"
                     >
                         {/* Modal */}
                         <motion.div
@@ -164,6 +188,7 @@ export function AlertModal({
                                 <p className="text-gray-700 leading-relaxed">
                                     {message}
                                 </p>
+                                {children && <div className="mt-4">{children}</div>}
                             </div>
 
                             {/* Footer */}
@@ -213,12 +238,17 @@ export function useAlertModal() {
         type: "info",
     });
 
-    const showAlert = (config: Omit<AlertModalProps, "isOpen" | "onClose">) => {
-        setAlertConfig(config);
+    const nextId = useRef(0);
+
+    const showAlert = (config: Omit<AlertModalProps, "isOpen" | "onClose" | "alertId">) => {
+        nextId.current += 1;
+        setAlertConfig({ ...config, alertId: nextId.current });
         setIsOpen(true);
     };
 
-    const closeAlert = () => {
+    /** With an id (after a confirm): close only if that alert is still the current one. */
+    const closeAlert = (confirmedAlertId?: number) => {
+        if (confirmedAlertId !== undefined && confirmedAlertId !== nextId.current) return;
         setIsOpen(false);
     };
 

@@ -3,7 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { requireContext, canManageLevel } from "@/lib/access-control";
+import { requireContext, requireContextWrite, canManageLevel } from "@/lib/access-control";
 import { createInvite, revokeInvite, listInvitesByCreator } from "@/lib/invites";
 
 /**
@@ -17,7 +17,7 @@ export async function createMemberInviteAction(
     targetProfileId?: string,
 ) {
     try {
-        const ctx = await requireContext();
+        const ctx = await requireContextWrite();
         if (!(await canManageLevel(ctx, classSetId))) {
             return { success: false, error: "You don't coordinate this level." };
         }
@@ -50,10 +50,10 @@ export async function listMyInvitesAction() {
     }
 }
 
-/** Revoke an invite. Allowed for its creator or any admin. */
+/** Revoke an invite. Allowed for its creator or any admin — never the President. */
 export async function revokeInviteAction(inviteId: string) {
     try {
-        const ctx = await requireContext();
+        const ctx = await requireContextWrite();
         const { data: invite } = await db
             .from("registration_invites")
             .select("created_by, class_set_id")

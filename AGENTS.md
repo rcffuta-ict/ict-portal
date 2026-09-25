@@ -47,6 +47,7 @@ pnpm lint     # ESLint (eslint-config-next core-web-vitals + typescript)
 supabase migration new <name>   # create a correctly-named migration
 pnpm db:status                  # reconcile the schema against the ledger
 pnpm db:inventory               # row counts across every table
+pnpm db:reset-staging           # stage/dev only: wipe, reseed, 110 members
 pnpm release                    # decide the version from what changed
 ```
 
@@ -61,7 +62,11 @@ pnpm release                    # decide the version from what changed
   production.** `-- --reset` first clears every data table back to empty; it never
   touches the structure tables or `schema_migrations`, and it uses DELETE rather
   than `TRUNCATE ... CASCADE` because four other applications hold foreign keys
-  pointing at `public.profiles`.
+  pointing at `public.profiles`. `-- --with-members` chains `scripts/seed-test.mjs`,
+  which adds 110 fake members. **`pnpm db:reset-staging` is all three in one command**
+  and is the normal way to put a stage or dev project back to a known state — it is
+  never offered a production `.env`, and it makes you type the project ref in full
+  rather than answering `y/N`. See `docs/DATABASE-CICD.md` → *Resetting staging*.
 
 `supabase/migrations/` is the only SQL that runs. A push to `stage` applies it to the
 staging project; a push to `main` applies it to production, behind an approval gate.
@@ -103,6 +108,22 @@ src/proxy.ts         Next.js 16's network boundary (replaces middleware.ts, runs
 Rule of thumb: a new component starts in its route's `components/` folder. Promote it
 to `src/components/<domain>/` only once a second route needs it.
 
+## Tenures have no name
+
+A tenure is its **session** (`2026/2027`), its **theme** and its **theme text** (a Bible
+reference). There is no `tenures.name` — never read or write it. Name a tenure only
+through `src/lib/tenure.ts` (`tenureLabel`, `tenureFullLabel`, `isCoronated`), so every
+screen agrees. No theme means **awaiting coronation**, which is a normal state, not an
+error. The coronation date (`coronated_on`) is the day of the retreat, which is **not**
+the session's start date.
+
+The session's **palette** (set at coronation) repaints the members' dashboard by
+overriding the brand tokens on `:root` — `src/app/dashboard/layout.tsx` renders
+`<ThemeStyle>`, and every `bg-rcf-navy` follows. Palette values are strict `#rrggbb`
+checked by `src/lib/palette.ts`; never write anything else into that `<style>`. Public
+pages keep the brand. The Tenure page falls back to `DEFAULT_TENURE_BANNER`
+(`src/config/tenure-branding.ts`) when a session has no banner.
+
 ## Path alias
 
 Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more than one level.
@@ -138,6 +159,10 @@ Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more th
   The VP Admin owns that column per office (`setPositionLoginAction`), the change is
   retroactive, and `vp-admin`/`ict-coord` can never be switched off. So never assume
   "is a leader" implies "can sign in" — check the office.
+- **Honorary offices control no unit or team** — the General Secretary, Financial
+  Secretary and Secretariat Keeper (`exco-secretariat`). They are expressed as offices
+  with **no privilege tags**, which is also what makes them grant no login by default.
+  Don't add a flag for this; an office with nothing to manage simply has no tags.
 - **One lead per office per tenure**, enforced by the partial unique index
   `leadership_one_lead_per_position`, not just by the app's check-then-insert.
   Assistants (`leadership.is_lead = false`) are unlimited.

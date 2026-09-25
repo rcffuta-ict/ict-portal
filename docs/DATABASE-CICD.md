@@ -312,6 +312,89 @@ it is a CLI credential, and `supabase login` stores it in the CLI's own credenti
 store where it will not be picked up and loaded into `process.env` by every script
 that calls `chooseEnvironment()`.
 
+## Resetting staging
+
+`stage` and `dev` are for breaking things. When testing has left a project in a state
+nobody can reason about, put it back:
+
+```bash
+pnpm db:reset-staging
+```
+
+One command, and it does four things in order:
+
+1. **Clears every data table** — profiles, logins, sessions, appointments, events,
+   testimonies, the audit log. Preserved: `schema_migrations`, `units`,
+   `leadership_positions`, `position_privileges`, `module_access` and
+   `residential_zones`. Those are structure and geography, not data; wiping the ledger
+   would leave the database unable to say which migrations it has, and wiping the
+   structure would mean re-running the seed to get a usable project back. That is a
+   rebuild, not a reset.
+2. **Recreates the active tenure** and its five generations, with entry years derived
+   from the session rather than hardcoded.
+3. **Provisions a System Admin**, so there is somebody to sign in as.
+4. **Seeds 110 members** — 20 per generation, ten brothers and ten sisters each, plus
+   ten not yet placed in a generation.
+
+### It cannot touch production
+
+Three independent guards, and the first one is the one that matters:
+
+- The environment picker is called with `refuseProduction: true`, so a production
+  `.env` is **never offered** — you cannot pick it by accident or by tabbing too fast.
+- The confirmation asks you to **type the project ref in full**, not `y/N`. The whole
+  risk is doing this to the wrong project, and a yes/no prompt does nothing to catch
+  that.
+- Clearing uses `DELETE`, never `TRUNCATE ... CASCADE`. Four other applications hold
+  foreign keys pointing at `public.profiles`, and a CASCADE there would silently empty
+  the ReadWrite store. `DELETE` raises a foreign-key error instead — which is the
+  correct outcome, and the reason this is safe even pointed somewhere it should not be.
+
+`scripts/seed-test.mjs` adds a fourth: it refuses a database with any rows in
+`admin_audit_log`, on the grounds that administrative history means it is not a
+scratch copy.
+
+### The parts, if you want them separately
+
+```bash
+pnpm db:seed-staging                      # tenure + generations + System Admin, no wipe
+pnpm db:seed-staging -- --with-members    # ...and the 110-member roster
+pnpm db:seed-test -- --dry-run            # generate the roster, print a sample, write nothing
+pnpm db:seed-test -- --reset-only         # remove every @rcffuta.test member and stop
+pnpm db:seed-test -- --password 'dev-pass'  # give seeded leaders a password you can log in with
+```
+
+Pass `-- --env local` to skip the environment prompt, and `-- --yes` to skip the
+confirmation in a scripted run. Without `--password`, seeded leaders get a NULL hash
+and go through set-password-on-first-login, which is what really happens when somebody
+is appointed.
+
+### What the roster looks like
+
+Every member is generated from one **origin** — Yoruba, Igbo, South-South or
+Middle Belt — and the given name, middle name, surname and home town all come from it.
+Department, school and matric prefix come from one FUTA programme, and the matric year
+and date of birth come from the generation's entry year. Nothing is rolled that
+something else has already implied, so there are no members called Chinedu Adeyemi from
+Sokoto reading Computer Science in the School of Agriculture.
+
+Two consequences worth knowing:
+
+- **Finalists are only ever in five-year programmes.** FUTA's engineering,
+  environmental and agricultural degrees run five years and the rest run four, so a
+  500 Level Computer Science student is a student in a year their programme does not
+  have.
+- **The split is exactly ten and ten per generation.** A coin flip per member averages
+  out even and is almost never even in practice, and a 14/6 generation reads on the
+  level screen as a real imbalance somebody then tries to explain.
+
+Every seeded address ends in `@rcffuta.test` — an RFC 2606 reserved TLD, so none of
+them can resolve or receive mail even by accident. That domain is also the only handle
+`--reset-only` uses to find them again.
+
+Not seeded, deliberately: residential zones, events, Lo! content and unit rosters.
+Zones are real fellowship geography and belong to whoever runs the tenure.
+
 ## Rebuilding from nothing
 
 This document assumes both projects already exist. For the other case — a fresh
@@ -328,6 +411,7 @@ without needing a production project to read.
   schema. It is never applied automatically to a live project. There is no
   `supabase/seed.sql`, and `sql_paths` in `config.toml` is deliberately empty —
   Supabase only runs seed files on preview branches, which the Free plan does not have.
-- `scripts/seed-test.mjs` — test data. Refuses to run against production.
+- `scripts/seed-test.mjs` — test data. Refuses to run against production. Driven by
+  `pnpm db:reset-staging`; see **Resetting staging** above.
 - `db/migrations/0001`–`0013` — archived, never applied again. See
   `db/migrations/README.md`.

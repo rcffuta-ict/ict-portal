@@ -12,12 +12,16 @@ interface IntentSummary {
     status: string;
     step: number;
     payload: Record<string, unknown>;
-    fromTenure: { id: string | null; name: string | null; session: string | null };
+    fromTenure: { id: string | null; label: string | null; session: string | null };
     toTenureId: string | null;
     initiatedBy: string | null;
     completedBy: string | null;
     completedAt: string | null;
     abandonedReason: string | null;
+    effectiveAt?: string | null;
+    scheduledBy?: string | null;
+    failureReason?: string | null;
+    plannedSession?: string | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -47,8 +51,12 @@ export function HandoverRecord({
     events: EventRow[];
 }) {
     const completed = intent.status === "completed";
-    const plannedName = (intent.payload?.name as string) || null;
-    const plannedSession = (intent.payload?.session as string) || null;
+    // Failed: the switch was refused when its hour came, and nothing was changed.
+    const failed = intent.status === "failed";
+    const plannedSession = intent.plannedSession || (intent.payload?.session as string) || null;
+    // Handovers begun before tenures lost their names planned one; newer ones plan a
+    // session only.
+    const planned = (intent.payload?.name as string) || plannedSession;
 
     return (
         <>
@@ -64,21 +72,23 @@ export function HandoverRecord({
                 className={`rounded-2xl border p-5 ${
                     completed
                         ? "border-emerald-200 bg-emerald-50"
-                        : "border-slate-200 bg-slate-50"
+                        : failed
+                            ? "border-red-200 bg-red-50"
+                            : "border-slate-200 bg-slate-50"
                 }`}
             >
                 <div className="flex items-center gap-2">
                     {completed ? (
                         <CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden="true" />
                     ) : (
-                        <XCircle className="h-5 w-5 text-slate-400" aria-hidden="true" />
+                        <XCircle className={`h-5 w-5 ${failed ? "text-red-500" : "text-slate-400"}`} aria-hidden="true" />
                     )}
                     <span
                         className={`text-[11px] font-bold uppercase tracking-wide ${
-                            completed ? "text-emerald-700" : "text-slate-500"
+                            completed ? "text-emerald-700" : failed ? "text-red-700" : "text-slate-500"
                         }`}
                     >
-                        {completed ? "Completed" : "Abandoned"}
+                        {completed ? "Completed" : failed ? "Did not take effect" : "Abandoned"}
                     </span>
                 </div>
 
@@ -87,9 +97,9 @@ export function HandoverRecord({
                         completed ? "text-emerald-900" : "text-slate-700"
                     }`}
                 >
-                    {intent.fromTenure.name ?? "Unknown"}
+                    {intent.fromTenure.label ?? "Unknown"}
                     <ArrowRight className="h-4 w-4 opacity-60" aria-hidden="true" />
-                    {plannedName ?? "—"}
+                    {planned ?? "—"}
                 </h1>
 
                 <p
@@ -99,6 +109,12 @@ export function HandoverRecord({
                 >
                     {intent.fromTenure.session ?? "?"} → {plannedSession ?? "?"}
                 </p>
+
+                {intent.failureReason && (
+                    <p role="alert" className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-red-700">
+                        {intent.failureReason}
+                    </p>
+                )}
 
                 {intent.abandonedReason && (
                     <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs italic text-slate-600">
@@ -110,13 +126,21 @@ export function HandoverRecord({
             <dl className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white">
                 <Row label="Started by">{intent.initiatedBy ?? "Unknown"}</Row>
                 <Row label="Started">{formatWat(intent.createdAt)}</Row>
-                <Row label={completed ? "Completed by" : "Abandoned by"}>
-                    {intent.completedBy ?? "Unknown"}
-                </Row>
-                <Row label={completed ? "Completed" : "Ended"}>
+                {intent.effectiveAt && (
+                    <Row label="Scheduled for">
+                        {formatWat(intent.effectiveAt)}
+                        {intent.scheduledBy ? ` by ${intent.scheduledBy}` : ""}
+                    </Row>
+                )}
+                {!failed && (
+                    <Row label={completed ? "Completed by" : "Abandoned by"}>
+                        {intent.completedBy ?? "Unknown"}
+                    </Row>
+                )}
+                <Row label={completed ? "Took effect" : "Ended"}>
                     {formatWat(intent.completedAt ?? intent.updatedAt)}
                 </Row>
-                {!completed && <Row label="Reached">Step {intent.step + 1} of 6</Row>}
+                {!completed && !failed && <Row label="Reached">Step {intent.step + 1} of 6</Row>}
             </dl>
 
             <section className="rounded-2xl border border-slate-200 bg-white p-4">

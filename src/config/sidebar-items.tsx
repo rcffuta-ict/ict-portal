@@ -4,11 +4,11 @@ import {
     LocationEditIcon,
     Crown,
     SquaresUnite,
-    Heart,
     Calendar,
     GraduationCap,
     Settings,
     Database,
+    BookOpen,
 } from "lucide-react";
 import type { FullUserProfile } from "@/lib/types/portal";
 import type { ModuleId } from "@/lib/modules";
@@ -86,14 +86,6 @@ const eventItems: SidebarItem[] = [
         color: "bg-purple-500",
         description: "View all upcoming and past events.",
     },
-    {
-        name: "Singles Weekend",
-        href: "/events/singles-weekend-26",
-        icon: Heart,
-        section: "events",
-        color: "bg-pink-500",
-        description: "Register for Agape '26 - Feb 14-15, 2026.",
-    },
 ];
 
 const appItems: SidebarItem[] = [
@@ -134,7 +126,6 @@ const toolItems: SidebarItem[] = [
         icon: SquaresUnite,
         section: "tools",
         module: "workforce",
-        comingSoon: true,
         color: "bg-rcf-navy",
         description: "Manage unit / team members.",
     },
@@ -146,6 +137,15 @@ const toolItems: SidebarItem[] = [
         module: "level",
         color: "bg-rcf-navy",
         description: "Manage the members of your level.",
+    },
+    {
+        name: "Academics",
+        href: "/dashboard/academics",
+        icon: BookOpen,
+        section: "tools",
+        module: "academics",
+        color: "bg-rcf-navy",
+        description: "Results rounds, members' GPA/CGPA and departments.",
     },
     {
         name: "Oracle",

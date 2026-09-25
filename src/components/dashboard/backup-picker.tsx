@@ -36,13 +36,13 @@ import FormInput from "@/components/ui/FormInput";
  */
 export function BackupPicker({
     tenureId,
-    tenureName,
+    tenureLabel,
     presidentName,
     onDownloaded,
     scope = "tenure",
 }: {
     tenureId?: string | null;
-    tenureName?: string | null;
+    tenureLabel?: string | null;
     /** Default passphrase — the president of the tenure being backed up. */
     presidentName?: string | null;
     onDownloaded?: () => void;
@@ -73,6 +73,7 @@ export function BackupPicker({
             "audit",
             "invites",
             "activity",
+            "academics",
             // Last, and only ever present in the system scope: other teams' data.
             "foreign",
         ];
@@ -320,7 +321,7 @@ export function BackupPicker({
                                     ) : (
                                         <>
                                             No president is appointed for
-                                            {tenureName ? ` ${tenureName}` : " this tenure"}, so
+                                            {tenureLabel ? ` ${tenureLabel}` : " this tenure"}, so
                                             there&rsquo;s no default. Set a custom passphrase.
                                         </>
                                     )}
@@ -417,7 +418,7 @@ export function BackupPicker({
                     ? "Preparing backup…"
                     : system
                         ? `Download locked ${format === "csv" ? "CSV" : "JSON"} system backup`
-                        : `Download ${canLock ? "locked " : ""}${format === "csv" ? "CSV" : "JSON"} backup${tenureName ? ` — ${tenureName}` : ""}`}
+                        : `Download ${canLock ? "locked " : ""}${format === "csv" ? "CSV" : "JSON"} backup${tenureLabel ? ` — ${tenureLabel}` : ""}`}
             </button>
 
             <p className="text-[11px] text-slate-500">

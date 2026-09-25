@@ -155,6 +155,10 @@ export async function deprovisionLoginIfUnappointed(
         .select("id, position:leadership_positions!inner(grants_login)")
         .eq("profile_id", profileId)
         .eq("tenure_id", tenure.id)
+        // An ENDED appointment is service history, not an office still held. Without
+        // this the first removal would keep someone signed in forever: the row stays,
+        // so "still holds a position that grants access" would always be true.
+        .is("ended_at", null)
         .eq("position.grants_login", true)
         .limit(1);
 
@@ -226,7 +230,10 @@ export async function applyPositionLoginPolicy(
         .from("leadership")
         .select("profile_id")
         .eq("position_id", positionId)
-        .eq("tenure_id", tenure.id);
+        .eq("tenure_id", tenure.id)
+        // Only CURRENT holders. Toggling grants_login must not mint a login for
+        // somebody who left the office last term.
+        .is("ended_at", null);
 
     let provisioned = 0;
     let revoked = 0;

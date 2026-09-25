@@ -4,6 +4,7 @@
  * (camelCase, defined in src/lib/types/portal.ts) enriched with leadership/scope data
  * ict-lib doesn't expose. Server-only (service-role RPC).
  */
+import { cache } from "react";
 import type { FullUserProfile } from "@/lib/types/portal";
 import { db } from "@/lib/db";
 import type { Privilege } from "@/lib/modules";
@@ -73,8 +74,9 @@ export type ProfileContext = FullUserProfile & {
 
 /**
  * Resolve the full, enriched profile context for a profile id in one round-trip.
+ * Cached for the rest of the request (see getSessionProfileId for why that is safe).
  */
-export async function getProfileContext(profileId: string): Promise<ProfileContext | null> {
+export const getProfileContext = cache(async (profileId: string): Promise<ProfileContext | null> => {
     const { data, error } = await db.rpc("rcf_profile_context", {
         p_profile_id: profileId,
     });
@@ -83,7 +85,7 @@ export async function getProfileContext(profileId: string): Promise<ProfileConte
         return null;
     }
     return data as ProfileContext;
-}
+});
 
 /** Shape returned by the `rcf_login_context` RPC (auth gate + profile context). */
 export interface LoginContext {

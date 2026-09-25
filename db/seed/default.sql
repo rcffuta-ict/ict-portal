@@ -29,7 +29,7 @@
 BEGIN;
 
 -- ----------------------------------------------------------------------------
--- 1. Units and teams (25: 18 units, 7 team).
+-- 1. Units and teams (24: 18 units, 6 team).
 --
 -- A member belongs to exactly ONE unit (the enforce_single_unit_membership
 -- trigger from 0001) but to any number of teams. That is the whole distinction:
@@ -38,6 +38,10 @@ BEGIN;
 -- Matched on slug, so re-running restores an edited name without minting a
 -- duplicate unit.
 -- ----------------------------------------------------------------------------
+-- is_workforce is FALSE for the Brothers' and Sisters' units. They are gender
+-- categories rather than units anybody joins -- every member is in one of them
+-- already -- so counting them as workforce would make every member a worker and
+-- the "who is serving?" figure meaningless.
 INSERT INTO public.units (slug, name, type, description, is_workforce)
 VALUES
     ('follow-up-and-counselling', 'Follow-up & Counselling Unit', 'UNIT', 'Follows up new and returning members, and coordinates pastoral counselling.', true),
@@ -55,20 +59,20 @@ VALUES
     ('drama', 'Drama Unit', 'UNIT', 'Ministers through drama and stage presentation.', true),
     ('welfare', 'Welfare Unit', 'UNIT', 'Sees to the practical needs and wellbeing of members.', true),
     ('sport', 'Sports Team', 'TEAM', 'Organises the fellowship''s sporting life and fixtures.', true),
-    ('sisters', 'Sisters'' Unit', 'UNIT', 'Ministers to the sisters of the fellowship.', true),
+    ('sisters', 'Sisters'' Unit', 'UNIT', 'Every sister in the fellowship. Membership follows gender, not induction.', false),
     ('bible-study', 'Bible Study Unit', 'UNIT', 'Plans and leads the fellowship''s study of the scriptures.', true),
     ('organizing', 'Organizing Unit', 'UNIT', 'Sets up, arranges and runs the logistics of every gathering.', true),
     ('evangelism', 'Evangelism Unit', 'UNIT', 'Leads outreach and soul-winning on and off campus.', true),
-    ('brothers', 'Brothers'' Unit', 'UNIT', 'Ministers to the brothers of the fellowship.', true),
+    ('brothers', 'Brothers'' Unit', 'UNIT', 'Every brother in the fellowship. Membership follows gender, not induction.', false),
     ('commerce', 'Commerce Team', 'TEAM', 'Runs the fellowship''s trade, sales and commercial ventures.', true),
-    ('secretariat', 'Secretariat', 'TEAM', 'Keeps the fellowship''s office, its records and its correspondence.', true),
     ('protocol', 'Protocol Team', 'TEAM', 'Receives and attends to guests, ministers and dignitaries.', true),
     ('transport', 'Transport Team', 'TEAM', 'Arranges movement for fellowship programmes and outreaches.', true),
     ('ict', 'Information and Communications Team', 'TEAM', 'Runs the infrastructure, and manages the fellowship''s systems and its communications.', true)
 ON CONFLICT (slug) DO UPDATE
-    SET name        = EXCLUDED.name,
-        type        = EXCLUDED.type,
-        description = EXCLUDED.description;
+    SET name         = EXCLUDED.name,
+        type         = EXCLUDED.type,
+        description  = EXCLUDED.description,
+        is_workforce = EXCLUDED.is_workforce;
 
 -- ----------------------------------------------------------------------------
 -- 2. The frozen position catalogue (36 offices).
@@ -102,6 +106,9 @@ VALUES
      'EXECUTIVE', true, true, false),
     ('fin-sec', 'Financial Secretary', 'Fin Sec',
      'Keeps the fellowship''s accounts. Honorary in the portal — the finances are not held here, so no access unless the VP Admin grants it.',
+     'EXECUTIVE', true, true, false),
+    ('exco-secretariat', 'Secretariat Keeper', 'Secretariat Keeper',
+     'An executive seat honouring the Secretariat Keeper. Honorary in the portal — no access unless the VP Admin grants it.',
      'EXECUTIVE', true, true, false),
     ('ict-coord', 'ICT Coordinator', 'ICT Coord',
      'System Admin, and Executive of the Information and Communications Unit. Full read and write everywhere, including Settings and the Oracle.',
@@ -168,9 +175,6 @@ VALUES
      'EXECUTIVE', true, true, true),
     ('exco-commerce', 'Executive — Commerce Team', 'Director of Commerce',
      'Leads Commerce Team. Adds and removes its members directly.',
-     'EXECUTIVE', true, true, true),
-    ('exco-secretariat', 'Executive — Secretariat', 'Secretariat Keeper',
-     'Leads Secretariat. Adds and removes its members directly.',
      'EXECUTIVE', true, true, true),
     ('exco-protocol', 'Executive — Protocol Team', 'Protocol Officer',
      'Leads Protocol Team. Adds and removes its members directly.',
@@ -294,9 +298,6 @@ INSERT INTO public.position_privileges (position_id, privilege, scope)
 SELECT id, 'EXCO', 'commerce' FROM public.leadership_positions WHERE slug = 'exco-commerce'
 ON CONFLICT DO NOTHING;
 INSERT INTO public.position_privileges (position_id, privilege, scope)
-SELECT id, 'EXCO', 'secretariat' FROM public.leadership_positions WHERE slug = 'exco-secretariat'
-ON CONFLICT DO NOTHING;
-INSERT INTO public.position_privileges (position_id, privilege, scope)
 SELECT id, 'EXCO', 'protocol' FROM public.leadership_positions WHERE slug = 'exco-protocol'
 ON CONFLICT DO NOTHING;
 INSERT INTO public.position_privileges (position_id, privilege, scope)
@@ -328,12 +329,22 @@ ON CONFLICT DO NOTHING;
 -- and a reset seed that overwrote a deliberate access decision would be a
 -- security regression dressed up as housekeeping.
 -- ----------------------------------------------------------------------------
+--
+-- The tenure row is IGNORED by the app: its access is fixed by policy in
+-- src/lib/modules.ts (POLICY_FIXED_MODULES) -- President, VPs and System Admin
+-- read; only the System Admin and VP Admin write. Kept so the table has a row
+-- for every module, with values that match what the code enforces.
+--
+-- academics: the Academic Coord (EXCO:academic) reads and writes it by default.
+-- Faculties and departments are NOT seeded here: they are data the Academic Unit
+-- maintains, seeded once by the academics_module migration.
 INSERT INTO public.module_access (module, read_slugs, write_slugs, write_scope)
 VALUES
-    ('tenure',    ARRAY['CENTRAL'],          ARRAY['CENTRAL'], 'ALL'),
+    ('tenure',    ARRAY['CENTRAL'],          ARRAY[]::text[],  'ALL'),
     ('zones',     ARRAY['CENTRAL','ZONE'],   ARRAY['ZONE'],    'OWN'),
     ('workforce', ARRAY['CENTRAL','EXCO'],   ARRAY['EXCO'],    'OWN'),
-    ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN')
+    ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN'),
+    ('academics', ARRAY['EXCO:academic'],    ARRAY['EXCO:academic'], 'ALL')
 ON CONFLICT (module) DO NOTHING;
 
 COMMIT;

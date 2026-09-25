@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { ShieldAlert } from "lucide-react";
 import { getMemberDetailAction, getActiveLevelTokenAction } from "../../../actions";
-import { MemberDetailView } from "../../../components/member-detail-view";
-import { Breadcrumb } from "../../../components/breadcrumb";
+import { MemberDetailView } from "@/components/dashboard/member-detail-view";
+import { Breadcrumb } from "@/components/dashboard/breadcrumb";
 import { MemberUpdateLink } from "../../../components/member-update-link";
 
 /**

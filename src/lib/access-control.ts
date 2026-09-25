@@ -14,12 +14,17 @@ import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-conte
 import { canReadModule, canWriteModule, getModuleAccessConfig, type ModuleId } from "@/lib/module-access";
 import { db } from "@/lib/db";
 import { computeLevel } from "@/lib/levels";
+import { getActiveTenure } from "@/utils/action";
+import { applyDueHandover } from "@/lib/handover-schedule";
 
 /**
  * Resolve the current session's enriched profile context (single RPC), or null.
  * Prefer this in server actions that need scope data (managed units/levels).
  */
 export async function getCurrentContext(): Promise<ProfileContext | null> {
+    // A handover whose hour is up is applied before anything reads who holds which
+    // office, so nobody acts on the outgoing tenure a moment after it has closed.
+    await applyDueHandover();
     const profileId = await getSessionProfileId();
     if (!profileId) return null;
     return getProfileContext(profileId);
@@ -38,8 +43,8 @@ export async function requireContext(): Promise<ProfileContext> {
  * @throws when unauthenticated or not permitted.
  */
 export async function requireModuleRead(module: ModuleId): Promise<ProfileContext> {
-    const ctx = await requireContext();
-    const config = await getModuleAccessConfig();
+    // In parallel: neither needs the other, and each is a round trip.
+    const [ctx, config] = await Promise.all([requireContext(), getModuleAccessConfig()]);
     if (!canReadModule(ctx, module, config)) {
         throw new Error("Access denied: insufficient module access");
     }
@@ -53,12 +58,67 @@ export async function requireModuleRead(module: ModuleId): Promise<ProfileContex
  * @throws when unauthenticated or not permitted.
  */
 export async function requireModuleWrite(module: ModuleId): Promise<ProfileContext> {
-    const ctx = await requireContext();
-    const config = await getModuleAccessConfig();
+    const [ctx, config] = await Promise.all([requireContext(), getModuleAccessConfig()]);
     if (!canWriteModule(ctx, module, config)) {
         throw new Error("Access denied: insufficient module access");
     }
     return ctx;
+}
+
+/**
+ * The rule every CHANGE goes through: the President sees everything and changes
+ * nothing. `isAdmin` (and the ADMIN role) include the President, because the admin
+ * tier is the READ tier — so a write gated on it alone let the President modify
+ * zones, appointments, Lo! moderation and invites. Writes use the gates below, which
+ * add this refusal on top; reads keep using the plain ones.
+ */
+const PRESIDENT_READ_ONLY = "The President has view-only access and can't make changes.";
+
+/** Throws when the context is the President's. Call after the normal gate for a write. */
+function refusePresident(ctx: ProfileContext): void {
+    if (ctx.isPresident) throw new Error(PRESIDENT_READ_ONLY);
+}
+
+/**
+ * The admin tier, for a CHANGE: the System Admin and the VP Admin — never the President.
+ *
+ * Decided from `isSysAdmin` / `isVpAdmin`, which the database derives from immutable
+ * slugs and privilege tags — NOT from requireAccess("ADMIN"), whose role is matched on
+ * office TITLES. Titles are editable in the Roles tab, so a title-based gate changes
+ * who is an admin when someone renames an office.
+ */
+export async function requireAdminWrite(): Promise<AuthUser> {
+    const ctx = await requireContext();
+    refusePresident(ctx);
+    if (!ctx.isSysAdmin && !ctx.isVpAdmin) throw new Error("Admin access required");
+    return createAuthUser(ctx, ctx.profile.email || "");
+}
+
+/** requireContext(), for a CHANGE: any signed-in leader except the President. */
+export async function requireContextWrite(): Promise<ProfileContext> {
+    const ctx = await requireContext();
+    refusePresident(ctx);
+    return ctx;
+}
+
+/**
+ * checkEnhancedAdminAccess(), for a CHANGE (Lo! moderation): same shape, but the
+ * President comes back as not-admin, with the reason.
+ */
+export async function checkEnhancedAdminWriteAccess(): Promise<{
+    isAdmin: boolean;
+    user: AuthUser | null;
+    error?: string;
+}> {
+    // Same rule as requireAdminWrite: slug- and tag-derived flags, not office titles.
+    const ctx = await getCurrentContext();
+    if (!ctx) return { isAdmin: false, user: null, error: "Invalid session" };
+    const user = createAuthUser(ctx, ctx.profile.email || "");
+    if (ctx.isPresident) return { isAdmin: false, user, error: PRESIDENT_READ_ONLY };
+    if (!ctx.isSysAdmin && !ctx.isVpAdmin) {
+        return { isAdmin: false, user, error: "Access denied: Not authorized for admin access" };
+    }
+    return { isAdmin: true, user };
 }
 
 /**
@@ -154,6 +214,9 @@ function levelTokenToLabel(token: string): string | null {
  * 'all' → any generation). CENTRAL is read-only and does NOT grant this.
  */
 export async function canManageLevel(ctx: ProfileContext, classSetId: string): Promise<boolean> {
+    // WRITE capability, so never the President — even one who also held a LEVEL office.
+    // Their reads go through the admin read tier, not through here.
+    if (ctx.isPresident) return false;
     if (hasWriteBypass(ctx)) return true;
 
     const levelScopes = heldPrivileges(ctx)
@@ -163,15 +226,15 @@ export async function canManageLevel(ctx: ProfileContext, classSetId: string): P
     // An un-scoped (or explicit 'all') LEVEL grants every generation.
     if (levelScopes.some((s) => s == null || s.toLowerCase() === "all")) return true;
 
-    const { data: cs } = await db
-        .from("class_sets")
-        .select("entry_year, is_foundation, level_override")
-        .eq("id", classSetId)
-        .maybeSingle();
+    // In parallel, and the tenure from the per-request cache.
+    const [{ data: cs }, tenure] = await Promise.all([
+        db.from("class_sets")
+            .select("entry_year, is_foundation, level_override")
+            .eq("id", classSetId)
+            .maybeSingle(),
+        getActiveTenure(),
+    ]);
     if (!cs) return false;
-
-    const { data: tenure } = await db
-        .from("tenures").select("session").eq("is_active", true).maybeSingle();
     const effective = cs.level_override
         || computeLevel(cs.entry_year, cs.is_foundation, tenure?.session ?? null);
 
@@ -184,6 +247,8 @@ export async function canManageLevel(ctx: ProfileContext, classSetId: string): P
  * EXCO, which is central-equivalent). CENTRAL is read-only and does NOT grant this.
  */
 export async function canManageUnit(ctx: ProfileContext, unitId: string): Promise<boolean> {
+    // WRITE capability, so never the President (see canManageLevel).
+    if (ctx.isPresident) return false;
     if (hasWriteBypass(ctx)) return true;
 
     const excoScopes = heldPrivileges(ctx)

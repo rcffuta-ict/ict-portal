@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+    // Registration moved to /profile. Links already shared on WhatsApp keep working:
+    // the query (?invite=…&reason=…) is carried across by the redirect.
+    async redirects() {
+        return [{ source: "/register", destination: "/profile", permanent: true }];
+    },
     images: {
         remotePatterns: [
             // Cloudinary-hosted profile pictures (optional avatars).

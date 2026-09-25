@@ -17,6 +17,7 @@ export type BackupGroup =
     | "audit"
     | "invites"
     | "activity"
+    | "academics"
     | "foreign";
 
 export const BACKUP_GROUP_LABELS: Record<BackupGroup, string> = {
@@ -26,6 +27,7 @@ export const BACKUP_GROUP_LABELS: Record<BackupGroup, string> = {
     audit: "Audit trails",
     invites: "Invites",
     activity: "Events & activity",
+    academics: "Academics",
     foreign: "Other applications (not the portal's data)",
 };
 
@@ -72,6 +74,20 @@ export const BACKUP_TABLES: TableSpec[] = [
         name: "residential_zones",
         label: "Residential zones",
         description: "Zone names members are assigned to.",
+        group: "structure",
+        required: true,
+    },
+    {
+        name: "faculties",
+        label: "Faculties",
+        description: "FUTA schools, maintained by the Academic Unit.",
+        group: "structure",
+        required: true,
+    },
+    {
+        name: "departments",
+        label: "Departments",
+        description: "FUTA departments. Profiles point at them, so they come first.",
         group: "structure",
         required: true,
     },
@@ -208,6 +224,27 @@ export const BACKUP_TABLES: TableSpec[] = [
         required: false,
     },
     {
+        name: "academic_rounds",
+        label: "Results rounds",
+        description: "Each semester's results collection and its round token.",
+        group: "academics",
+        required: false,
+    },
+    {
+        name: "academic_records",
+        label: "Academic records",
+        description: "Members' GPA and CGPA, semester by semester.",
+        group: "academics",
+        required: false,
+    },
+    {
+        name: "academic_settings",
+        label: "Academics settings",
+        description: "Who outside the Academics module may see individual results.",
+        group: "academics",
+        required: false,
+    },
+    {
         name: "events",
         label: "Events",
         description: "Event definitions and their configuration.",
@@ -292,4 +329,7 @@ export const DEFAULT_TABLE_SELECTION = [
     "handover_events",
     "registration_invites",
     "invite_events",
+    "academic_rounds",
+    "academic_records",
+    "academic_settings",
 ];

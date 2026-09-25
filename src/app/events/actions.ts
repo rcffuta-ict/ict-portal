@@ -2,11 +2,46 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { checkIsAdminByEmail } from "@/utils/action";
+import { parseGender } from "@/lib/gender";
+import { requiredTestEmailDomain, testEmailError } from "@/lib/env";
+import { canManageEvents, eventAccessFor, NO_EVENT_ACCESS, type EventAccess } from "@/lib/event-access";
 
-// Position-based admin check (VP Admin / ICT Coordinator / PRESIDENT scope).
-async function isUserAdmin(email: string | null | undefined): Promise<boolean> {
-    return checkIsAdminByEmail(email || "");
+// Who may create and edit events: the System Admin (src/lib/event-access.ts). This used
+// to take an `email` argument from the caller and ask whether that address belonged to
+// an admin — so anyone could call it with an admin's address and get through. Identity
+// comes from the session cookie, never from the request body.
+
+/** A unit assigned to an event must exist; store its slug or nothing. */
+async function checkedConfig(config: any): Promise<{ config: any } | { error: string }> {
+    const unit = typeof config?.unit === "string" ? config.unit.trim() : "";
+    if (!unit) {
+        const rest = { ...(config ?? {}) };
+        delete rest.unit;
+        return { config: rest };
+    }
+    const { data } = await db.from("units").select("slug").eq("slug", unit).maybeSingle();
+    if (!data) return { error: "That unit doesn't exist." };
+    return { config: { ...config, unit } };
+}
+
+/** What the current viewer may do on the events screens — drives buttons only. */
+export async function getEventsCapabilityAction(): Promise<{ canCreate: boolean }> {
+    return { canCreate: await canManageEvents() };
+}
+
+/** What the current viewer may do with one event — drives the admin link and console. */
+export async function getMyEventAccessAction(slug: string): Promise<EventAccess> {
+    const { data: event } = await db.from("events").select("config").eq("slug", slug).maybeSingle();
+    if (!event) return NO_EVENT_ACCESS;
+    const { read, write, manage } = await eventAccessFor(event.config);
+    return { read, write, manage };
+}
+
+/** Units to choose from when assigning one to an event. System Admin only. */
+export async function listEventUnitsAction() {
+    if (!(await canManageEvents())) return [];
+    const { data } = await db.from("units").select("slug, name, type").order("name");
+    return data ?? [];
 }
 
 export async function getEvents() {
@@ -60,39 +95,9 @@ export async function getEventBySlug(slug: string) {
     return {
       success: true,
       data: event,
-      error: null
-    };
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    return {
-      success: false,
-      error: 'An unexpected error occurred',
-      data: null
-    };
-  }
-}
-
-export async function getEventRegistrations(eventId: string) {
-  try {
-    const { data: registrations, error } = await db
-      .from('event_registrations')
-      .select('*')
-      .eq('event_id', eventId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching registrations:', error);
-      return {
-        success: false,
-        error: 'Failed to fetch registrations',
-        data: null
-      };
-    }
-
-    return {
-      success: true,
-      data: registrations || [],
-      error: null
+      error: null,
+      // Outside production only @rcffuta.test addresses may register (see src/lib/env.ts).
+      testEmailDomain: requiredTestEmailDomain(),
     };
   } catch (error) {
     console.error('Unexpected error:', error);
@@ -113,13 +118,16 @@ export async function createEvent(data: {
   is_recurring: boolean;
   is_exclusive: boolean;
   config?: any;
-}, email: string) {
+}) {
   try {
-    // Check authentication and authorization
-    // const user = await getCurrentUser();
-    // console.log("User:", user);
-    if (!email || !(await isUserAdmin(email))) {
-        return { success: false, error: "Unauthorized: Admin access required" };
+    if (!(await canManageEvents())) {
+        return { success: false, error: "Only the System Admin can create or edit events." };
+    }
+    // Only when config is being set: an edit that leaves it out must not wipe it.
+    if (data.config !== undefined) {
+      const checked = await checkedConfig(data.config);
+      if ("error" in checked) return { success: false, error: checked.error };
+      data = { ...data, config: checked.config };
     }
 
     // Basic validation
@@ -166,12 +174,16 @@ export async function updateEvent(id: string, data: {
   is_recurring?: boolean;
   is_exclusive?: boolean;
   config?: any;
-}, email: string) {
+}) {
   try {
-    // Check authentication and authorization
-    // const user = await getCurrentUser();
-    if (!email || !(await isUserAdmin(email))) {
-        return { success: false, error: "Unauthorized: Admin access required" };
+    if (!(await canManageEvents())) {
+        return { success: false, error: "Only the System Admin can create or edit events." };
+    }
+    // Only when config is being set: an edit that leaves it out must not wipe it.
+    if (data.config !== undefined) {
+      const checked = await checkedConfig(data.config);
+      if ("error" in checked) return { success: false, error: checked.error };
+      data = { ...data, config: checked.config };
     }
 
     if (!id) return { success: false, error: "Event ID is required" };
@@ -218,6 +230,10 @@ export async function registerForEvent(data: {
   is_rcf_member?: boolean;
 }) {
   try {
+    // Enforced here, not only in the form: this endpoint is public.
+    const testError = testEmailError(data.email);
+    if (testError) return { success: false, error: testError };
+
     // Basic check for existing registration
     const { data: existing } = await db
       .from('event_registrations')
@@ -238,7 +254,9 @@ export async function registerForEvent(data: {
         last_name: data.last_name,
         email: data.email,
         phone_number: data.phone_number,
-        gender: data.gender,
+        // event_registrations.gender has NO check constraint, so whatever arrives is
+        // what gets stored and every reader downstream has to cope. Normalise here.
+        gender: parseGender(data.gender),
         level: data.level,
         department: data.department,
         matric_number: data.matric_number,

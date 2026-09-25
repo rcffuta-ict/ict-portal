@@ -4,14 +4,15 @@
  * These back three flows (see `registration_invites.purpose`):
  *   - 'create' / 'update' : level-coordinator links to add/edit a member in their
  *                           generation (class_set).
- *   - 'reset'             : VP-Admin / ICT-Coordinator links for a leader to (re)set
- *                           their own password (the "forgot password" path).
+ *   - 'reset'             : legacy. Logins are reset from the Cabinet roster now
+ *                           ("Reset login"); nothing issues these any more.
  *
  * Authorization (who may create which kind of invite) is enforced in the server
  * actions that call `createInvite` — this module is the mechanism, not the policy.
  */
 import { randomBytes } from "crypto";
 import { db } from "@/lib/db";
+import { LEVEL_TOKEN_BODY_LENGTH, LEVEL_TOKEN_DIGITS, LEVEL_TOKEN_LETTERS } from "@/lib/level-token";
 
 export type InvitePurpose = "create" | "update" | "reset" | "level";
 
@@ -45,11 +46,10 @@ function generateToken(): string {
 
 // Ambiguous glyphs are excluded on purpose (0/O, 1/l/I): a level token is read off
 // one phone and typed into another, so a character a student can misread is a
-// support ticket. Lowercase only, for the same reason.
-const SHORT_DIGITS = "23456789";
-const SHORT_LETTERS = "abcdefghjkmnpqrstuvwxyz";
-const SHORT_ALPHABET = SHORT_DIGITS + SHORT_LETTERS;
-const SHORT_BODY_LENGTH = 5;
+// support ticket. The alphabet lives in level-token.ts, which parses what people type.
+const SHORT_DIGITS = LEVEL_TOKEN_DIGITS;
+const SHORT_ALPHABET = LEVEL_TOKEN_DIGITS + LEVEL_TOKEN_LETTERS;
+const SHORT_BODY_LENGTH = LEVEL_TOKEN_BODY_LENGTH;
 
 /** Uniform pick from `set` using rejection sampling (no modulo bias). */
 function pick(set: string): string {
@@ -61,12 +61,12 @@ function pick(set: string): string {
 }
 
 /**
- * Short, human-copyable level token: `rcf-xxxxx`, always with at least two digits
- * in the body. NOT a secret — it's a shared, revocable link for a whole generation,
- * so readability beats entropy here. Collisions are handled by the caller retrying
- * against the table's UNIQUE constraint.
+ * Short, human-copyable token: `rcf-xxxxx` for a level, `acd-xxxxx` for an academics
+ * results round, always with at least two digits in the body. NOT a secret — it's a
+ * shared, revocable link for a whole group, so readability beats entropy here.
+ * Collisions are handled by the caller retrying against the table's UNIQUE constraint.
  */
-function generateShortToken(): string {
+export function generateShortToken(prefix: "rcf" | "acd" = "rcf"): string {
     const chars = [pick(SHORT_DIGITS), pick(SHORT_DIGITS)];
     while (chars.length < SHORT_BODY_LENGTH) chars.push(pick(SHORT_ALPHABET));
     // Fisher-Yates, so the two guaranteed digits aren't always in front.
@@ -74,7 +74,7 @@ function generateShortToken(): string {
         const j = randomBytes(1)[0] % (i + 1);
         [chars[i], chars[j]] = [chars[j], chars[i]];
     }
-    return `rcf-${chars.join("")}`;
+    return `${prefix}-${chars.join("")}`;
 }
 
 /**

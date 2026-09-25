@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireSysAdmin, requirePresidentOrSysAdmin } from "@/lib/access-control";
 import { getModuleAccessConfig } from "@/lib/module-access";
-import { MODULES, type ModuleId, type ModuleAccessConfig, type WriteScope } from "@/lib/modules";
+import { MODULES, isPolicyFixedModule, type ModuleId, type ModuleAccessConfig, type WriteScope } from "@/lib/modules";
 import { normalizeAccessToken } from "@/lib/privileges";
 import { getSessionProfileId } from "@/lib/auth/session";
 import { listPositions } from "@/lib/positions";
@@ -102,6 +102,9 @@ export async function updateModuleAccessAction(
 
         if (!MODULES.includes(input.module)) {
             return { success: false, error: "Unknown module." };
+        }
+        if (isPolicyFixedModule(input.module)) {
+            return { success: false, error: "This module's access is fixed by fellowship policy and can't be changed here." };
         }
 
         const profileId = await getSessionProfileId();
