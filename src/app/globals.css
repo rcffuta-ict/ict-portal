@@ -86,6 +86,17 @@
 
   
 
+  /*
+   * The app's full height. 100vh on a phone is the height with the browser's address
+   * bar HIDDEN, so a 100vh frame runs under the bar while it shows and the bottom of
+   * every page cannot be scrolled into view. 100dvh follows the visible height; the vh
+   * line is the fallback for browsers that don't know dvh.
+   */
+  .h-app {
+    height: 100vh;
+    height: 100dvh;
+  }
+
   /* Safe area utilities for mobile devices with notches */
   .safe-top {
     padding-top: env(safe-area-inset-top);

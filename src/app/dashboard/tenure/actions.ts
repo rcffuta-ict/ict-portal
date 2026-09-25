@@ -527,7 +527,7 @@ export async function handoverTenureAction(formData: FormData) {
         }
 
         const { data: outgoing } = await db
-            .from('tenures').select('id').eq('is_active', true).maybeSingle();
+            .from('tenures').select('id, session').eq('is_active', true).maybeSingle();
 
         // 1. A backup is the only undo for this. Refuse without one taken during the
         //    tenure being closed — an older bundle wouldn't restore what is about to be
@@ -561,6 +561,45 @@ export async function handoverTenureAction(formData: FormData) {
             return { success: false as const, error: "The incoming VP Admin or ICT Coordinator couldn't be found. Choose them again." };
         }
 
+        // 400 Level finalists (four-year courses): instead of moving up to 500 Level,
+        // they join the 500 Level generation that is becoming alumni.
+        let finalistIds: string[] = [];
+        try {
+            const raw = JSON.parse(((formData.get("finalistIds") as string) || "[]"));
+            if (Array.isArray(raw)) finalistIds = [...new Set(raw.filter((x): x is string => typeof x === "string" && !!x))];
+        } catch {
+            return { success: false as const, error: "The list of 400 Level finalists couldn't be read. Go back to Progression and pick them again." };
+        }
+
+        let finalists: HandoverPlan["finalists"];
+        if (finalistIds.length) {
+            const { data: sets, error: setsError } = await db
+                .from("class_sets")
+                .select("id, entry_year, is_foundation, level_override");
+            if (setsError) return { success: false as const, error: setsError.message };
+            const levelNow = (s: any) => s.level_override || computeLevel(s.entry_year, s.is_foundation, outgoing?.session ?? null);
+            const from = (sets ?? []).find((s: any) => !s.is_foundation && !s.level_override && levelNow(s) === "400 Level");
+            const to = (sets ?? []).find((s: any) =>
+                levelNow(s) === "500 Level"
+                && (s.level_override || computeLevel(s.entry_year, s.is_foundation, session)) === "Alumni");
+            if (!from || !to) {
+                return {
+                    success: false as const,
+                    error: "400 Level finalists join the 500 Level generation that becomes alumni, and there isn't one for this session. Remove the finalists and try again.",
+                };
+            }
+            const { data: inFour, error: inFourError } = await db
+                .from("profiles").select("id").in("id", finalistIds).eq("class_set_id", from.id);
+            if (inFourError) return { success: false as const, error: inFourError.message };
+            if ((inFour ?? []).length !== finalistIds.length) {
+                return {
+                    success: false as const,
+                    error: "Some of the chosen finalists are no longer in 400 Level. Go back to Progression and check the list.",
+                };
+            }
+            finalists = { fromClassSetId: from.id, toClassSetId: to.id, profileIds: finalistIds };
+        }
+
         const plan: HandoverPlan = {
             session,
             startDate: new Date(startDate).toISOString(),
@@ -568,6 +607,7 @@ export async function handoverTenureAction(formData: FormData) {
             ictCoordProfileId,
             carryMembership,
             revokeOutgoing,
+            finalists,
         };
         const actor = actorOf(ctx);
         const now = Date.now();
@@ -605,7 +645,8 @@ export async function handoverTenureAction(formData: FormData) {
             "scheduled",
             `Scheduled the switch to ${tenureFullLabel({ session })} for ${formatWatTime(effectiveAt)}. `
                 + `Membership ${carryMembership ? "will be carried forward" : "will not be carried forward"}; `
-                + `outgoing logins ${revokeOutgoing ? "will be revoked" : "will be left in place"}.`,
+                + `outgoing logins ${revokeOutgoing ? "will be revoked" : "will be left in place"}.`
+                + (finalists ? ` ${finalists.profileIds.length} 400 Level finalist${finalists.profileIds.length === 1 ? "" : "s"} will join the alumni.` : ""),
         );
 
         revalidatePath("/dashboard/tenure/handover");

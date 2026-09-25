@@ -112,7 +112,8 @@ export function MemberStep({
                 // reassuring half matters as much as the warning: appointing an
                 // assistant takes nothing away from the person already serving, and
                 // assistants hold the office's privileges too, because privileges come
-                // from the POSITION.
+                // from the POSITION -- except CENTRAL, which is the lead's alone
+                // (rcf_profile_context, migration 20260925024757).
                 <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                     <div className="text-xs leading-relaxed text-amber-900">
@@ -121,8 +122,9 @@ export function MemberStep({
                         </p>
                         <p className="mt-1">
                             An office has one lead at a time, so whoever you pick will be added
-                            as an <span className="font-bold">assistant</span> — which carries
-                            the same privileges and takes nothing away from {holderName}.
+                            as an <span className="font-bold">assistant</span>. They share the
+                            office&rsquo;s access, except church-wide (Central) access, which stays
+                            with the lead, and it takes nothing away from {holderName}.
                         </p>
                         <p className="mt-1">
                             To hand the office over instead, remove {holderName} from it on the

@@ -32,6 +32,7 @@ import FormInput from "@/components/ui/FormInput";
 import { BackupPicker } from "@/components/dashboard/backup-picker";
 import { tenureFullLabel } from "@/lib/tenure";
 import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
+import { HandoverFinalists, type Finalist } from "./handover-finalists";
 
 /**
  * The handover wizard.
@@ -132,6 +133,7 @@ export function HandoverWizard({
         carryMembership: boolean;
         revokeOutgoing: boolean;
         acknowledged: boolean;
+        finalists: Finalist[];
     }>;
 
     const [step, setStep] = useState(Math.min(initialStep ?? 0, STEPS.length - 1));
@@ -149,6 +151,7 @@ export function HandoverWizard({
     const [carryMembership, setCarryMembership] = useState(saved.carryMembership ?? true);
     const [revokeOutgoing, setRevokeOutgoing] = useState(saved.revokeOutgoing ?? true);
     const [acknowledged, setAcknowledged] = useState(saved.acknowledged ?? false);
+    const [finalists, setFinalists] = useState<Finalist[]>(saved.finalists ?? []);
     const [saving, setSaving] = useState(false);
     const [confirmText, setConfirmText] = useState("");
     const [submitting, setSubmitting] = useState(false);
@@ -181,6 +184,12 @@ export function HandoverWizard({
     const auditUnavailable = preview?.backupTrackingUnavailable === true;
     const generations = preview?.generations ?? [];
     const graduating = generations.filter((g: any) => g.becomesAlumni);
+    // 400 Level finalists join the 500 Level generation that is becoming alumni. Both
+    // must exist (and 400 Level must not be pinned) for the choice to be offered.
+    const fourHundred = generations.find((g: any) => g.from === "400 Level" && !g.pinned && !g.isFoundation);
+    const alumniGen = generations.find((g: any) => g.from === "500 Level" && g.becomesAlumni);
+    const offerFinalists = !!fourHundred && !!alumniGen;
+    const finalistsToSend = offerFinalists ? finalists : [];
     const losing = preview?.losingAccess ?? [];
 
     /** Each step's gate. A step can only be left once its own condition is met. */
@@ -205,6 +214,7 @@ export function HandoverWizard({
         carryMembership,
         revokeOutgoing,
         acknowledged,
+        finalists,
     });
 
     /**
@@ -246,6 +256,7 @@ export function HandoverWizard({
         fd.append("ictCoordProfileId", ictCoord.id);
         fd.append("carryMembership", carryMembership ? "true" : "false");
         fd.append("revokeOutgoing", revokeOutgoing ? "true" : "false");
+        fd.append("finalistIds", JSON.stringify(finalistsToSend.map((f) => f.id)));
 
         let res: Awaited<ReturnType<typeof handoverTenureAction>>;
         try {
@@ -457,6 +468,16 @@ export function HandoverWizard({
                                         </p>
                                     )}
 
+                                    {offerFinalists && (
+                                        <HandoverFinalists
+                                            classSetId={fourHundred.classSetId}
+                                            fourHundredName={fourHundred.familyName || `${fourHundred.entryYear} set`}
+                                            alumniName={alumniGen.familyName || `${alumniGen.entryYear} set`}
+                                            selected={finalists}
+                                            onChange={setFinalists}
+                                        />
+                                    )}
+
                                     <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 transition-colors hover:border-slate-300">
                                         <input
                                             type="checkbox"
@@ -537,6 +558,11 @@ export function HandoverWizard({
                                         ? graduating.map((g: any) => g.familyName || g.entryYear).join(", ")
                                         : "Nobody"}
                                 </Row>
+                                {finalistsToSend.length > 0 && (
+                                    <Row label="400 Level finalists">
+                                        {finalistsToSend.length} join {alumniGen.familyName || `${alumniGen.entryYear} set`} as alumni
+                                    </Row>
+                                )}
                                 <Row label="Membership">
                                     {carryMembership ? `${preview?.membershipCount ?? 0} carried forward` : "Not carried — units start empty"}
                                 </Row>

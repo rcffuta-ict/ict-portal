@@ -17,7 +17,9 @@ export default async function AuthLayout({
             </div>
 
             {/* Right Side - Form Area */}
-            <div className="relative flex items-center justify-center px-4 py-8 md:p-12 lg:col-span-2">
+            {/* pb-24 on phones: the bottom of a long form (registration) must clear the
+                browser's toolbar and the home indicator. */}
+            <div className="relative flex items-center justify-center px-4 pt-8 pb-24 md:p-12 lg:col-span-2">
                 {/* Background Pattern (Dot Grid) */}
                 <div
                     className="absolute inset-0 z-0 opacity-40"

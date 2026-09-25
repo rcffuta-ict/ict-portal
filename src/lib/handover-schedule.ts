@@ -37,6 +37,11 @@ export interface HandoverPlan {
     ictCoordProfileId: string;
     carryMembership: boolean;
     revokeOutgoing: boolean;
+    /**
+     * 400 Level members who finish this session (four-year courses). At the switch they
+     * move from the 400 Level generation into the 500 Level one that becomes alumni.
+     */
+    finalists?: { fromClassSetId: string; toClassSetId: string; profileIds: string[] };
 }
 
 /** Who a proceedings line is attributed to. `name` is a snapshot. */
@@ -140,7 +145,7 @@ async function runScheduledHandover(intentId: string): Promise<void> {
             .eq("id", intentId);
         if (doneError) console.error("handover intent completion failed:", doneError.message);
 
-        const { carried, revoked, warnings } = outcome;
+        const { carried, revoked, finalistsMoved, warnings } = outcome;
         await logHandoverEvent(
             intentId,
             actor,
@@ -148,6 +153,7 @@ async function runScheduledHandover(intentId: string): Promise<void> {
             `Took effect. Opened ${tenureFullLabel({ session: (intent.plan as HandoverPlan).session })}. `
                 + `${carried} membership${carried === 1 ? "" : "s"} carried forward, `
                 + `${revoked} outgoing login${revoked === 1 ? "" : "s"} revoked.`
+                + (finalistsMoved ? ` ${finalistsMoved} 400 Level finalist${finalistsMoved === 1 ? "" : "s"} joined the alumni.` : "")
                 + (warnings.length ? ` WARNING: ${warnings.join(" ")}` : ""),
         );
     } catch (e: any) {
@@ -186,7 +192,7 @@ async function switchTenure(
     fromTenureId: string | null,
     plan: HandoverPlan,
     actor: HandoverActor,
-): Promise<{ tenureId: string; carried: number; revoked: number; warnings: string[] }> {
+): Promise<{ tenureId: string; carried: number; revoked: number; finalistsMoved: number; warnings: string[] }> {
     if (!plan?.session || !plan.startDate || !plan.vpAdminProfileId || !plan.ictCoordProfileId) {
         throw new HandoverRefused("The scheduled plan is incomplete. Nothing was changed.");
     }
@@ -264,6 +270,31 @@ async function switchTenure(
         }
     }
 
+    // 400 Level finalists join the outgoing 500 Level generation, so they graduate with
+    // it. Before the carry-over, which leaves alumni behind by reading each member's
+    // generation. Only members still in 400 Level move; anyone moved meanwhile stays put.
+    let finalistsMoved = 0;
+    if (plan.finalists?.profileIds.length) {
+        const { data: target } = await db
+            .from("class_sets").select("id, entry_year").eq("id", plan.finalists.toClassSetId).maybeSingle();
+        if (!target) {
+            warnings.push("The 400 Level finalists were not moved: the generation they were to join no longer exists. Move them from the Levels page.");
+        } else {
+            const { data: moved, error: moveError } = await db
+                .from("profiles")
+                .update({ class_set_id: target.id, entry_year: target.entry_year })
+                .in("id", plan.finalists.profileIds)
+                .eq("class_set_id", plan.finalists.fromClassSetId)
+                .select("id");
+            if (moveError) warnings.push(`The 400 Level finalists were not moved (${moveError.message}). Move them from the Levels page.`);
+            finalistsMoved = moved?.length ?? 0;
+            const missed = plan.finalists.profileIds.length - finalistsMoved;
+            if (!moveError && missed > 0) {
+                warnings.push(`${missed} 400 Level finalist${missed === 1 ? " was" : "s were"} no longer in 400 Level and ${missed === 1 ? "was" : "were"} left where they are.`);
+            }
+        }
+    }
+
     let carried = 0;
     if (plan.carryMembership) {
         try {
@@ -311,7 +342,7 @@ async function switchTenure(
         warnings.push(`PDS/UABS and 100 Level were not reset (${e.message}); check the Generations tab.`);
     }
 
-    return { tenureId: newTenure.id, carried, revoked, warnings };
+    return { tenureId: newTenure.id, carried, revoked, finalistsMoved, warnings };
 }
 
 /**

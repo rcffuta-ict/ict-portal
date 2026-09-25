@@ -110,7 +110,9 @@ What an office may *do* is decided by its **privilege tags**, never by its title
 Rules that trip people up:
 
 - **One lead per office per tenure.** The database refuses a second lead. Assistants are
-  unlimited, and an assistant carries the same tags as the lead.
+  unlimited, and an assistant carries the same tags as the lead, except **CENTRAL**:
+  church-wide access is the lead's alone, so an assistant to a central office is not
+  central.
 - **Holding an office is not the same as having a login.** Each office has a
   *grants login* switch. Most honorary offices (General Secretary, Financial Secretary,
   Secretariat Keeper) have no tags and no login. The VP Admin controls the switch per
@@ -194,7 +196,9 @@ come back: an unfinished handover stays open and is resumed from the same place.
    being closed*. It is the only undo there is.
 2. **Incoming tenure.** Type the new session (e.g. `2027/2028`) and its start date.
 3. **Progression.** A preview of every generation's new level. It is exact: level is
-   computed, so what you see is what will happen.
+   computed, so what you see is what will happen. Here you also tick any **400 Level
+   finalists** (four-year courses). Instead of moving up to 500 Level, they join the
+   500 Level generation that is becoming alumni, and graduate with it.
 4. **Offices.** Choose the incoming **VP Admin** and **ICT Coordinator**, so the new
    tenure is never left with nobody able to run it.
 5. **Everyone else.** Two opt-out choices:

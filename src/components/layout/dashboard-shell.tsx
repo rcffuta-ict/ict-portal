@@ -87,7 +87,7 @@ export function DashboardShell({
     // }
 
     return (
-        <div className="flex h-screen bg-slate-50 overflow-hidden">
+        <div className="flex h-app bg-slate-50 overflow-hidden">
             {/* 2. Hydrate Zustand Store (Client Side will now have the data) */}
             <StoreInitializer />
 
@@ -102,7 +102,9 @@ export function DashboardShell({
                     onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                     isMenuOpen={isMobileMenuOpen}
                 />
-                <main className="flex-1 overflow-y-auto p-4 md:p-8 overscroll-contain">
+                {/* Generous bottom room on phones: the last card must clear the browser's
+                    toolbar and the home indicator, not sit half under them. */}
+                <main className="flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:p-8 md:pb-16">
                     <div className="mx-auto max-w-6xl">{children}</div>
                 </main>
             </div>
