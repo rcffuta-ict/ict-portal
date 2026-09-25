@@ -53,6 +53,8 @@ type InviteState =
           classSet: { entryYear: number | null; familyName: string | null; isFoundation: boolean } | null;
           targetName?: string;
           prefill: Record<string, string | null> | null;
+          /** Outside production: the only email domain accepted (rcffuta.test). */
+          testEmailDomain: string | null;
       };
 
 type ValidateResult = Awaited<ReturnType<typeof validateInviteAction>> | OpenedToken;
@@ -67,6 +69,7 @@ function toInviteState(res: ValidateResult): InviteState {
             : null,
         targetName: res.targetProfile ? `${res.targetProfile.firstName} ${res.targetProfile.lastName}` : undefined,
         prefill: res.prefill,
+        testEmailDomain: res.testEmailDomain ?? null,
     };
 }
 
@@ -326,6 +329,7 @@ function RegistrationForm({
     onUpdateInstead?: () => void;
 }) {
     const isUpdate = invite.purpose === "update" || !!target;
+    const testDomain = invite.testEmailDomain;
     const [step, setStep] = useState(0);
     const [zones, setZones] = useState<Array<{ id: string; name: string }>>([]);
     const [serverError, setServerError] = useState("");
@@ -567,7 +571,17 @@ function RegistrationForm({
                                     </Field>
                                 </div>
                                 <Field label="Email Address" error={errors.email?.message}>
-                                    <FormInput {...register("email", { required: "Email is required" })} type="email" placeholder="john@example.com" />
+                                    <FormInput
+                                        {...register("email", {
+                                            required: "Email is required",
+                                            validate: (v) =>
+                                                !testDomain
+                                                || v.trim().toLowerCase().endsWith(`@${testDomain}`)
+                                                || `This is a test environment: use an @${testDomain} email address.`,
+                                        })}
+                                        type="email"
+                                        placeholder={testDomain ? `john@${testDomain}` : "john@example.com"}
+                                    />
                                 </Field>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <Field label="Phone" error={errors.phoneNumber?.message}>

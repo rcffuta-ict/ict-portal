@@ -45,6 +45,7 @@ export default function GenericEventRegistration() {
     const slug = params.slug as string;
 
     const [event, setEvent] = useState<EventRecord | null>(null);
+    const [testEmailDomain, setTestEmailDomain] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +56,7 @@ export default function GenericEventRegistration() {
             const result = await getEventBySlug(slug);
             if (result.success && result.data) {
                 setEvent(result.data as EventRecord);
+                setTestEmailDomain(result.testEmailDomain ?? null);
             } else {
                 setError(result.error || "Event not found");
             }
@@ -99,7 +101,7 @@ export default function GenericEventRegistration() {
     }
 
     // `event` is settled here, so the form mounts with the final field config.
-    return <RegistrationView event={event} slug={slug} />;
+    return <RegistrationView event={event} slug={slug} testEmailDomain={testEmailDomain} />;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -128,8 +130,11 @@ const EMPTY_VALUES: FormValues = {
     matricNumber: "",
 };
 
-/** Only the fields the admin chose to collect are validated. */
-function buildSchema(fields: string[]) {
+/**
+ * Only the fields the admin chose to collect are validated. Outside production the
+ * email must also use the test domain (the server refuses anything else anyway).
+ */
+function buildSchema(fields: string[], testEmailDomain: string | null) {
     const required = (message: string) => z.string().trim().min(1, message);
     const optional = z.string().optional();
 
@@ -144,6 +149,10 @@ function buildSchema(fields: string[]) {
                 .trim()
                 .min(1, "Enter your email address")
                 .regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, "Enter a valid email address")
+                .refine(
+                    (v) => !testEmailDomain || v.toLowerCase().endsWith(`@${testEmailDomain}`),
+                    `This is a test environment: use an @${testEmailDomain} email address.`,
+                )
             : optional,
         phone: fields.includes("phone")
             ? z
@@ -163,7 +172,15 @@ function buildSchema(fields: string[]) {
     return z.object(shape);
 }
 
-function RegistrationView({ event, slug }: { event: EventRecord; slug: string }) {
+function RegistrationView({
+    event,
+    slug,
+    testEmailDomain,
+}: {
+    event: EventRecord;
+    slug: string;
+    testEmailDomain: string | null;
+}) {
     const user = useProfileStore((e) => e.user);
     const reduceMotion = useReducedMotion();
     const isAuthenticated = !!user;
@@ -199,7 +216,7 @@ function RegistrationView({ event, slug }: { event: EventRecord; slug: string })
         reset,
         formState: { errors, isSubmitting },
     } = useForm<FormValues>({
-        resolver: zodResolver(buildSchema(regConfig.fields)) as Resolver<FormValues>,
+        resolver: zodResolver(buildSchema(regConfig.fields, testEmailDomain)) as Resolver<FormValues>,
         defaultValues,
     });
 

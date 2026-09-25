@@ -1,0 +1,32 @@
+RCF FUTA ICT Portal
+Copyright (c) 2026 RCF FUTA. All rights reserved.
+
+This software and its source code, documentation, database migrations and other
+associated files (the "Software") are the property of RCF FUTA (the "Fellowship").
+
+1. Permitted use. Members of the Fellowship's ICT unit, and others the Fellowship's
+   ICT Coordinator or leadership authorises, may use, copy, modify and deploy the
+   Software for the Fellowship's own purposes.
+
+2. Restrictions. No other person may use, copy, modify, merge, publish, distribute,
+   sublicense or sell copies of the Software, in whole or in part, without the
+   Fellowship's written permission.
+
+3. Handover. When the people maintaining the Software change, these rights pass to
+   their successors in the ICT unit. Leaving the ICT unit or the Fellowship ends a
+   person's rights under clause 1, and they should not keep copies of the Software,
+   its credentials or its data.
+
+4. Member data. The Software processes personal data of the Fellowship's members.
+   Nothing in this licence grants any right to that data. Data held in any deployment
+   of the Software, and in its backups, may only be used for the Fellowship's work.
+
+5. Third-party components. The Software depends on open-source packages, each under
+   its own licence (see package.json and pnpm-lock.yaml). Those licences continue to
+   apply to those packages.
+
+6. No warranty. The Software is provided "as is", without warranty of any kind,
+   express or implied, including the warranties of merchantability, fitness for a
+   particular purpose and non-infringement. In no event shall the authors or the
+   Fellowship be liable for any claim, damages or other liability arising from, out
+   of or in connection with the Software or its use.

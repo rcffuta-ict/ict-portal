@@ -515,11 +515,18 @@ Environment variables (see `.env.example`):
 - `SUPABASE_SERVICE_ROLE_KEY` (secret)
 - `SESSION_SECRET` (the password pepper; **must be the same everywhere a database is
   shared**, or every password stops working)
-- `PRODUCTION_SUPABASE_URL` (so the scripts can recognise production)
+- `PRODUCTION_SUPABASE_URL` (so the scripts, and the app, can recognise production)
 - `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`, `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`
 
 `NEXT_PUBLIC_` values are fixed at build time: restart `pnpm dev`, or redeploy, after
 changing them.
+
+**Test emails outside production.** Anywhere that is not production (staging, previews,
+`pnpm dev` against a dev database), registering, updating a record through a level
+link, and signing up for an event only accept `@rcffuta.test` addresses. `.test` can
+never receive mail, so no real member's address ends up in a test database. Production
+is a Vercel production deployment **or** any run whose database is
+`PRODUCTION_SUPABASE_URL`; either one lifts the rule (`src/lib/env.ts`).
 
 **Cloudinary** (images): create an **unsigned** upload preset. The preset is public, so
 restrict it: an asset folder, formats `jpg,png,webp` (no SVG), incoming transformation

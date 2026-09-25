@@ -34,48 +34,37 @@ pnpm dev                     # http://localhost:3000
 
 ### Environment
 
-Every variable is documented in [`.env.example`](./.env.example). The ones you cannot
-run without:
+Every variable is documented in [`.env.example`](./.env.example):
 
-- `SUPABASE_URL`, `SUPABASE_ANON_KEY` — normal, RLS-respecting client
-- `SUPABASE_SERVICE_ROLE_KEY` — service role, **bypasses RLS**, server-only
-- `SESSION_SECRET` — pepper for password hashing and session tokens (`openssl rand -hex 32`)
+- `SUPABASE_URL`: the project the app talks to
+- `SUPABASE_SERVICE_ROLE_KEY`: service role, **bypasses RLS**, server-only
+- `SESSION_SECRET`: pepper for password hashing and session tokens (`openssl rand -hex 32`)
+- `PRODUCTION_SUPABASE_URL`: which project is production, so the scripts and the app
+  can tell
+- `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`, `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`: optional,
+  for photo and banner uploads
 
-Only URLs, the Supabase anon key, and the Cloudinary cloud name / upload preset may
-carry a `NEXT_PUBLIC_` prefix — that prefix ships the value to the browser.
+Only the Cloudinary values may carry a `NEXT_PUBLIC_` prefix. That prefix ships the
+value to the browser.
+
+Outside production (staging, previews, local dev against a dev database) the portal only
+accepts `@rcffuta.test` email addresses when someone registers, updates their record or
+signs up for an event.
 
 ### Database
 
-SQL lives in `db/`:
+Migrations live in `supabase/migrations/` and are applied by GitHub Actions, never by
+hand. A push to `stage` applies them to staging; a push to `main` applies them to
+production after an approval. Runbook: [docs/DATABASE-CICD.md](./docs/DATABASE-CICD.md).
 
 | | |
 |---|---|
-| `db/migrations/*.sql` | applied **by hand, in numeric order**, in the Supabase SQL editor — there is no migration runner |
-| `db/seed/default.sql` | bootstrap structure: units and offices. Runs in production. Re-runnable, which makes it the **reset seed** |
-| `db/db-schema.sql` | reference dump. Re-dump it after a migration; never hand-append to it |
+| `supabase/migrations/` | the only SQL that runs. Create files with `supabase migration new <name>` |
+| `db/seed/default.sql` | structure: units, offices, privileges, module access. Runs in production. Generated, additive, re-runnable |
+| `db/migrations/` | the archived 0001–0013 series, folded into the baseline. Never applied again |
 
-**Which migrations has a database actually had?** Ask it:
-
-```sql
-select id, version, name, applied_at from public.schema_migrations order by id;
-```
-
-That table arrived with `0013`, which backfills `0001`–`0012`. Before it, the question
-was unanswerable — migrations were applied by hand and nothing recorded that they had
-been.
-
-Setting up from scratch:
-
-```bash
-# 1. apply db/migrations/*.sql in order, then:
-psql "$DATABASE_URL" -f db/seed/default.sql      # or paste into the SQL editor
-
-# 2. someone who can log in
-node scripts/bootstrap-admin.mjs <email> <password> [firstName] [lastName]
-
-# 3. development only — 110 fake members to test the handover against
-pnpm db:seed-test -- --password 'dev-pass'
-```
+Rebuilding everything from a fresh Supabase account:
+[docs/FRESH-START.md](./docs/FRESH-START.md).
 
 **Resetting a staging or dev project** back to a known state — one command:
 
@@ -162,11 +151,12 @@ src/app/        App Router routes only. Route groups (auth) and (home) add no UR
                 actions) and components/ folder.
 src/components/ Shared UI by domain: ui/ (primitives), auth/, layout/, events/,
                 dashboard/, lo-app/
-src/lib/        Core logic — ict.ts, auth-roles.ts, access-control.ts, auth/,
-                invites.ts, stores/, hooks/, utils.ts
+src/lib/        Core logic: db.ts, auth-roles.ts, access-control.ts, auth/,
+                invites.ts, env.ts, stores/, hooks/, utils.ts
 src/config/     Static config; sidebar-items.tsx is the single source of truth for nav
 src/proxy.ts    Next 16 network boundary (replaces middleware.ts, Node runtime)
-db/             Schema dump + ordered migrations
+supabase/       Migrations (applied by CI)
+db/             Structure seed, schema dump, archived migrations
 scripts/        One-off operational scripts
 docs/           Design notes — see the caveat below
 ```
@@ -197,14 +187,29 @@ with no password; they set one on first sign-in.
 
 ## Contributing
 
-- **4-space indentation** (enforced by `eslint.config.mjs`) — this deliberately
-  overrides the more common 2-space default.
-- `src/components/ui/` is hand-rolled on purpose. Don't swap in shadcn/MUI.
-- Read [AGENTS.md](./AGENTS.md) before starting — it is the canonical spec for this
-  repo and applies to humans and AI agents alike.
+See [CONTRIBUTING.md](./CONTRIBUTING.md): branches, checks, database rules, code style
+and releases. [AGENTS.md](./AGENTS.md) is the full spec for this repo, for people and AI
+agents alike.
+
+## Project documents
+
+| | |
+|---|---|
+| [docs/HANDBOOK.md](./docs/HANDBOOK.md) | The successor's handbook: every role, screen, yearly task and runbook |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | How a change gets from a branch to production |
+| [SECURITY.md](./SECURITY.md) | Reporting a problem privately, and rotating a leaked secret |
+| [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) | How we work together, and how we treat member data |
+| [CHANGELOG.md](./CHANGELOG.md) | What changed in each release |
+| [LICENSE](./LICENSE) | Proprietary: all rights reserved to RCF FUTA |
 
 ## A note on the docs
 
 `docs/` and the various feature-level markdown files were written at different points
 and drift from the code. **When a doc and the code disagree, the code wins** — fix the
 doc in the same PR rather than guessing which one is current.
+
+## Licence
+
+Proprietary. Copyright (c) 2026 RCF FUTA, all rights reserved. Members of the ICT unit
+and others the fellowship authorises may use and change it for the fellowship's work.
+See [LICENSE](./LICENSE).

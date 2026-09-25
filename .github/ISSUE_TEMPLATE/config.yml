@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+    - name: Report a security problem privately
+      url: https://github.com/rcffuta/ict-portal/security/advisories/new
+      about: Anything that exposes member data or lets someone do what they shouldn't. Never file these as public issues.
