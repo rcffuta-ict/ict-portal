@@ -12,6 +12,41 @@
   --animate-loading-bar: loadingBar 2s ease-in-out infinite;
   --animate-float: float 3s ease-in-out infinite;
   --animate-float-delayed: float 3s ease-in-out infinite 1s;
+  /* Landing page — always used behind `motion-safe:`, so reduced motion is honoured. */
+  --animate-orbit: orbit 90s linear infinite;
+  --animate-orbit-reverse: orbit 140s linear infinite reverse;
+  --animate-glow: glow 6s ease-in-out infinite;
+  --animate-trace: trace 7s ease-in-out infinite;
+
+  @keyframes orbit {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes glow {
+    0%, 100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  /* A pulse of light travelling along a circuit trace (stroke-dasharray paths). */
+  @keyframes trace {
+    0% {
+      stroke-dashoffset: 240;
+      opacity: 0;
+    }
+    15% {
+      opacity: 1;
+    }
+    70%, 100% {
+      stroke-dashoffset: 0;
+      opacity: 0;
+    }
+  }
 
   @keyframes fadeIn {
     from {
@@ -60,6 +95,14 @@
       opacity: 1;
     }
   }
+}
+
+/* Editorial serif for headlines and scripture. The font file itself is only loaded by
+   the landing page (src/app/(home)/page.tsx), which sets --font-instrument-serif on its
+   wrapper; elsewhere `font-display` falls back to Georgia. `inline` matters: it puts the
+   var() in the utility, so it resolves where the class is used, not on :root. */
+@theme inline {
+  --font-display: var(--font-instrument-serif, Georgia), Georgia, "Times New Roman", serif;
 }
 
 @layer components {
