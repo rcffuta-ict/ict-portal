@@ -14,7 +14,7 @@
  */
 import { db } from "@/lib/db";
 import { fetchAll } from "@/lib/fetch-all";
-import { computeLevel } from "@/lib/levels";
+import { compareGenerations, computeLevel } from "@/lib/levels";
 import { genderForUnitSlug } from "@/config/fellowship-units";
 import { TIER_LABELS, TIER_ORDER, type PositionTier } from "@/config/leadership-positions";
 
@@ -202,7 +202,7 @@ export async function computeSessionInsight(): Promise<SessionInsight> {
         id: string; family_name: string | null; entry_year: number;
         is_foundation: boolean | null; level_override: string | null;
     };
-    const generations = ((setsRes.data ?? []) as ClassSetRow[]).map((s) => {
+    const generations = [...((setsRes.data ?? []) as ClassSetRow[])].sort(compareGenerations).map((s) => {
         const g = gens.get(s.id) ?? { members: 0, workers: 0, male: 0, female: 0, unspecified: 0 };
         return {
             id: s.id,

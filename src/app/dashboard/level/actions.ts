@@ -4,7 +4,7 @@
 import { db } from "@/lib/db";
 import { requireModuleRead, canManageLevel } from "@/lib/access-control";
 import { getActiveTenure } from "@/utils/action";
-import { computeLevel } from "@/lib/levels";
+import { compareGenerations, computeLevel } from "@/lib/levels";
 import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-context";
 import {
     listInvitesByClassSet,
@@ -115,7 +115,8 @@ export async function getLevelModuleData() {
             addToGenderTally(stats.get(p.class_set_id)!, p.gender);
         }
 
-        const generations = (sets ?? []).map((s: any) => ({
+        // PDS/UABS first, then 100 Level to the oldest (compareGenerations).
+        const generations = [...(sets ?? [])].sort(compareGenerations).map((s: any) => ({
             classSetId: s.id,
             familyName: s.family_name,
             entryYear: s.entry_year,

@@ -21,7 +21,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { fetchAll } from "@/lib/fetch-all";
-import { computeLevel, sessionStartYear } from "@/lib/levels";
+import { computeLevel, entryLevelName, sessionStartYear } from "@/lib/levels";
 import { tenureFullLabel } from "@/lib/tenure";
 import { ensureLoginProvisioned, deprovisionLoginIfUnappointed } from "@/lib/auth/provision";
 import { logMembershipEvents, type MembershipActor } from "@/lib/fellowship";
@@ -326,6 +326,9 @@ async function switchTenure(
  *   100 Level  a generation for the new session's entry year is created if there isn't
  *              one, so the level exists (with its own level link) from day one.
  *
+ * Both are named here too (entryLevelName): PDS/UABS takes the new session's name
+ * ("2028/2029"), and 100 Level is "2028 Set" unless it already has a name.
+ *
  * One wrinkle: generations are unique by entry year, and the foundation generation is
  * keyed by the NEXT intake's year (session start + 1, see scripts/seed-staging.mjs). That
  * is exactly the year the new 100 Level needs, so the foundation generation is moved on
@@ -340,10 +343,18 @@ async function resetEntryLevels(incomingSession: string): Promise<string[]> {
 
     const { data: sets, error } = await db
         .from("class_sets")
-        .select("id, entry_year, is_foundation");
+        .select("id, entry_year, is_foundation, family_name");
     if (error) throw new Error(error.message);
-    const all = (sets ?? []) as { id: string; entry_year: number; is_foundation: boolean | null }[];
+    const all = (sets ?? []) as { id: string; entry_year: number; is_foundation: boolean | null; family_name: string | null }[];
     const foundation = all.filter((s) => s.is_foundation);
+
+    if (foundation.length) {
+        const { error: nameError } = await db
+            .from("class_sets")
+            .update({ family_name: entryLevelName(true, incomingSession) })
+            .in("id", foundation.map((s) => s.id));
+        if (nameError) warnings.push(`PDS/UABS could not be renamed to ${incomingSession} (${nameError.message}).`);
+    }
 
     if (foundation.length) {
         const { error: unlinkError } = await db
@@ -369,11 +380,14 @@ async function resetEntryLevels(incomingSession: string): Promise<string[]> {
         }
     }
 
-    const hasFirstYear = all.some((s) => s.entry_year === start && !s.is_foundation);
-    if (!hasFirstYear) {
+    const firstYear = all.find((s) => s.entry_year === start && !s.is_foundation);
+    if (firstYear && !firstYear.family_name?.trim()) {
+        await db.from("class_sets").update({ family_name: entryLevelName(false, incomingSession) }).eq("id", firstYear.id);
+    }
+    if (!firstYear) {
         const { error: createError } = await db
             .from("class_sets")
-            .insert({ entry_year: start, family_name: null, is_foundation: false });
+            .insert({ entry_year: start, family_name: entryLevelName(false, incomingSession), is_foundation: false });
         if (createError) warnings.push(`100 Level (${start}) could not be created (${createError.message}); create it from the Generations tab.`);
     }
     return warnings;

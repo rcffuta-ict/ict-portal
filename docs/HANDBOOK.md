@@ -217,7 +217,10 @@ When it takes effect it also:
   generation (they are neither PDS/UABS nor 100 Level any more) and are not carried into
   units. They re-join through a level link once admitted.
 - **Opens an empty 100 Level**, a generation for the new session's entry year, created
-  if it doesn't exist. Every other level fills itself, since everyone moves up one.
+  if it doesn't exist and named after that year (`2028 Set`). Every other level fills
+  itself, since everyone moves up one.
+- **Renames PDS/UABS to the new session** (`2028/2029`). PDS/UABS members are aspirants,
+  not yet students, so PDS/UABS always ranks below 100 Level and is listed first.
 - **Closes any open Academics results round**, since a round belongs to its session.
 
 The new tenure opens **awaiting coronation**. Every handover, finished or abandoned, is

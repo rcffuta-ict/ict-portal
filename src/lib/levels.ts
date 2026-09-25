@@ -66,6 +66,33 @@ export function isEditableGenerationLevel(level: string | null | undefined): boo
     return level === "Alumni" || /^[2-5]00 Level$/.test(level ?? "");
 }
 
+/**
+ * Order for generation lists: the lowest standing first. PDS/UABS always comes first,
+ * because its members are aspirants, not yet students, so it ranks below 100 Level
+ * whatever year it is keyed by. Then the youngest generation (100 Level) to the oldest.
+ *
+ * Needed because the foundation generation's entry year is only a key (the next
+ * intake's year), so sorting by entry year alone could put it anywhere.
+ */
+export function compareGenerations(
+    a: { entry_year: number | null; is_foundation?: boolean | null },
+    b: { entry_year: number | null; is_foundation?: boolean | null },
+): number {
+    if (!!a.is_foundation !== !!b.is_foundation) return a.is_foundation ? -1 : 1;
+    return (b.entry_year ?? 0) - (a.entry_year ?? 0);
+}
+
+/**
+ * A generation's standing name. PDS/UABS takes the active session's name
+ * ("2028/2029"), since a new aspirant intake arrives every session; 100 Level is named
+ * after its entry year ("2028 Set"). Both are applied at handover.
+ */
+export function entryLevelName(isFoundation: boolean, session: string): string | null {
+    if (isFoundation) return session;
+    const start = sessionStartYear(session);
+    return start == null ? null : `${start} Set`;
+}
+
 /** Display order for level labels: foundation, 100 → 500, then Alumni; unknowns last. */
 const LEVEL_ORDER: string[] = ["Pre-100", ...LEVELS, "Alumni"];
 
