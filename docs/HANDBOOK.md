@@ -595,6 +595,30 @@ pnpm build    # the real correctness check for routes, server actions and auth
 
 There is no automated test suite yet.
 
+### 7.7 Tracing what happened: the audit trail (System Admin)
+
+`pnpm audit:log` shows every trail the system keeps in one timeline, in Lagos time:
+admin actions, sign-ins and failed sign-ins, sessions, appointments made and ended,
+unit membership changes, transfers, level links, handover proceedings, results
+submitted and corrected, rounds, identity checks on public pages, event registrations
+and new profiles. You sign in with your portal email and password, and only the System
+Admin gets in. Your viewing is itself recorded (`audit.cli`).
+
+```bash
+pnpm audit:log                                  # the last 24 hours
+pnpm audit:log -- --since 7d --summary          # a week: counts, busiest people, failures
+pnpm audit:log -- --subject "ada" --since 30d   # everything done TO one member
+pnpm audit:log -- --actor "ada"                 # everything done BY one person
+pnpm audit:log -- --source login --action fail  # failed sign-ins only
+pnpm audit:log -- --follow                      # watch live, like tail -f
+pnpm audit:log -- --csv trail.csv               # export (holds personal data)
+pnpm audit:log -- --help                        # every source
+```
+
+To trace something: start broad with `--summary` over the right window, then narrow with
+`--subject` or `--actor`. Many failed sign-ins for one email means someone is guessing a
+password; many from one IP means someone is probing.
+
 ---
 
 ## 8. Security rules that must not be broken
