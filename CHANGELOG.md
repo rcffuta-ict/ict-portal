@@ -38,6 +38,8 @@ push to `stage`, production on a push to `main`. The Free plan has no
 automatic backups, so take a full system backup first (Settings -> System
 insurance). Migrations in this release:
 
+> Did strong reset
+
 - `supabase/migrations/20260101000000_0000_baseline.sql`
 - `supabase/migrations/20260101000100_0011_frozen_catalogue_and_transfers.sql`
 - `supabase/migrations/20260101000200_0012_handover_intents.sql`
