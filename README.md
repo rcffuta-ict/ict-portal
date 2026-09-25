@@ -113,6 +113,7 @@ node scripts/release.mjs --major --commit  # MAJOR is never inferred; you pass i
 ### Other tools
 
 ```bash
+pnpm audit:log -- --help           # System Admin: the whole audit trail as one timeline
 node scripts/db-inventory.mjs      # row counts, grouped PORTAL / FOREIGN / UNCLASSIFIED
 node scripts/restore-backup.mjs    # restore a .rcfvault (dry run by default)
 node scripts/purge-auth-users.mjs  # delete orphaned Supabase auth.users rows

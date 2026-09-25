@@ -14,6 +14,7 @@
         "db:seed-staging": "node scripts/seed-staging.mjs",
         "db:reset-staging": "node scripts/seed-staging.mjs --reset --with-members",
         "backup": "node scripts/backup.mjs",
+        "audit:log": "node scripts/audit.mjs",
         "db:inventory": "node scripts/db-inventory.mjs",
         "db:seed-test": "node scripts/seed-test.mjs",
         "db:purge-auth": "node scripts/purge-auth-users.mjs",

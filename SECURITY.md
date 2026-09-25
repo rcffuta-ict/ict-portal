@@ -37,8 +37,8 @@ Rotate it straight away. Don't wait to find out whether it was used.
 | Database password | Supabase → Project settings → Database | Update the GitHub Actions secret |
 | `SUPABASE_ACCESS_TOKEN` | Supabase → Account → Access tokens | Update the GitHub Actions secret |
 
-Then look for anything unusual in the portal's **Oracle** audit trail and in the
-Supabase project's logs.
+Then look for anything unusual: run `pnpm audit:log -- --since 7d --summary` (System
+Admin), and check the Supabase project's logs.
 
 ## How the portal is protected
 
