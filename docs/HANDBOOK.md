@@ -202,6 +202,24 @@ come back: an unfinished handover stays open and is resumed from the same place.
    - *Revoke outgoing leaders' logins* (anyone not re-appointed in step 4).
 6. **Commit.** A summary, then type the session to confirm.
 
+**It takes effect one hour later.** Confirming only schedules the switch. For that hour
+nothing changes: the current tenure stays active and the outgoing cabinet keeps its
+access, so they can wrap up. The handover page shows a countdown and a **Cancel
+handover** button; a cancelled handover is kept in the history, and you can start a new
+one. When the hour is up the switch happens the next time anyone uses the portal
+(usually within a minute), and everything is checked again first. If the active tenure
+changed during the hour, or an appointee no longer exists, the handover is marked
+**Did not take effect** and nothing is changed.
+
+When it takes effect it also:
+
+- **Empties PDS/UABS.** Last session's PDS/UABS members are unlinked from their
+  generation (they are neither PDS/UABS nor 100 Level any more) and are not carried into
+  units. They re-join through a level link once admitted.
+- **Opens an empty 100 Level**, a generation for the new session's entry year, created
+  if it doesn't exist. Every other level fills itself, since everyone moves up one.
+- **Closes any open Academics results round**, since a round belongs to its session.
+
 The new tenure opens **awaiting coronation**. Every handover, finished or abandoned, is
 kept in the handover history for successors to read.
 
@@ -405,7 +423,7 @@ Members' semester results, collected in **rounds**. FUTA grades on a 5-point sca
 Each member reports their **GPA** (that semester) and **CGPA** (their running
 standing). The class bands: First 4.50–5.00, Second Upper 3.50–4.49, Second Lower
 2.40–3.49, Third 1.50–2.39, Pass 1.00–1.49, Probation below 1.00 (`src/lib/academics.ts`).
-Semesters are **Harmattan** (1) and **Rain** (2) of an academic session.
+Each academic session has a **first** and a **second** semester.
 
 - **Overview.** One semester for the whole fellowship: figures, class of degree,
   breakdowns, trend. Below that, **Submitted**, **At risk** (CGPA under 2.40, or GPA down
@@ -418,10 +436,16 @@ Semesters are **Harmattan** (1) and **Rain** (2) of an academic session.
 - **Records.** Every member who owes results or has any, with their latest CGPA. Open
   one to see their history and add, correct or delete a semester (recorded as the
   Academic Unit's entry, and audited). Export the latest per member, or every semester.
-- **Departments.** FUTA's schools and departments, as every form offers them. Add,
-  rename, change a code (members' records follow), or **retire** one (never delete:
-  records point at it). **Not matched** lists departments that were typed in by hand and
-  match nothing, so you can link each to the right one.
+- **Departments.** FUTA's schools and departments, as every form offers them. Figures
+  first (schools, departments, members linked, members not linked, retired). The list
+  opens as the schools, collapsed, each with its department and member counts. Search,
+  or pick a school or a member filter ("has members", "no members yet"), and it turns
+  into one sorted list of just the matches. Sort by name, code or member count, and
+  switch between active, retired and all. Add, rename, change a code (members' records
+  follow), or **retire** one (never delete: records point at it). Schools are renamed
+  from inside their group. **Not matched** lists departments that were typed in by hand
+  and match nothing. Each comes with a suggested match where there is a likely one (a
+  leading code like "CSC", or shared words). Nothing is linked until you press Link.
 - **Visibility.** Who else sees individual results: unit heads (on by default), level
   coordinators (off), members themselves (off). Only those who can edit Academics can
   change it. Totals are always shown.

@@ -6,7 +6,7 @@
  *   CGPA  their running standing after it, which decides the class of degree.
  *
  * A semester is identified by its academic SESSION ("2025/2026") and its number:
- * 1 = Harmattan (first), 2 = Rain (second). The academic session is the university's,
+ * 1 = first semester, 2 = second semester. The academic session is the university's,
  * and is not the fellowship's tenure, even though the two usually share a label.
  */
 import { computeLevel, sessionStartYear } from "@/lib/levels";
@@ -14,8 +14,8 @@ import { computeLevel, sessionStartYear } from "@/lib/levels";
 export type Semester = 1 | 2;
 
 export const SEMESTER_NAMES: Record<Semester, string> = {
-    1: "Harmattan",
-    2: "Rain",
+    1: "First semester",
+    2: "Second semester",
 };
 
 export const MAX_GRADE = 5;

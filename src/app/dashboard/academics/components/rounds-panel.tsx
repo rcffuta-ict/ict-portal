@@ -10,7 +10,7 @@ import { format } from "date-fns";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 import FormSelect from "@/components/ui/FormSelect";
 import FormInput from "@/components/ui/FormInput";
-import { SEMESTER_NAMES, isValidSession, sessionFor } from "@/lib/academics";
+import { isValidSession, sessionFor } from "@/lib/academics";
 import { sessionStartYear } from "@/lib/levels";
 import { displayLevelToken, resultsPath } from "@/lib/level-token";
 import type { AcademicRound } from "@/lib/academics-db";
@@ -299,7 +299,7 @@ function OpenRoundForm({
                                 className="flex h-12 cursor-pointer items-center justify-center rounded-xl border border-slate-200 text-sm font-bold text-slate-600 has-[:checked]:border-rcf-navy has-[:checked]:bg-rcf-navy/5 has-[:checked]:text-rcf-navy has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-rcf-navy"
                             >
                                 <input type="radio" value={s} className="sr-only" {...register("semester")} />
-                                {SEMESTER_NAMES[Number(s) as 1 | 2]}
+                                {s === "1" ? "First" : "Second"}
                             </label>
                         ))}
                     </div>

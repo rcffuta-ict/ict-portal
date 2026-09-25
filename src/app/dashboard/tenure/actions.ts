@@ -19,7 +19,7 @@ import { parsePalette } from "@/lib/palette";
 import { computeSessionInsight } from "@/lib/session-insight";
 import { getTenurePresidentName } from "@/lib/backup";
 import type { ProfileContext } from "@/lib/auth/profile-context";
-import { computeLevel, isEditableGenerationLevel, LEVELS } from "@/lib/levels";
+import { computeLevel, isEditableGenerationLevel, LEVELS, sessionStartYear } from "@/lib/levels";
 import { validatePrivilegeSet, derivePositionKind, normalizePrivileges } from "@/lib/privileges";
 import {
     ensureLoginProvisioned,
@@ -43,8 +43,13 @@ import {
     unitIdsOfMember,
     logMembershipEvents,
     membershipActorOf,
-    type MembershipActor,
 } from "@/lib/fellowship";
+import {
+    applyDueHandover,
+    logHandoverEvent as appendHandoverEvent,
+    HANDOVER_DELAY_MS,
+    type HandoverPlan,
+} from "@/lib/handover-schedule";
 import { revalidatePath } from "next/cache";
 import { addToGenderTally, emptyGenderTally, tallyGender, type GenderTally } from "@/lib/gender";
 import { genderForUnitSlug } from "@/config/fellowship-units";
@@ -301,9 +306,10 @@ export async function updateTenureAction(formData: FormData) {
 }
 
 /**
- * Handover: close the current tenure and open the next one in a single step,
- * auto-appointing the incoming VP Admin and ICT Coordinator into the new tenure.
- * This is the sanctioned way to end a tenure (see the Tenure Profile tab).
+ * Handover: close the current tenure and open the next one, auto-appointing the
+ * incoming VP Admin and ICT Coordinator into the new tenure. It takes effect an hour
+ * after the wizard is finished (src/lib/handover-schedule.ts). This is the sanctioned
+ * way to end a tenure (see the Tenure Profile tab).
  */
 /**
  * The most recent backup taken during a tenure, or null.
@@ -393,8 +399,22 @@ export async function getHandoverPreviewAction(incomingSession: string) {
                 to,
                 becomesAlumni: to === "Alumni" && from !== "Alumni",
                 pinned: !!s.level_override,
+                // PDS/UABS is emptied at every handover (resetEntryLevels).
+                isFoundation: !!s.is_foundation,
             };
         });
+
+        // What the switch does to the two entry levels: last session's PDS/UABS members
+        // are unlinked, and 100 Level starts empty (created if it doesn't exist).
+        const foundationIds = (sets ?? []).filter((s: any) => s.is_foundation).map((s: any) => s.id);
+        const { count: foundationMembers } = foundationIds.length
+            ? await db.from("profiles").select("id", { count: "exact", head: true }).in("class_set_id", foundationIds)
+            : { count: 0 };
+        const firstYear = sessionStartYear(incomingSession);
+
+        // Closed at the switch: a round belongs to the session it was opened in.
+        const { data: openRound } = await db
+            .from("academic_rounds").select("session, semester").is("closed_at", null).maybeSingle();
 
         // Everyone appointed in the outgoing tenure. None of them carry over
         // automatically, so all of them lose portal access unless reappointed.
@@ -452,6 +472,9 @@ export async function getHandoverPreviewAction(incomingSession: string) {
             backupTrackingUnavailable,
             presidentName,
             membershipCount: membershipCount ?? 0,
+            foundationMembers: foundationMembers ?? 0,
+            firstYear,
+            openRound: openRound ? `${openRound.session} · ${openRound.semester === 1 ? "First" : "Second"} semester` : null,
         };
     } catch (e: any) {
         return { success: false as const, error: e.message };
@@ -459,19 +482,19 @@ export async function getHandoverPreviewAction(incomingSession: string) {
 }
 
 /**
- * Hand over to a new tenure.
+ * Finish a handover: check everything, then SCHEDULE the switch for an hour later.
  *
- * The sequence, in order, and why:
- *   1. Refuse without a backup. A handover cannot be undone from inside the app.
- *   2. Close the outgoing tenure, open the incoming one. THIS is what advances every
- *      generation — see getHandoverPreviewAction.
- *   3. Appoint the incoming VP Admin and ICT Coordinator, so the new tenure is never
- *      left unadministrable.
- *   4. Carry unit/team membership forward for everyone who has not graduated.
- *   5. Revoke portal access for outgoing leaders who were not carried over.
+ * Nothing changes here. The switch (close the outgoing tenure, open the incoming one,
+ * appoint its VP Admin and ICT Coordinator, carry membership forward, revoke outgoing
+ * logins) runs once the hour is up — see src/lib/handover-schedule.ts. The hour lets the
+ * outgoing cabinet wrap up and lets the VP Admin or System Admin cancel.
  *
- * Steps 4 and 5 are opt-out flags rather than assumptions, because both are large and
- * neither is obviously right for every fellowship.
+ * Every check that can be made now is made now, so a mistake is caught while the
+ * person who made it is still looking. The switch checks again when it runs, because
+ * an hour is long enough for things to change.
+ *
+ * Membership and revocation are opt-out flags rather than assumptions, because both
+ * are large and neither is obviously right for every fellowship.
  */
 export async function handoverTenureAction(formData: FormData) {
     // A handover is the write-bypass tier's alone — not the wider tenure-write group.
@@ -485,29 +508,32 @@ export async function handoverTenureAction(formData: FormData) {
         const revokeOutgoing = formData.get("revokeOutgoing") !== "false";
         const intentId = (formData.get("intentId") as string) || null;
 
-        if (!session || !startDate) {
-            return { success: false, error: "The new session and its start date are required." };
+        if (!intentId) {
+            return { success: false as const, error: "This handover has no record to schedule. Start it again from Handing Over." };
+        }
+        if (!session || !startDate || Number.isNaN(new Date(startDate).getTime())) {
+            return { success: false as const, error: "The new session and its start date are required." };
         }
         if (!vpAdminProfileId || !ictCoordProfileId) {
-            return { success: false, error: "You must appoint the incoming VP Admin and ICT Coordinator." };
+            return { success: false as const, error: "You must appoint the incoming VP Admin and ICT Coordinator." };
         }
 
-        const { data: outgoingForBackup } = await db
+        const { data: outgoing } = await db
             .from('tenures').select('id').eq('is_active', true).maybeSingle();
 
         // 1. A backup is the only undo for this. Refuse without one taken during the
         //    tenure being closed — an older bundle wouldn't restore what is about to be
         //    changed.
-        const backupCheck = await findBackupForTenure(outgoingForBackup?.id ?? null);
+        const backupCheck = await findBackupForTenure(outgoing?.id ?? null);
         if (backupCheck && "unavailable" in backupCheck) {
             return {
-                success: false,
+                success: false as const,
                 error: "Backup downloads aren't being recorded, so this can't be verified. Apply db/migrations/0010_admin_audit_log.sql first.",
             };
         }
         if (!backupCheck) {
             return {
-                success: false,
+                success: false as const,
                 error: "Download a backup of THIS tenure before handing over — it cannot be undone from inside the app.",
             };
         }
@@ -516,210 +542,93 @@ export async function handoverTenureAction(formData: FormData) {
             .from('leadership_positions')
             .select('id, title')
             .in('title', ['Vice President Administration', 'ICT Coordinator']);
-        const vpPos = positions?.find((p) => p.title === 'Vice President Administration');
-        const ictPos = positions?.find((p) => p.title === 'ICT Coordinator');
-        if (!vpPos || !ictPos) {
-            return { success: false, error: "Default VP Admin / ICT Coordinator positions are missing. Run the catalogue sync first." };
+        if ((positions ?? []).length < 2) {
+            return { success: false as const, error: "Default VP Admin / ICT Coordinator positions are missing. Run the catalogue sync first." };
         }
 
-        const { data: outgoingTenure } = await db
-            .from('tenures').select('id').eq('is_active', true).maybeSingle();
+        const { data: appointees } = await db
+            .from('profiles').select('id').in('id', [vpAdminProfileId, ictCoordProfileId]);
+        const found = new Set((appointees ?? []).map((p: any) => p.id));
+        if (!found.has(vpAdminProfileId) || !found.has(ictCoordProfileId)) {
+            return { success: false as const, error: "The incoming VP Admin or ICT Coordinator couldn't be found. Choose them again." };
+        }
 
-        // Who held a position on the way out — captured before anything changes.
-        const { data: outgoingLeaders } = outgoingTenure
-            ? await db.from('leadership').select('profile_id')
-                .eq('tenure_id', outgoingTenure.id).is('ended_at', null)
-            : { data: [] };
-        const outgoingIds = Array.from(new Set((outgoingLeaders ?? []).map((l: any) => l.profile_id)));
+        const plan: HandoverPlan = {
+            session,
+            startDate: new Date(startDate).toISOString(),
+            vpAdminProfileId,
+            ictCoordProfileId,
+            carryMembership,
+            revokeOutgoing,
+        };
+        const actor = actorOf(ctx);
+        const now = Date.now();
+        const effectiveAt = new Date(now + HANDOVER_DELAY_MS).toISOString();
 
-        // 2. Close the current tenure and open the new one.
-        await db.from('tenures')
-            .update({ is_active: false, end_date: new Date().toISOString() })
-            .eq('is_active', true);
-
-        const { data: newTenure, error: tErr } = await db.from('tenures')
-            // Opened uncoronated: a handover starts a session, the retreat names it.
-            .insert({
-                session,
-                start_date: new Date(startDate).toISOString(),
-                is_active: true,
+        // Conditional on the intent still being open AND belonging to the tenure that is
+        // active now: a second tab, or a stale wizard, cannot schedule it twice.
+        const { data: scheduled, error: scheduleError } = await db
+            .from("handover_intents")
+            .update({
+                status: "scheduled",
+                plan,
+                effective_at: effectiveAt,
+                scheduled_at: new Date(now).toISOString(),
+                scheduled_by: actor.id,
+                scheduled_by_name: actor.name,
+                step: 6,
             })
-            .select('id')
-            .single();
-        if (tErr || !newTenure) return { success: false, error: tErr?.message || "Could not create the new tenure." };
-
-        // 3. Incoming defaults.
-        const { error: lErr } = await db.from('leadership').insert([
-            { tenure_id: newTenure.id, profile_id: vpAdminProfileId, position_id: vpPos.id, is_lead: true },
-            { tenure_id: newTenure.id, profile_id: ictCoordProfileId, position_id: ictPos.id, is_lead: true },
-        ]);
-        if (lErr) return { success: false, error: `Tenure created, but appointing leaders failed: ${lErr.message}` };
-
-        for (const id of [vpAdminProfileId, ictCoordProfileId]) {
-            try {
-                await ensureLoginProvisioned(id, ctx.profile.id);
-            } catch (e: any) {
-                console.error("handover login provisioning failed:", e.message);
-            }
+            .eq("id", intentId)
+            .eq("from_tenure_id", outgoing?.id ?? "")
+            .in("status", ["draft", "in_progress"])
+            .select("id")
+            .maybeSingle();
+        if (scheduleError) return { success: false as const, error: scheduleError.message };
+        if (!scheduled) {
+            return {
+                success: false as const,
+                error: "This handover is already scheduled or finished, or it belongs to a tenure that is no longer active. Reload the page.",
+            };
         }
 
-        // 4. Carry membership forward, minus the graduating generation.
-        //    The new tenure already exists by now, so a failure here must not abort the
-        //    rest of the handover (appointments, revocation, closing the intent) — it is
-        //    reported instead, on the completion screen and in the handover record.
-        let carried = 0;
-        let carryError: string | null = null;
-        if (carryMembership && outgoingTenure) {
-            try {
-                const result = await carryMembershipForward(
-                    outgoingTenure.id, newTenure.id, session, membershipActorOf(ctx),
-                );
-                carried = result.inserted;
-                if (result.failed > 0) {
-                    carryError = `${result.failed} membership${result.failed === 1 ? "" : "s"} could not be copied. Those members need adding to their units again.`;
-                }
-            } catch (e: any) {
-                console.error("handover carry-over failed:", e.message);
-                carryError = `Memberships were not carried forward (${e.message}). Units start empty until members are added again.`;
-            }
-        }
+        await logHandoverEvent(
+            intentId,
+            ctx,
+            "scheduled",
+            `Scheduled the switch to ${tenureFullLabel({ session })} for ${formatWatTime(effectiveAt)}. `
+                + `Membership ${carryMembership ? "will be carried forward" : "will not be carried forward"}; `
+                + `outgoing logins ${revokeOutgoing ? "will be revoked" : "will be left in place"}.`,
+        );
 
-        // 5. Revoke access for outgoing leaders who weren't carried over. Runs against
-        //    the NEW tenure, so anyone reappointed in step 3 keeps their login.
-        let revoked = 0;
-        if (revokeOutgoing) {
-            for (const profileId of outgoingIds) {
-                try {
-                    const { removed } = await deprovisionLoginIfUnappointed(profileId);
-                    if (removed) revoked += 1;
-                } catch (e: any) {
-                    console.error(`handover: could not revoke ${profileId}:`, e.message);
-                }
-            }
-        }
-
-        // Close out the intent: this is the row a successor reads to see what happened.
-        if (intentId) {
-            const actor = actorOf(ctx);
-            const { error: intentError } = await db
-                .from("handover_intents")
-                .update({
-                    status: "completed",
-                    to_tenure_id: newTenure.id,
-                    completed_by: actor.id,
-                    completed_by_name: actor.name,
-                    completed_at: new Date().toISOString(),
-                    step: 6,
-                })
-                .eq("id", intentId);
-            if (intentError) console.error("handover intent completion failed:", intentError.message);
-
-            await logHandoverEvent(
-                intentId,
-                ctx,
-                "completed",
-                `Opened ${tenureFullLabel({ session })}. ${carried} membership${carried === 1 ? "" : "s"} carried forward, ${revoked} outgoing login${revoked === 1 ? "" : "s"} revoked.`
-                    + (carryError ? ` WARNING: ${carryError}` : ""),
-            );
-        }
-
-        // A new active tenure means a new (usually absent) palette for every page.
-        revalidatePath('/dashboard', 'layout');
-        return { success: true, tenureId: newTenure.id, carried, revoked, carryError };
+        revalidatePath("/dashboard/tenure/handover");
+        return { success: true as const, effectiveAt };
     } catch (e: any) {
-        return { success: false, error: e.message };
+        return { success: false as const, error: e.message };
     }
 }
 
+/** Lagos wall-clock time, for proceedings lines ("25 Sept 2026, 14:05"). */
+function formatWatTime(iso: string): string {
+    return new Intl.DateTimeFormat("en-NG", {
+        timeZone: "Africa/Lagos",
+        dateStyle: "medium",
+        timeStyle: "short",
+    }).format(new Date(iso));
+}
+
 /**
- * Copy unit/team membership into the new tenure, skipping anyone who has graduated.
- *
- * Without this every unit and team starts the session completely empty, and each
- * executive re-adds their whole roster by hand — membership rows are tenure-scoped, so
- * a new tenure genuinely has none. Members whose generation computes to "Alumni" under
- * the INCOMING session are left behind, which is how graduation actually takes effect
- * on the workforce.
+ * The scheduled screen calls this when its countdown ends, so the switch happens then
+ * rather than waiting for somebody else to use the portal. It only ever applies a
+ * handover whose hour is actually up; calling it early does nothing.
  */
-async function carryMembershipForward(
-    fromTenureId: string,
-    toTenureId: string,
-    incomingSession: string,
-    actor: MembershipActor,
-): Promise<{ inserted: number; failed: number }> {
-    // Every read here must be complete and must not fail quietly: a short profile list
-    // would carry graduates forward as if they were still students, and a short
-    // membership list would leave people out of their units. So reads are paged
-    // (fetchAll) and errors throw — the caller reports them rather than "0 carried".
-    const { data: sets, error: setsError } = await db
-        .from("class_sets")
-        .select("id, entry_year, is_foundation, level_override");
-    if (setsError) throw new Error(`Could not read generations: ${setsError.message}`);
-
-    const graduated = new Set(
-        (sets ?? [])
-            .filter((s: any) => {
-                const level = s.level_override
-                    || computeLevel(s.entry_year, s.is_foundation, incomingSession);
-                return level === "Alumni";
-            })
-            .map((s: any) => s.id),
-    );
-
-    const profiles = await fetchAll<{ id: string; class_set_id: string | null }>((from, to) =>
-        db.from("profiles").select("id, class_set_id").order("id").range(from, to),
-    );
-    const alumniProfileIds = new Set(
-        profiles
-            .filter((p: any) => p.class_set_id && graduated.has(p.class_set_id))
-            .map((p: any) => p.id),
-    );
-
-    const memberships = await fetchAll<{ profile_id: string; unit_id: string; role: string | null }>((from, to) =>
-        db.from("membership_units")
-            .select("profile_id, unit_id, role")
-            .eq("tenure_id", fromTenureId)
-            .order("id")
-            .range(from, to),
-    );
-
-    const rows = memberships
-        .filter((m: any) => !alumniProfileIds.has(m.profile_id))
-        .map((m: any) => ({
-            profile_id: m.profile_id,
-            unit_id: m.unit_id,
-            tenure_id: toTenureId,
-            role: m.role ?? "Member",
-        }));
-
-    if (!rows.length) return { inserted: 0, failed: 0 };
-
-    // Chunked: a fellowship-sized insert in one request is a good way to hit a
-    // statement or payload limit at the worst possible moment.
-    let inserted = 0;
-    let failed = 0;
-    for (let i = 0; i < rows.length; i += 500) {
-        const chunk = rows.slice(i, i + 500);
-        const { error } = await db.from("membership_units").insert(chunk);
-        if (error) {
-            // Counted, not swallowed: the caller tells the VP Admin how many were missed.
-            console.error("carryMembershipForward chunk failed:", error.message);
-            failed += chunk.length;
-            continue;
-        }
-        inserted += chunk.length;
-        // Logged per chunk, and only for chunks that landed, so the log never claims a
-        // carry-over that the insert refused.
-        await logMembershipEvents(
-            chunk.map((r) => ({
-                profileId: r.profile_id,
-                unitId: r.unit_id,
-                tenureId: toTenureId,
-                action: "carried_over" as const,
-            })),
-            actor,
-        );
+export async function applyDueHandoverAction() {
+    try {
+        await requireVpAdmin();
+        await applyDueHandover({ force: true });
+        return { success: true as const };
+    } catch (e: any) {
+        return { success: false as const, error: e.message as string };
     }
-    return { inserted, failed };
 }
 
 /**
@@ -944,13 +853,17 @@ export async function createGenerationAction(formData: FormData) {
 export async function resetLeaderLoginAction(profileId: string) {
     try {
         const ctx = await requireVpAdmin();
-        const { data: target } = await db
-            .from("profiles")
-            .select("id, first_name, last_name, profile_login(id)")
-            .eq("id", profileId)
-            .maybeSingle();
-        const login = Array.isArray(target?.profile_login) ? target?.profile_login[0] : target?.profile_login;
-        if (!target || !login) {
+        // Two separate reads, not `profiles.select("…, profile_login(id)")`: profile_login
+        // points at profiles TWICE (profile_id and granted_by), so that embed is ambiguous
+        // and PostgREST refuses it (PGRST201). The error used to be ignored, which read as
+        // "no login" and the reset silently did nothing.
+        const [{ data: target, error: targetError }, { data: login, error: loginError }] = await Promise.all([
+            db.from("profiles").select("id, first_name, last_name").eq("id", profileId).maybeSingle(),
+            db.from("profile_login").select("id").eq("profile_id", profileId).maybeSingle(),
+        ]);
+        if (targetError || loginError) throw new Error((targetError ?? loginError)!.message);
+        if (!target) return { success: false as const, error: "That member no longer exists." };
+        if (!login) {
             return { success: false as const, error: "This person doesn't have a portal login to reset." };
         }
 
@@ -1940,24 +1853,19 @@ function actorOf(ctx: ProfileContext) {
     };
 }
 
-/** Append one line to an intent's proceedings log. Never fails the caller. */
-async function logHandoverEvent(
+/** Append one line to an intent's proceedings log, as the signed-in person. */
+function logHandoverEvent(
     intentId: string,
     ctx: ProfileContext,
     action: string,
     detail?: string | null,
 ) {
-    const actor = actorOf(ctx);
-    const { error } = await db.from("handover_events").insert({
-        intent_id: intentId,
-        action,
-        detail: detail ?? null,
-        actor_id: actor.id,
-        actor_name: actor.name,
-    });
-    // A lost log line is bad; a handover that fails because logging failed is worse.
-    if (error) console.error("handover_events insert failed:", error.message);
+    return appendHandoverEvent(intentId, actorOf(ctx), action, detail);
 }
+
+/** The statuses an intent can have. `scheduled` and `applying` are still open. */
+export type HandoverStatus =
+    | "draft" | "in_progress" | "scheduled" | "applying" | "completed" | "abandoned" | "failed";
 
 /**
  * Every handover attempt, newest first — the index page's whole content.
@@ -1975,6 +1883,7 @@ export async function listHandoverIntentsAction() {
                 id, status, step, from_tenure_id, from_tenure_name, from_tenure_session,
                 to_tenure_id, initiated_by_name, completed_by_name, completed_at,
                 abandoned_reason, created_at, updated_at, payload,
+                effective_at, failure_reason, plan,
                 to_tenure:tenures!handover_intents_to_tenure_id_fkey(session, theme)
             `)
             .order("created_at", { ascending: false })
@@ -1996,7 +1905,7 @@ export async function listHandoverIntentsAction() {
                 const to = one(r.to_tenure) as { session: string; theme: string | null } | null;
                 return {
                     id: r.id,
-                    status: r.status as "draft" | "in_progress" | "completed" | "abandoned",
+                    status: r.status as HandoverStatus,
                     step: r.step,
                     fromTenure: {
                         id: r.from_tenure_id,
@@ -2011,7 +1920,10 @@ export async function listHandoverIntentsAction() {
                     // Handovers begun before tenures lost their names planned one; newer
                     // ones plan only a session (plannedSession).
                     legacyPlannedName: (r.payload?.name as string) || null,
-                    plannedSession: (r.payload?.session as string) || null,
+                    // Once scheduled, the checked plan is what will run; before, the draft.
+                    plannedSession: (r.plan?.session as string) || (r.payload?.session as string) || null,
+                    effectiveAt: (r.effective_at as string | null) ?? null,
+                    failureReason: (r.failure_reason as string | null) ?? null,
                     initiatedBy: r.initiated_by_name,
                     completedBy: r.completed_by_name,
                     completedAt: r.completed_at,
@@ -2051,7 +1963,7 @@ export async function getHandoverIntentAction(intentId: string) {
             success: true as const,
             intent: {
                 id: intent.id,
-                status: intent.status,
+                status: intent.status as HandoverStatus,
                 step: intent.step ?? 0,
                 payload: (intent.payload ?? {}) as Record<string, unknown>,
                 fromTenure: {
@@ -2064,6 +1976,10 @@ export async function getHandoverIntentAction(intentId: string) {
                 completedBy: intent.completed_by_name,
                 completedAt: intent.completed_at,
                 abandonedReason: intent.abandoned_reason,
+                effectiveAt: (intent.effective_at as string | null) ?? null,
+                scheduledBy: (intent.scheduled_by_name as string | null) ?? null,
+                failureReason: (intent.failure_reason as string | null) ?? null,
+                plannedSession: ((intent.plan?.session ?? intent.payload?.session) as string | undefined) ?? null,
                 createdAt: intent.created_at,
                 updatedAt: intent.updated_at,
             },
@@ -2106,7 +2022,7 @@ export async function createHandoverIntentAction() {
             .from("handover_intents")
             .select("id")
             .eq("from_tenure_id", tenure.id)
-            .in("status", ["draft", "in_progress"])
+            .in("status", ["draft", "in_progress", "scheduled", "applying"])
             .maybeSingle();
 
         if (open) {
@@ -2171,8 +2087,8 @@ export async function saveHandoverProgressAction(
             .maybeSingle();
 
         if (!intent) return { success: false as const, error: "That handover record doesn't exist." };
-        if (intent.status === "completed" || intent.status === "abandoned") {
-            return { success: false as const, error: `This handover is already ${intent.status}.` };
+        if (intent.status !== "draft" && intent.status !== "in_progress") {
+            return { success: false as const, error: `This handover is already ${intent.status.replace("_", " ")}.` };
         }
 
         const { error } = await db
@@ -2198,13 +2114,18 @@ export async function saveHandoverProgressAction(
     }
 }
 
-/** Walk away from a handover without completing it, on the record. */
+/**
+ * Walk away from a handover without completing it, on the record. Also how a
+ * SCHEDULED handover is cancelled during its hour.
+ */
 export async function abandonHandoverIntentAction(intentId: string, reason?: string) {
     try {
         const ctx = await requireVpAdmin();
         const actor = actorOf(ctx);
 
-        const { error } = await db
+        // Conditional on the status, so a cancel racing the switch loses cleanly: if the
+        // hour was up and the switch claimed the row first, nothing matches here.
+        const { data: ended, error } = await db
             .from("handover_intents")
             .update({
                 status: "abandoned",
@@ -2213,9 +2134,17 @@ export async function abandonHandoverIntentAction(intentId: string, reason?: str
                 completed_by_name: actor.name,
             })
             .eq("id", intentId)
-            .in("status", ["draft", "in_progress"]);
+            .in("status", ["draft", "in_progress", "scheduled"])
+            .select("status")
+            .maybeSingle();
 
         if (error) return { success: false as const, error: error.message };
+        if (!ended) {
+            return {
+                success: false as const,
+                error: "Too late to stop it: this handover has already taken effect or ended. Reload the page.",
+            };
+        }
 
         await logHandoverEvent(
             intentId,

@@ -5,6 +5,7 @@ import { requireVpAdmin } from "@/lib/access-control";
 import { getHandoverIntentAction } from "../../actions";
 import { HandoverWizard } from "../../components/handover-wizard";
 import { HandoverRecord } from "../../components/handover-record";
+import { HandoverScheduled } from "../../components/handover-scheduled";
 
 export const metadata: Metadata = {
     title: "Handing Over",
@@ -26,8 +27,9 @@ export const metadata: Metadata = {
  *   banner (z-200), so a preview deployment still says so even mid-handover — running
  *   this against the wrong environment is precisely the mistake worth preventing.
  *
- * A completed or abandoned intent renders read-only instead: this URL is also how a
- * successor reads what their predecessor did.
+ * A finished wizard waits an hour before it takes effect, and shows a countdown with
+ * a Cancel meanwhile. A completed, abandoned or failed intent renders read-only: this
+ * URL is also how a successor reads what their predecessor did.
  */
 export default async function HandoverIntentPage({
     params,
@@ -81,11 +83,26 @@ export default async function HandoverIntentPage({
     const { intent, events } = res;
 
     // Finished, one way or the other — this is a record, not a form.
-    if (intent.status === "completed" || intent.status === "abandoned") {
+    if (intent.status === "completed" || intent.status === "abandoned" || intent.status === "failed") {
         return (
             <div className="mx-auto max-w-3xl space-y-5 pb-20">
                 <HandoverRecord intent={intent} events={events} />
             </div>
+        );
+    }
+
+    if (intent.status === "scheduled" || intent.status === "applying") {
+        return (
+            <Curtain align="stretch">
+                <HandoverScheduled
+                    intentId={intent.id}
+                    status={intent.status}
+                    effectiveAt={intent.effectiveAt}
+                    fromLabel={intent.fromTenure.label ?? "Current tenure"}
+                    toSession={intent.plannedSession}
+                    scheduledBy={intent.scheduledBy}
+                />
+            </Curtain>
         );
     }
 

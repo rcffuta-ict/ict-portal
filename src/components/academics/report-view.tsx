@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, Award, BarChart3, ClipboardCheck, Download, Search, TrendingUp, Users } from "lucide-react";
-import { StatsStrip, type StatItem } from "@/components/dashboard/roster/stats-strip";
+import { AlertTriangle, Award, BarChart3, ClipboardCheck, Download, Loader2, Search, TrendingUp, Users } from "lucide-react";
+import { StatsSkeleton, StatsStrip, type StatItem } from "@/components/dashboard/roster/stats-strip";
+import { SkeletonCard, SkeletonRegion } from "@/components/ui/skeleton";
 import { PaginatedGrid } from "@/components/dashboard/roster/paginated-grid";
 import { MAX_GRADE, formatGrade } from "@/lib/academics";
 import { byLevel } from "@/lib/levels";
@@ -33,6 +34,29 @@ export function reportStats(report: SemesterReport): StatItem[] {
         { label: "First class", value: first, icon: Award, tone: "text-emerald-700 bg-emerald-50" },
         { label: "At risk", value: report.atRisk, icon: AlertTriangle, tone: "text-red-700 bg-red-50" },
     ];
+}
+
+/**
+ * While a report loads: a visible "Loading…" line (a grey outline alone reads as an
+ * empty page on a slow phone), then placeholders the size of what's coming, so nothing
+ * jumps when it arrives.
+ */
+export function ReportSkeleton({ label = "Loading academics…" }: { label?: string }) {
+    return (
+        <div className="space-y-4">
+            <p className="flex items-center justify-center gap-2 py-2 text-sm text-slate-500" role="status">
+                <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                {label}
+            </p>
+            <StatsSkeleton />
+            <SkeletonRegion label="academic report">
+                <div className="grid gap-4 lg:grid-cols-2">
+                    <SkeletonCard className="h-64" />
+                    <SkeletonCard className="h-64" />
+                </div>
+            </SkeletonRegion>
+        </div>
+    );
 }
 
 function Section({ title, icon: Icon, children }: { title: string; icon: typeof BarChart3; children: React.ReactNode }) {
