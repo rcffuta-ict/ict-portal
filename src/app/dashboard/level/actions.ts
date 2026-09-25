@@ -8,7 +8,6 @@ import { compareGenerations, computeLevel } from "@/lib/levels";
 import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-context";
 import {
     listInvitesByClassSet,
-    listInviteEventsByClassSet,
     createInvite,
     revokeInvite,
     logInviteEvent,
@@ -136,6 +135,68 @@ export async function getLevelModuleData() {
 async function canReadLevel(ctx: ProfileContext, classSetId: string): Promise<boolean> {
     if (seesAllLevels(ctx)) return true;
     return canManageLevel(ctx, classSetId);
+}
+
+/**
+ * Who in this generation celebrates a birthday in the given month.
+ *
+ * Same gate as the rest of the generation page (canReadLevel). Only the ids go to
+ * `rcf_birthdays`, which filters by month in SQL and returns the DAY: never a date of
+ * birth, never a year. The same function the Workforce birthdays use.
+ */
+export async function getLevelBirthdaysAction(classSetId: string, month: number, year: number) {
+    try {
+        const ctx = await requireModuleRead("level");
+        if (!(await canReadLevel(ctx, classSetId))) {
+            return { success: false as const, error: "You don't coordinate this level.", data: [] };
+        }
+        if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
+            return { success: false as const, error: "Pick a valid month.", data: [] };
+        }
+        const tenure = await getActiveTenure();
+
+        const [{ data: members, error: membersError }, { data: set }] = await Promise.all([
+            db.from("profiles").select("id, department, phone_number").eq("class_set_id", classSetId),
+            db.from("class_sets")
+                .select("entry_year, is_foundation, level_override")
+                .eq("id", classSetId)
+                .maybeSingle(),
+        ]);
+        if (membersError) throw new Error(membersError.message);
+        const ids = (members ?? []).map((m) => m.id as string);
+        if (ids.length === 0) return { success: true as const, data: [] };
+        const byId = new Map((members ?? []).map((m) => [m.id as string, m]));
+        const level = set
+            ? set.level_override || computeLevel(set.entry_year, set.is_foundation, tenure?.session ?? null)
+            : null;
+
+        const { data, error } = await db.rpc("rcf_birthdays", {
+            p_profile_ids: ids,
+            p_month: month,
+            p_year: year,
+        });
+        if (error) throw new Error(error.message);
+
+        return {
+            success: true as const,
+            data: (data ?? []).map((r: any) => {
+                const m: any = byId.get(r.profile_id);
+                return {
+                    profileId: r.profile_id as string,
+                    firstName: (r.first_name as string | null) ?? null,
+                    lastName: (r.last_name as string | null) ?? null,
+                    name: [r.first_name, r.last_name].filter(Boolean).join(" "),
+                    avatarUrl: (r.avatar_url as string | null) ?? null,
+                    day: r.celebrate_day as number,
+                    department: (m?.department as string | null) ?? null,
+                    phone: (m?.phone_number as string | null) ?? null,
+                    level: (level as string | null) ?? null,
+                };
+            }),
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message, data: [] };
+    }
 }
 
 /** One generation's meta + the caller's write capability (for the detail page). */
@@ -465,35 +526,6 @@ export async function revokeLevelTokenAction(inviteId: string) {
         return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };
-    }
-}
-
-/** Everything that has been done with this generation's tokens, newest first. */
-export async function getLevelTokenActivityAction(classSetId: string) {
-    try {
-        const ctx = await requireModuleRead("level");
-        if (!(await canManageLevel(ctx, classSetId))) {
-            return { success: false, error: "You don't coordinate this level.", data: [] };
-        }
-        const events = await listInviteEventsByClassSet(classSetId);
-        return {
-            success: true,
-            data: events.map((e: any) => {
-                const inv = Array.isArray(e.invite) ? e.invite[0] : e.invite;
-                return {
-                    id: e.id,
-                    action: e.action,
-                    actorName: e.actor_name,
-                    actorEmail: e.actor_email,
-                    profileId: e.profile_id,
-                    createdAt: e.created_at,
-                    token: inv?.token ?? null,
-                    label: inv?.label ?? null,
-                };
-            }),
-        };
-    } catch (e: any) {
-        return { success: false, error: e.message, data: [] };
     }
 }
 

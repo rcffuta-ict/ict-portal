@@ -29,7 +29,7 @@
 BEGIN;
 
 -- ----------------------------------------------------------------------------
--- 1. Units and teams (24: 18 units, 6 team).
+-- 1. Units and teams (24: 17 units, 7 team).
 --
 -- A member belongs to exactly ONE unit (the enforce_single_unit_membership
 -- trigger from 0001) but to any number of teams. That is the whole distinction:
@@ -55,7 +55,7 @@ VALUES
     ('ushering', 'Ushering Unit', 'UNIT', 'Welcomes, seats and orders the congregation during services.', true),
     ('choir', 'Choir Unit', 'UNIT', 'Leads the fellowship in worship and ministration.', true),
     ('prayer', 'Prayer Unit', 'UNIT', 'Carries the fellowship''s prayer life and intercession.', true),
-    ('hall-reps', 'Hall Reps Unit', 'UNIT', 'Represents the fellowship in each hall of residence.', true),
+    ('hall-reps', 'Hall Reps Unit', 'TEAM', 'Represents the fellowship in each hall of residence.', true),
     ('drama', 'Drama Unit', 'UNIT', 'Ministers through drama and stage presentation.', true),
     ('welfare', 'Welfare Unit', 'UNIT', 'Sees to the practical needs and wellbeing of members.', true),
     ('sport', 'Sports Team', 'TEAM', 'Organises the fellowship''s sporting life and fixtures.', true),

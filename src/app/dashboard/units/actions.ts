@@ -148,6 +148,9 @@ export async function getUnitModuleData() {
     // enough: two offices over the same unit is not a real configuration.
     const excoOffice = ctx.leadership.find((l) =>
         (l.privileges ?? []).some((p) => p.tag === "EXCO"));
+    // The same overview the admin list shows (leaders, member counts), for their units.
+    const overview = managedUnits.length > 0 ? await getAllUnitsOverview(tenureId) : [];
+    const overviewById = new Map(overview.map((o) => [o.id, o]));
 
     return {
         authorized: true as const,
@@ -155,7 +158,7 @@ export async function getUnitModuleData() {
         tenureId,
         canWriteAll: false,
         managedUnits: managedUnits.map((u) => ({
-            ...u,
+            ...(overviewById.get(u.id) ?? u),
             leadershipRole: excoOffice?.alias || excoOffice?.title || "Executive",
         })),
     };

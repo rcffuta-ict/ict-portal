@@ -139,10 +139,13 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
         positionAlias: "Prayer Secretary",
         description: "Carries the fellowship's prayer life and intercession.",
     },
+    // Named a unit by the fellowship, but WORKS as a team: a hall rep also serves in their
+    // own unit, so it must not take their one unit place, and it doesn't count toward the
+    // workforce. Keep the name; the type is what the rules read.
     {
         slug: "hall-reps",
         name: "Hall Reps Unit",
-        type: "UNIT",
+        type: "TEAM",
         positionAlias: "Hall Reps Coord",
         description: "Represents the fellowship in each hall of residence.",
     },

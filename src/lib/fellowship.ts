@@ -12,6 +12,7 @@
 import { db } from "@/lib/db";
 import { fetchAll } from "@/lib/fetch-all";
 import { genderForUnitSlug } from "@/config/fellowship-units";
+import { parseGender } from "@/lib/gender";
 import type { ProfileContext } from "@/lib/auth/profile-context";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,35 @@ export interface UnitOverview {
     memberCount: number;
     /** Membership is computed from gender; there is no roster to edit. */
     isGenderCategory?: boolean;
+    /** Members this session, split by gender (unspecified count only in `total`). */
+    stats: { total: number; male: number; female: number };
+    /** Current leaders, the lead first. */
+    leaders: UnitLeader[];
+}
+
+type OneOrMany<T> = T | T[] | null;
+
+/** A leadership row as read for the overview. */
+interface OverviewLeaderRow {
+    is_lead: boolean | null;
+    unit_id: string | null;
+    position: OneOrMany<{ title: string | null; alias: string | null; position_privileges: { privilege: string; scope: string | null }[] | null }>;
+    profile: OneOrMany<{ id: string; first_name: string; last_name: string; avatar_url: string | null; gender: string | null }>;
+}
+
+function firstOf<T>(v: OneOrMany<T>): T | null {
+    return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
+/** Someone leading a unit or team this session. */
+export interface UnitLeader {
+    id: string;
+    first_name: string;
+    last_name: string;
+    avatar_url: string | null;
+    gender: string | null;
+    role: string | null;
+    isLead: boolean;
 }
 
 /**
@@ -100,32 +130,79 @@ export interface UnitOverview {
  * reporting that would put "0 members" beside a unit that contains half the fellowship.
  */
 export async function getAllUnitsOverview(tenureId: string | null): Promise<UnitOverview[]> {
-    const [{ data, error }, memberships] = await Promise.all([
+    const [{ data, error }, memberships, genders, leadership] = await Promise.all([
         db.from("units").select("*").order("name"),
         // Paged: every membership row of the tenure, not the first 1000 (fetchAll).
         tenureId
-            ? fetchAll<{ unit_id: string }>((from, to) =>
-                db.from("membership_units").select("unit_id")
+            ? fetchAll<{ unit_id: string; profile_id: string }>((from, to) =>
+                db.from("membership_units").select("unit_id, profile_id")
                     .eq("tenure_id", tenureId).order("id").range(from, to),
             )
-            : Promise.resolve([] as { unit_id: string }[]),
+            : Promise.resolve([] as { unit_id: string; profile_id: string }[]),
+        // Everyone's gender, for the brother/sister split on each unit.
+        fetchAll<{ id: string; gender: string | null }>((from, to) =>
+            db.from("profiles").select("id, gender").order("id").range(from, to),
+        ),
+        // The session's cabinet is small (dozens), so one unpaged read.
+        tenureId
+            ? db.from("leadership")
+                .select(`
+                    is_lead, unit_id,
+                    position:leadership_positions(title, alias, position_privileges(privilege, scope)),
+                    profile:profiles!leadership_profile_id_fkey(id, first_name, last_name, avatar_url, gender)
+                `)
+                .eq("tenure_id", tenureId)
+                .is("ended_at", null)
+            : Promise.resolve({ data: [] as OverviewLeaderRow[] }),
     ]);
     if (error) throw new Error(error.message);
 
-    const counts = new Map<string, number>();
-    for (const m of memberships ?? []) counts.set(m.unit_id, (counts.get(m.unit_id) ?? 0) + 1);
+    const genderOf = new Map(genders.map((p) => [p.id, parseGender(p.gender)]));
+    const churchWide = { male: 0, female: 0 };
+    for (const g of genderOf.values()) if (g === "male" || g === "female") churchWide[g] += 1;
 
+    const tallies = new Map<string, { total: number; male: number; female: number }>();
+    for (const m of memberships ?? []) {
+        const t = tallies.get(m.unit_id) ?? { total: 0, male: 0, female: 0 };
+        t.total += 1;
+        const g = genderOf.get(m.profile_id);
+        if (g === "male" || g === "female") t[g] += 1;
+        tallies.set(m.unit_id, t);
+    }
+
+    const leaderRows = ((leadership as { data: unknown }).data ?? []) as OverviewLeaderRow[];
     const rows = data ?? [];
-    const genderCounts = rows.some((u) => genderForUnitSlug(u.slug))
-        ? await countProfilesByGender()
-        : { male: 0, female: 0 };
 
     return rows.map((u) => {
         const gender = genderForUnitSlug(u.slug);
+        const stats = gender
+            ? { total: churchWide[gender], male: gender === "male" ? churchWide.male : 0, female: gender === "female" ? churchWide.female : 0 }
+            : (tallies.get(u.id) ?? { total: 0, male: 0, female: 0 });
+        // A unit's leaders: an office tagged EXCO:<slug> (how the Cabinet appoints an
+        // Executive, with unit_id empty), or a direct unit appointment. Lead first.
+        const leaders: UnitLeader[] = leaderRows
+            .filter((l) =>
+                l.unit_id === u.id
+                || (firstOf(l.position)?.position_privileges ?? []).some(
+                    (pp) => pp.privilege === "EXCO" && pp.scope === u.slug,
+                ))
+            .sort((a, b) => Number(a.is_lead === false) - Number(b.is_lead === false))
+            .flatMap((l) => {
+                const p = firstOf(l.profile);
+                if (!p) return [];
+                const pos = firstOf(l.position);
+                return [{
+                    id: p.id, first_name: p.first_name, last_name: p.last_name,
+                    avatar_url: p.avatar_url ?? null, gender: p.gender ?? null,
+                    role: pos?.alias || pos?.title || null, isLead: l.is_lead !== false,
+                }];
+            });
         return {
             ...u,
             isGenderCategory: gender !== null,
-            memberCount: gender ? genderCounts[gender] : (counts.get(u.id) ?? 0),
+            memberCount: stats.total,
+            stats,
+            leaders,
         };
     }) as UnitOverview[];
 }
@@ -153,14 +230,6 @@ export async function isMemberOfUnit(profileId: string, unitId: string, tenureId
     return (await unitIdsOfMember(profileId, tenureId)).includes(unitId);
 }
 
-/** How many profiles are recorded as each gender. */
-async function countProfilesByGender(): Promise<{ male: number; female: number }> {
-    const [male, female] = await Promise.all([
-        db.from("profiles").select("id", { count: "exact", head: true }).eq("gender", "male"),
-        db.from("profiles").select("id", { count: "exact", head: true }).eq("gender", "female"),
-    ]);
-    return { male: male.count ?? 0, female: female.count ?? 0 };
-}
 
 export interface UnitMember {
     /** Empty for a derived member — there is no `membership_units` row to remove. */

@@ -2,20 +2,20 @@
 "use client";
 
 import { useState } from "react";
-import { Users, KeyRound, History, Lock, BookOpen } from "lucide-react";
+import { Users, KeyRound, Lock, BookOpen, Cake } from "lucide-react";
 import { MembersGrid } from "./members-grid";
 import { TokenManager } from "./token-manager";
-import { TokenActivity } from "./token-activity";
 import { WorkspaceTabs, type WorkspaceTab } from "@/components/dashboard/roster/workspace-tabs";
 import { GroupAcademics } from "@/components/academics/group-academics";
-import { exportLevelAcademicRecordsAction, getLevelAcademicsAction } from "../actions";
+import { BirthdaysPanel } from "@/components/dashboard/birthdays-panel";
+import { exportLevelAcademicRecordsAction, getLevelAcademicsAction, getLevelBirthdaysAction } from "../actions";
 
-type TabId = "members" | "academics" | "tokens" | "activity";
+type TabId = "members" | "birthdays" | "academics" | "tokens";
 
 /**
- * A generation's workspace. Members are visible to anyone who can READ the level;
- * Tokens and Activity are coordinator-only, because a token IS a credential — showing it
- * to a read-only viewer would hand them write access to the generation.
+ * A generation's workspace. Members, Birthdays and Academics are visible to anyone who
+ * can READ the level; Tokens is coordinator-only, because a token IS a credential —
+ * showing it to a read-only viewer would hand them write access to the generation.
  *
  * Tabs (rather than one long page) keep the phone layout to a single scroll per concern;
  * the tab strip scrolls horizontally instead of wrapping on narrow screens.
@@ -39,14 +39,12 @@ export function GenerationDetail({
 
     const tabs: WorkspaceTab<TabId>[] = [
         { id: "members", label: "Members", icon: Users },
+        { id: "birthdays", label: "Birthdays", icon: Cake },
         // Totals for anyone who can read the level; names only as academic_settings
         // allows (decided by getLevelAcademicsAction).
         { id: "academics", label: "Academics", icon: BookOpen },
         ...(canWrite
-            ? ([
-                { id: "tokens", label: "Tokens", icon: KeyRound },
-                { id: "activity", label: "Activity", icon: History },
-            ] as WorkspaceTab<TabId>[])
+            ? ([{ id: "tokens", label: "Tokens", icon: KeyRound }] as WorkspaceTab<TabId>[])
             : []),
     ];
 
@@ -69,6 +67,14 @@ export function GenerationDetail({
                     initialStats={initialStats}
                 />
             )}
+            {tab === "birthdays" && (
+                <BirthdaysPanel
+                    groupId={generation.classSetId}
+                    groupName={generation.familyName || generation.level || "generation"}
+                    load={(month, year) => getLevelBirthdaysAction(generation.classSetId, month, year)}
+                    memberHref={(profileId) => `/dashboard/level/${generation.classSetId}/member/${profileId}`}
+                />
+            )}
             {tab === "academics" && (
                 <GroupAcademics
                     groupName={generation.familyName || generation.level || "generation"}
@@ -79,7 +85,6 @@ export function GenerationDetail({
             {tab === "tokens" && canWrite && (
                 <TokenManager classSetId={generation.classSetId} initialTokens={initialTokens} />
             )}
-            {tab === "activity" && canWrite && <TokenActivity classSetId={generation.classSetId} />}
         </div>
     );
 }

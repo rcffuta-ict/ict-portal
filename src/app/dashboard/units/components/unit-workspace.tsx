@@ -6,9 +6,9 @@ import { Users, Crown, Cake, GraduationCap } from "lucide-react";
 import { UnitManager } from "./unit-manager";
 import { UnitExecutives } from "./unit-executives";
 import { WorkspaceTabs, type WorkspaceTab } from "@/components/dashboard/roster/workspace-tabs";
-import { BirthdaysPanel } from "./birthdays-panel";
+import { BirthdaysPanel } from "@/components/dashboard/birthdays-panel";
 import { GroupAcademics } from "@/components/academics/group-academics";
-import { exportUnitAcademicRecordsAction, getUnitAcademicsAction } from "../actions";
+import { exportUnitAcademicRecordsAction, getUnitAcademicsAction, getUnitBirthdaysAction } from "../actions";
 
 type UnitTabId = "members" | "leadership" | "birthdays" | "academics";
 
@@ -59,7 +59,14 @@ export function UnitWorkspace({
                 <UnitManager unit={unit} readOnly={readOnly} onChanged={() => router.refresh()} />
             )}
             {tab === "leadership" && <UnitExecutives unit={unit} />}
-            {tab === "birthdays" && <BirthdaysPanel unitId={unit.id} unitName={unit.name} />}
+            {tab === "birthdays" && (
+                <BirthdaysPanel
+                    groupId={unit.id}
+                    groupName={unit.name}
+                    load={(month, year) => getUnitBirthdaysAction(unit.id, month, year)}
+                    memberHref={(profileId) => `/dashboard/units/${unit.id}/member/${profileId}`}
+                />
+            )}
             {tab === "academics" && (
                 <GroupAcademics
                     groupName={unit.name}

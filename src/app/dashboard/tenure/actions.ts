@@ -101,7 +101,7 @@ export async function getAdminData() {
                     .select(`
                         id, is_lead, position_id, unit_id, units(name, type, is_workforce),
                         class_set_id, class_sets(family_name, entry_year),
-                        position:leadership_positions(title, tier, slug, position_privileges(privilege, scope)),
+                        position:leadership_positions(title, alias, tier, slug, position_privileges(privilege, scope)),
                         profile:profiles!leadership_profile_id_fkey(id, first_name, last_name, avatar_url, department, phone_number, gender)
                     `)
                     .eq('tenure_id', activeTenure.id)
@@ -177,9 +177,18 @@ export async function getAdminData() {
                 isGenderCategory: gender !== null,
                 memberCount: s.total,
                 stats: s,
+                // Who leads it: an office tagged EXCO:<this unit's slug> (how the Cabinet
+                // appoints an Executive, with unit_id left empty), or a direct unit
+                // appointment. Matching on unit_id alone showed "No leader assigned" for
+                // every Executive appointed from the Cabinet. The lead comes first.
                 leaders: leaders
-                    .filter((l: any) => l.unit_id === u.id && l.is_lead !== false)
-                    .map((l: any) => ({ ...l.profile, role: l.position?.title })),
+                    .filter((l: any) =>
+                        l.unit_id === u.id
+                        || (l.position?.position_privileges ?? []).some(
+                            (pp: any) => pp.privilege === "EXCO" && pp.scope === u.slug,
+                        ))
+                    .sort((a: any, b: any) => Number(a.is_lead === false) - Number(b.is_lead === false))
+                    .map((l: any) => ({ ...l.profile, role: l.position?.alias || l.position?.title, isLead: l.is_lead !== false })),
             };
         });
 
@@ -1044,17 +1053,30 @@ export async function getUnitDetails(unitId: string) {
     
     if (!active) return { leaders: [] };
 
-    // Fetch leaders for this unit in the active tenure
-    const { data: leaders } = await db
+    // The unit's slug is what an Executive's office is tagged with (EXCO:<slug>).
+    const { data: unit } = await db.from('units').select('slug').eq('id', unitId).maybeSingle();
+
+    // Leaders in the active tenure: a direct unit appointment, or an office tagged
+    // EXCO:<this unit> (how the Cabinet appoints an Executive, leaving unit_id empty).
+    // Filtering on unit_id alone missed every Cabinet-appointed Executive.
+    const { data: rows } = await db
         .from('leadership')
         .select(`
-            id,
-            position:leadership_positions(title, tier),
-            profile:profiles!leadership_profile_id_fkey(id, first_name, last_name, avatar_url, phone_number)
+            id, is_lead, unit_id,
+            position:leadership_positions(title, tier, position_privileges(privilege, scope)),
+            profile:profiles!leadership_profile_id_fkey(id, first_name, last_name, avatar_url, phone_number, gender)
         `)
-        .eq('unit_id', unitId)
         .is('ended_at', null)
         .eq('tenure_id', active.id);
+
+    const one = (v: any) => (Array.isArray(v) ? v[0] : v);
+    const leaders = (rows ?? [])
+        .filter((l: any) =>
+            l.unit_id === unitId
+            || (!!unit?.slug && (one(l.position)?.position_privileges ?? []).some(
+                (pp: any) => pp.privilege === 'EXCO' && pp.scope === unit.slug,
+            )))
+        .sort((a: any, b: any) => Number(a.is_lead === false) - Number(b.is_lead === false));
 
     return { leaders };
 }

@@ -2,8 +2,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { Search, Layers, Users } from "lucide-react";
+import { Search } from "lucide-react";
+import { UnitCard, UNIT_CARD_GRID } from "@/components/dashboard/unit-card";
 
 /**
  * Every unit and team, for the admin read tier. Each card opens the unit's own page
@@ -29,35 +29,15 @@ export function AdminUnitView({ data }: { data: { units: any[] } }) {
                 />
             </div>
 
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <ul className={UNIT_CARD_GRID}>
                 {filtered.map((u: any) => (
                     <li key={u.id}>
-                        <Link
-                            href={`/dashboard/units/${u.id}`}
-                            className="block w-full rounded-2xl border border-slate-200 bg-white p-5 text-left transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
-                        >
-                            <div className="mb-3 flex items-start justify-between">
-                                <div
-                                    className={`rounded-xl p-2.5 ${u.type === "UNIT" ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"}`}
-                                    aria-hidden="true"
-                                >
-                                    {u.type === "UNIT" ? <Layers className="h-5 w-5" /> : <Users className="h-5 w-5" />}
-                                </div>
-                                <span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-600">
-                                    {u.type}
-                                </span>
-                            </div>
-                            <h3 className="text-lg font-bold text-slate-900">{u.name}</h3>
-                            <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
-                                <span>{u.isGenderCategory ? "Members (by gender)" : "This session"}</span>
-                                <span className="text-sm font-bold text-slate-900">{u.memberCount}</span>
-                            </div>
-                        </Link>
+                        <UnitCard unit={u} href={`/dashboard/units/${u.id}`} />
                     </li>
                 ))}
                 {filtered.length === 0 && (
                     <li className="col-span-full rounded-2xl border-2 border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">
-                            No unit or team matches &ldquo;{search}&rdquo;.
+                        No unit or team matches &ldquo;{search}&rdquo;.
                     </li>
                 )}
             </ul>

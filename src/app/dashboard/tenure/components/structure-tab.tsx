@@ -2,9 +2,9 @@
 "use client";
 
 import { useState } from "react";
-import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
+import { UnitCard, UNIT_CARD_GRID } from "@/components/dashboard/unit-card";
 import { createUnitAction } from "../actions";
-import { Plus, Layers, Users, Search, X, AlertCircle, Mars, Venus, Info } from "lucide-react";
+import { Plus, Search, X, Layers } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import FormSelect from "@/components/ui/FormSelect";
 
@@ -13,117 +13,6 @@ function slugify(value: string): string {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
-}
-
-// --- VISIBILITY CARD (non-interactive) ---
-function StructureCard({ item }: { item: any }) {
-    const isUnit = item.type === "UNIT";
-    // A gender category (Brothers'/Sisters') is not a unit anybody joins -- see
-    // genderCategory in src/config/fellowship-units.ts. Everything else with
-    // is_workforce === false is an ordinary "loose" unit whose members are not counted
-    // as workers.
-    const isGenderCategory = isUnit && !!item.isGenderCategory;
-    const isLoose = isUnit && item.is_workforce === false && !isGenderCategory;
-    const mainLeader = item.leaders?.[0];
-    const s = item.stats || { total: item.memberCount || 0, male: 0, female: 0 };
-
-    const theme = isUnit
-        ? { icon: Layers, bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-100" }
-        : { icon: Users, bg: "bg-orange-50", text: "text-orange-600", border: "border-orange-100" };
-
-    return (
-        <div className="flex flex-col justify-between bg-white rounded-2xl border border-slate-200 p-5 shadow-sm h-full">
-            <div>
-                <div className="flex justify-between items-start mb-3">
-                    <div className={`p-2.5 rounded-xl border ${theme.bg} ${theme.text} ${theme.border}`}>
-                        <theme.icon className="h-5 w-5" />
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${theme.bg} ${theme.text} ${theme.border}`}>
-                            {item.type}
-                        </span>
-                        {isGenderCategory && (
-                            <span
-                                tabIndex={0}
-                                title="Gender category: every member is in it by gender. There is no induction and no roster to edit, and it does not count toward the workforce."
-                                className="group relative inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider bg-violet-50 text-violet-600 border-violet-100 cursor-help outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
-                            >
-                                By gender <Info className="h-3 w-3" />
-                                <span
-                                    role="tooltip"
-                                    className="pointer-events-none absolute right-0 top-full z-10 mt-1 w-56 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-medium normal-case tracking-normal text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                                >
-                                    Everyone is in this one already — the count follows gender, so there is nothing to induct and no roster to edit.
-                                </span>
-                            </span>
-                        )}
-                        {isLoose && (
-                            <span
-                                tabIndex={0}
-                                title="Loose unit: members belong here but do NOT count toward the workforce. Teams never count either."
-                                className="group relative inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider bg-slate-100 text-slate-500 border-slate-200 cursor-help outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
-                            >
-                                Loose <Info className="h-3 w-3" />
-                                <span
-                                    role="tooltip"
-                                    className="pointer-events-none absolute right-0 top-full z-10 mt-1 w-56 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-medium normal-case tracking-normal text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                                >
-                                    Members belong here but don&apos;t count toward the workforce.
-                                </span>
-                            </span>
-                        )}
-                    </div>
-                </div>
-
-                <h3 className="font-bold text-slate-900 text-lg leading-tight mb-0.5 truncate">
-                    {item.name}
-                </h3>
-                {item.slug && (
-                    <p className="font-mono text-[10px] text-slate-400 truncate">{item.slug}</p>
-                )}
-            </div>
-
-            {/* Leadership */}
-            <div className="mt-4 mb-4">
-                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wide mb-2">Leader</p>
-                {mainLeader ? (
-                    <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
-                        <MemberAvatar
-                            url={mainLeader.avatar_url}
-                            first={mainLeader.first_name}
-                            last={mainLeader.last_name}
-                            gender={mainLeader.gender}
-                            size={32}
-                        />
-                        <div className="overflow-hidden">
-                            <p className="text-xs font-bold text-slate-900 truncate">
-                                {mainLeader.first_name} {mainLeader.last_name}
-                            </p>
-                            <p className="text-[10px] text-slate-500 truncate">{mainLeader.role || "Coordinator"}</p>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
-                        <AlertCircle className="h-4 w-4" />
-                        <span className="text-xs font-bold">No leader assigned</span>
-                    </div>
-                )}
-            </div>
-
-            {/* Gender stats */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-sm">
-                <span className="inline-flex items-center gap-1.5 text-sky-600 font-medium">
-                    <Mars className="h-4 w-4" /> {s.male}
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-pink-600 font-medium">
-                    <Venus className="h-4 w-4" /> {s.female}
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-slate-900 font-bold">
-                    <Users className="h-4 w-4 text-slate-400" /> {s.total}
-                </span>
-            </div>
-        </div>
-    );
 }
 
 // --- MAIN COMPONENT ---
@@ -201,9 +90,9 @@ export function StructureTab({ data, onSuccess }: any) {
             </div>
 
             {/* Grid */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className={UNIT_CARD_GRID}>
                 {filtered.map((item: any) => (
-                    <StructureCard key={item.id} item={item} />
+                    <UnitCard key={item.id} unit={item} />
                 ))}
 
                 {filtered.length === 0 && (

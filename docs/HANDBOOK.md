@@ -83,6 +83,8 @@ reality differs (e.g. a set that repeated a year).
   the database. Being in a unit is what makes someone a **worker**.
 - A **team** is open: anyone can be on any number of teams, and being on a team does not
   make you a worker.
+- **Hall Reps Unit** keeps its name but works as a **team**: a hall rep also serves in
+  their own unit, and it doesn't count toward the workforce.
 - **Brothers' Unit** and **Sisters' Unit** are special. Membership is *by gender*, not by
   induction, so there is no roster to edit. To fix someone's membership there, fix their
   gender on their profile.
@@ -274,7 +276,8 @@ After the retreat, **Tenure → Tenure Profile → Record coronation**:
   land in *your* generation.
 - Existing members use the *update* link: they confirm themselves by the email already on
   record, then edit.
-- **Activity** shows every generate, revoke and use of your tokens.
+- The history of every generate, revoke and use of a token is in the System Admin's
+  audit trail (`pnpm audit:log -- --source link`).
 
 ### 4.5 During the year
 
@@ -377,8 +380,8 @@ create one.
 ### 5.5 Levels
 
 The generations as cards. Open one to see its members (search, stats, **Export CSV**
-with a choice of columns), **Tokens** and **Activity** (coordinators only). Members
-open to the full record. **Academics** shows the generation's results the same way as
+with a choice of columns), **Birthdays** (one month at a time, today's first, with
+**Export**) and **Tokens** (coordinators only). Members open to the full record. **Academics** shows the generation's results the same way as
 Workforce → Academics; the coordinator sees names only if the Academic Unit allows it
 (off by default).
 

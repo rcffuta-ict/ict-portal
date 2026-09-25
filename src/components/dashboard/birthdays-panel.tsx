@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Cake, ChevronLeft, ChevronRight, Download, GraduationCap, Loader2, Phone, RefreshCw } from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
-import { getUnitBirthdaysAction } from "../actions";
 import { PaginatedGrid } from "@/components/dashboard/roster/paginated-grid";
 import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 
-type Row = {
+export type BirthdayRow = {
     profileId: string;
     firstName: string | null;
     lastName: string | null;
@@ -37,15 +36,43 @@ function lagosToday(): { year: number; month: number; day: number } {
     return { year: get("year"), month: get("month"), day: get("day") };
 }
 
+type Row = BirthdayRow;
+
+/** How a panel gets one month's celebrants: each module's own gated server action. */
+export type LoadBirthdays = (
+    month: number,
+    year: number,
+) => Promise<{ success: boolean; data: BirthdayRow[]; error?: string }>;
+
 /**
- * Birthdays in this unit, a month at a time. Opens on the current month; the arrows
+ * Birthdays in a group (a unit, or a generation), a month at a time. Opens on the current month; the arrows
  * step through the year.
  *
  * Each card is what a leader needs to act on it: the face, the name, the day, the
  * department (so a namesake is told apart), and a number to tap and call. Today's
  * celebrants are ringed in gold and sorted first, since those are the calls to make now.
  */
-export function BirthdaysPanel({ unitId, unitName }: { unitId: string; unitName?: string }) {
+export function BirthdaysPanel({
+    load: loadMonth,
+    groupName,
+    groupId,
+    memberHref,
+}: {
+    /** Fetches a month; the caller's server action decides who may see it. */
+    load: LoadBirthdays;
+    /** Names the export file ("choir-unit-birthdays-march-2027.csv"). */
+    groupName?: string;
+    /** Identifies the group on the page (heading ids). */
+    groupId: string;
+    /** Where a name links to: that member's page in this module. */
+    memberHref: (profileId: string) => string;
+}) {
+    // Held in a ref: callers pass a fresh closure every render, and depending on it
+    // directly would refetch on every render.
+    const loadRef = useRef(loadMonth);
+    useEffect(() => {
+        loadRef.current = loadMonth;
+    });
     const today = lagosToday();
     const [cursor, setCursor] = useState({ year: today.year, month: today.month });
     const [rows, setRows] = useState<Row[]>([]);
@@ -55,11 +82,17 @@ export function BirthdaysPanel({ unitId, unitName }: { unitId: string; unitName?
     const load = useCallback(async () => {
         setLoading(true);
         setError(null);
-        const res = await getUnitBirthdaysAction(unitId, cursor.month, cursor.year);
+        let res: Awaited<ReturnType<LoadBirthdays>>;
+        try {
+            res = await loadRef.current(cursor.month, cursor.year);
+        } catch {
+            res = { success: false, data: [], error: "Couldn't reach the server. Check your connection and try again." };
+        }
         if (res.success) setRows(res.data);
         else setError(res.error || "Couldn't load birthdays.");
         setLoading(false);
-    }, [unitId, cursor.month, cursor.year]);
+    // A different group means a different page, which mounts a fresh panel.
+    }, [cursor.month, cursor.year]);
 
     useEffect(() => {
         const t = setTimeout(load, 0);
@@ -80,7 +113,7 @@ export function BirthdaysPanel({ unitId, unitName }: { unitId: string; unitName?
     const exportCsv = () => {
         const byDay = [...rows].sort((a, b) => a.day - b.day);
         downloadCsv(
-            `${(unitName ?? "unit").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-birthdays-${monthName.toLowerCase()}-${cursor.year}.csv`,
+            `${(groupName ?? "group").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-birthdays-${monthName.toLowerCase()}-${cursor.year}.csv`,
             ["Name", "Birthday", "Level", "Department", "Phone"],
             byDay.map((r) => [r.name, `${r.day} ${monthName}`, r.level, r.department, r.phone]),
         );
@@ -94,9 +127,9 @@ export function BirthdaysPanel({ unitId, unitName }: { unitId: string; unitName?
     });
 
     return (
-        <section aria-labelledby={`bdays-${unitId}`} className="space-y-3">
+        <section aria-labelledby={`bdays-${groupId}`} className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-                <h3 id={`bdays-${unitId}`} className="flex items-center gap-2 font-bold text-slate-700">
+                <h3 id={`bdays-${groupId}`} className="flex items-center gap-2 font-bold text-slate-700">
                     <Cake className="h-4 w-4" aria-hidden="true" /> Birthdays
                 </h3>
                 <div className="flex items-center gap-1">
@@ -176,7 +209,7 @@ export function BirthdaysPanel({ unitId, unitName }: { unitId: string; unitName?
                                 />
                                 <div className="min-w-0 flex-1">
                                     <Link
-                                        href={`/dashboard/units/${unitId}/member/${r.profileId}`}
+                                        href={memberHref(r.profileId)}
                                         className="block truncate text-sm font-bold text-slate-900 hover:text-rcf-navy hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
                                     >
                                         {r.name}
