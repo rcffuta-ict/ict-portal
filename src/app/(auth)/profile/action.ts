@@ -3,6 +3,7 @@
 
 import { db } from "@/lib/db";
 import { getInviteByToken, consumeInvite, logInviteEvent } from "@/lib/invites";
+import { requiredTestEmailDomain, testEmailError } from "@/lib/env";
 import { parseGender } from "@/lib/gender";
 import { parseLevelTokenInput } from "@/lib/level-token";
 import { parseEmailList } from "@/lib/email-list";
@@ -63,6 +64,9 @@ export async function validateInviteAction(token: string) {
         classSet: inv.classSet,
         targetProfile: inv.targetProfile,
         prefill,
+        // Outside production only @rcffuta.test addresses are accepted, so the form can
+        // say so next to the field instead of after a failed submit.
+        testEmailDomain: requiredTestEmailDomain(),
     };
 }
 
@@ -204,6 +208,9 @@ export async function submitRegistrationAction(
         if (emails.length !== 1) {
             return { success: false, error: "Enter one valid email address." };
         }
+        // Enforced here, not only in the form: this endpoint is public.
+        const testError = testEmailError(emails[0]);
+        if (testError) return { success: false, error: testError };
 
         // The department must be one on the list, stored as its course code. The form
         // offers only those, but this endpoint is public, so it's checked here too.

@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { parseGender } from "@/lib/gender";
+import { requiredTestEmailDomain, testEmailError } from "@/lib/env";
 import { canManageEvents, eventAccessFor, NO_EVENT_ACCESS, type EventAccess } from "@/lib/event-access";
 
 // Who may create and edit events: the System Admin (src/lib/event-access.ts). This used
@@ -94,7 +95,9 @@ export async function getEventBySlug(slug: string) {
     return {
       success: true,
       data: event,
-      error: null
+      error: null,
+      // Outside production only @rcffuta.test addresses may register (see src/lib/env.ts).
+      testEmailDomain: requiredTestEmailDomain(),
     };
   } catch (error) {
     console.error('Unexpected error:', error);
@@ -227,6 +230,10 @@ export async function registerForEvent(data: {
   is_rcf_member?: boolean;
 }) {
   try {
+    // Enforced here, not only in the form: this endpoint is public.
+    const testError = testEmailError(data.email);
+    if (testError) return { success: false, error: testError };
+
     // Basic check for existing registration
     const { data: existing } = await db
       .from('event_registrations')

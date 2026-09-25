@@ -49,3 +49,51 @@ export function getDeploymentRef(): string | null {
 
     return null;
 }
+
+// ---------------------------------------------------------------------------
+// Test email addresses outside production
+// ---------------------------------------------------------------------------
+
+/**
+ * Outside production every email saved must end in this domain. `.test` is reserved
+ * (RFC 2606), so such an address can never reach anyone. The seed scripts already use
+ * it. This stops a tester from typing a real member's address into staging, which would
+ * create a second copy of a real person on a database that is reset and shared freely.
+ */
+export const TEST_EMAIL_DOMAIN = "rcffuta.test";
+
+/** The project ref in a Supabase URL ("https://abcdef.supabase.co" → "abcdef"). */
+function projectRef(url: string | undefined): string | null {
+    const match = url?.match(/^https?:\/\/([^.]+)\./);
+    return match ? match[1] : null;
+}
+
+/**
+ * Whether this server is working on PRODUCTION DATA: a Vercel production deployment,
+ * OR any run whose database is the production project (PRODUCTION_SUPABASE_URL), such
+ * as `pnpm dev` pointed at production. Either signal is enough, so one missing or
+ * mistyped variable can never lock real members out of production.
+ */
+export function isProductionData(): boolean {
+    if (isProductionDeployment()) return true;
+    const production = projectRef(process.env.PRODUCTION_SUPABASE_URL);
+    const current = projectRef(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL);
+    return !!production && production === current;
+}
+
+/**
+ * The domain every email must use here, or null in production. Sent to the forms so
+ * they can say so next to the field; the server actions enforce it regardless.
+ */
+export function requiredTestEmailDomain(): string | null {
+    return isProductionData() ? null : TEST_EMAIL_DOMAIN;
+}
+
+/** The error for an email this environment refuses, or null when it's allowed. */
+export function testEmailError(email: string | null | undefined): string | null {
+    const domain = requiredTestEmailDomain();
+    if (!domain || !email) return null;
+    return email.trim().toLowerCase().endsWith(`@${domain}`)
+        ? null
+        : `This is a test environment: use an @${domain} email address.`;
+}
