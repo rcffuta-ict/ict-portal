@@ -189,7 +189,7 @@ export async function openResultsRoundAction(input: { session: string; semester:
         const ctx = await requireModuleWrite("academics");
         const session = (input.session ?? "").trim();
         if (!isValidSession(session)) return { success: false as const, error: "The session looks like 2025/2026." };
-        if (input.semester !== 1 && input.semester !== 2) return { success: false as const, error: "Pick Harmattan or Rain." };
+        if (input.semester !== 1 && input.semester !== 2) return { success: false as const, error: "Pick the first or second semester." };
         let closesAt: string | null = null;
         if (input.closesAt) {
             const d = new Date(input.closesAt);
@@ -323,7 +323,7 @@ export async function saveMemberRecordAction(input: {
         const ctx = await requireModuleWrite("academics");
         const session = (input.session ?? "").trim();
         if (!isValidSession(session)) return { success: false as const, error: "The session looks like 2025/2026." };
-        if (input.semester !== 1 && input.semester !== 2) return { success: false as const, error: "Pick Harmattan or Rain." };
+        if (input.semester !== 1 && input.semester !== 2) return { success: false as const, error: "Pick the first or second semester." };
         const gpa = parseGrade(input.gpa);
         const cgpa = parseGrade(input.cgpa);
         if (gpa == null || cgpa == null) {

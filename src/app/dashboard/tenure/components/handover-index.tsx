@@ -12,13 +12,14 @@ import {
     AlertTriangle,
     History,
     Flag,
+    Clock,
 } from "lucide-react";
 import { createHandoverIntentAction, abandonHandoverIntentAction } from "../actions";
 import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 
 export interface HandoverIntentRow {
     id: string;
-    status: "draft" | "in_progress" | "completed" | "abandoned";
+    status: "draft" | "in_progress" | "scheduled" | "applying" | "completed" | "abandoned" | "failed";
     step: number;
     /** `label` is a snapshot of what the closing tenure was called when this began. */
     fromTenure: { id: string | null; label: string | null; session: string | null };
@@ -26,6 +27,9 @@ export interface HandoverIntentRow {
     /** Only on handovers begun before tenures lost their names. */
     legacyPlannedName: string | null;
     plannedSession: string | null;
+    /** When a scheduled handover takes effect (an hour after the wizard is finished). */
+    effectiveAt: string | null;
+    failureReason: string | null;
     initiatedBy: string | null;
     completedBy: string | null;
     completedAt: string | null;
@@ -55,7 +59,9 @@ export function HandoverIndex({
     const [starting, setStarting] = useState(false);
     const [abandoning, setAbandoning] = useState<string | null>(null);
 
-    const open = intents.find((i) => i.status === "draft" || i.status === "in_progress");
+    const open = intents.find((i) =>
+        i.status === "draft" || i.status === "in_progress" || i.status === "scheduled" || i.status === "applying");
+    const waiting = open?.status === "scheduled" || open?.status === "applying";
     const history = intents.filter((i) => i !== open);
 
     const begin = async () => {
@@ -86,11 +92,17 @@ export function HandoverIndex({
 
     const abandon = async (id: string) => {
         setAbandoning(id);
-        const res = await abandonHandoverIntentAction(id);
+        let res: Awaited<ReturnType<typeof abandonHandoverIntentAction>>;
+        try {
+            res = await abandonHandoverIntentAction(id, waiting ? "Cancelled before it took effect." : undefined);
+        } catch {
+            res = { success: false as const, error: "Couldn't reach the server. Try again." };
+        }
         setAbandoning(null);
 
         if (!res.success) {
-            showAlert({ type: "error", title: "Could not abandon", message: res.error || "Unknown error." });
+            showAlert({ type: "error", title: waiting ? "Could not cancel" : "Could not abandon", message: res.error || "Unknown error." });
+            router.refresh();
             return;
         }
         router.refresh();
@@ -116,7 +128,11 @@ export function HandoverIndex({
                     <div className="flex flex-wrap items-center gap-2">
                         <StatusPill status={open.status} />
                         <span className="text-xs font-medium text-amber-800">
-                            step {Math.min(open.step + 1, TOTAL_STEPS)} of {TOTAL_STEPS}
+                            {waiting
+                                ? open.effectiveAt
+                                    ? `takes effect ${formatWat(open.effectiveAt)}`
+                                    : "taking effect"
+                                : `step ${Math.min(open.step + 1, TOTAL_STEPS)} of ${TOTAL_STEPS}`}
                         </span>
                     </div>
 
@@ -126,36 +142,43 @@ export function HandoverIndex({
                         {open.legacyPlannedName ?? open.plannedSession ?? "…"}
                     </h2>
                     <p className="text-sm text-amber-800/90">
-                        Started by {open.initiatedBy ?? "someone"} · last touched{" "}
-                        {formatWat(open.updatedAt)}
+                        {waiting
+                            ? "The wizard is finished. Nothing changes until the hour is up, and it can still be cancelled."
+                            : <>Started by {open.initiatedBy ?? "someone"} · last touched {formatWat(open.updatedAt)}</>}
                     </p>
 
-                    <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-amber-200">
-                        <div
-                            className="h-full rounded-full bg-amber-600 transition-all"
-                            style={{ width: `${(open.step / TOTAL_STEPS) * 100}%` }}
-                        />
-                    </div>
+                    {!waiting && (
+                        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-amber-200">
+                            <div
+                                className="h-full rounded-full bg-amber-600 transition-all"
+                                style={{ width: `${(open.step / TOTAL_STEPS) * 100}%` }}
+                            />
+                        </div>
+                    )}
 
                     <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                         <a
                             href={`/dashboard/tenure/handover/${open.id}`}
                             className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 text-sm font-bold text-white transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700"
                         >
-                            <Play className="h-4 w-4" aria-hidden="true" />
-                            Resume handover
+                            {waiting
+                                ? <Clock className="h-4 w-4" aria-hidden="true" />
+                                : <Play className="h-4 w-4" aria-hidden="true" />}
+                            {waiting ? "View countdown" : "Resume handover"}
                         </a>
-                        <button
-                            type="button"
-                            disabled={abandoning === open.id}
-                            onClick={() => abandon(open.id)}
-                            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-amber-300 px-4 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 disabled:opacity-50"
-                        >
-                            {abandoning === open.id && (
-                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                            )}
-                            Abandon
-                        </button>
+                        {open.status !== "applying" && (
+                            <button
+                                type="button"
+                                disabled={abandoning === open.id}
+                                onClick={() => abandon(open.id)}
+                                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-amber-300 px-4 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 disabled:opacity-50"
+                            >
+                                {abandoning === open.id && (
+                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                )}
+                                {waiting ? "Cancel" : "Abandon"}
+                            </button>
+                        )}
                     </div>
                 </section>
             ) : (
@@ -243,6 +266,9 @@ function StatusPill({ status }: { status: HandoverIntentRow["status"] }) {
     const meta = {
         draft: { label: "Draft", icon: CircleDashed, cls: "bg-slate-100 text-slate-600" },
         in_progress: { label: "In progress", icon: CircleDashed, cls: "bg-amber-200 text-amber-900" },
+        scheduled: { label: "Scheduled", icon: Clock, cls: "bg-amber-200 text-amber-900" },
+        applying: { label: "Taking effect", icon: Loader2, cls: "bg-amber-200 text-amber-900" },
+        failed: { label: "Did not take effect", icon: AlertTriangle, cls: "bg-red-100 text-red-700" },
         completed: { label: "Completed", icon: CheckCircle2, cls: "bg-emerald-100 text-emerald-700" },
         abandoned: { label: "Abandoned", icon: XCircle, cls: "bg-slate-100 text-slate-500" },
     }[status];

@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
-import { StatsSkeleton } from "@/components/dashboard/roster/stats-strip";
-import { ReportPeople, ReportSummary } from "@/components/academics/report-view";
+import { ReportPeople, ReportSkeleton, ReportSummary } from "@/components/academics/report-view";
 import { semesterKey } from "@/lib/academics";
 import type { AcademicRound } from "@/lib/academics-db";
 import type { SemesterReport } from "@/lib/academics-report";
@@ -90,7 +89,11 @@ export function OverviewPanel({ rounds }: { rounds: AcademicRound[] }) {
                         </option>
                     ))}
                 </select>
-                {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400 motion-reduce:animate-none" aria-label="Loading" />}
+                {loading && report && (
+                    <span className="flex items-center gap-1.5 text-xs text-slate-500" role="status">
+                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Loading…
+                    </span>
+                )}
             </div>
 
             {error ? (
@@ -105,9 +108,12 @@ export function OverviewPanel({ rounds }: { rounds: AcademicRound[] }) {
                     </button>
                 </div>
             ) : !report ? (
-                <StatsSkeleton />
+                <ReportSkeleton />
             ) : (
-                <div className={loading ? "opacity-60 transition-opacity motion-reduce:transition-none" : undefined}>
+                <div
+                    aria-busy={loading}
+                    className={loading ? "pointer-events-none opacity-50 transition-opacity motion-reduce:transition-none" : undefined}
+                >
                     <div className="space-y-4">
                         <ReportSummary report={report} />
                         <ReportPeople report={report} filePrefix="fellowship" />

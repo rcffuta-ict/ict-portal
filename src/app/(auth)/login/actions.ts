@@ -9,6 +9,7 @@ import { recordLoginEvent } from "@/lib/auth/audit";
 import { getRequestMeta } from "@/lib/auth/request";
 import { getLoginContext } from "@/lib/auth/profile-context";
 import { attachAccessibleModules } from "@/lib/module-access";
+import { applyDueHandover } from "@/lib/handover-schedule";
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
@@ -26,6 +27,8 @@ export async function checkLeaderAction(email: string) {
     const normalized = String(email || "").trim().toLowerCase();
     if (!normalized) return { ok: false as const, error: "Email is required." };
 
+    // A handover due now may revoke or grant this login, so let it land first.
+    await applyDueHandover();
     const login = await getLoginContext(normalized);
     if (!login || !login.isActive) {
         return { ok: false as const, error: INVALID };
@@ -64,6 +67,7 @@ export async function loginAction(formData: FormData) {
     try {
         if (!email || !password) return { success: false, error: "Email and password are required." };
 
+        await applyDueHandover();
         const login = await getLoginContext(email);
         if (!login || !login.isActive || login.passwordHash == null) {
             await recordLoginEvent("login_fail", { email, ip: meta.ip, userAgent: meta.userAgent });
@@ -107,6 +111,7 @@ export async function setInitialPasswordAction(email: string, password: string) 
     try {
         if (password.length < 8) return { success: false, error: "Password must be at least 8 characters." };
 
+        await applyDueHandover();
         const login = await getLoginContext(normalized);
         if (!login || !login.isActive) return { success: false, error: INVALID };
         if (login.passwordHash != null) {

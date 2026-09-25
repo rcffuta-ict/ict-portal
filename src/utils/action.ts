@@ -4,6 +4,7 @@ import { cache } from "react";
 import type { Tenure } from "@/lib/types/portal";
 import { tenureLabel } from "@/lib/tenure";
 import { db } from "@/lib/db";
+import { applyDueHandover } from "@/lib/handover-schedule";
 
 /**
  * The active tenure, read once per request (almost every loader and gate needs it).
@@ -11,6 +12,8 @@ import { db } from "@/lib/db";
  * and every export is a callable endpoint.
  */
 const activeTenureOnce = cache(async (): Promise<Tenure | null> => {
+    // A scheduled handover whose hour is up switches the tenure; apply it first.
+    await applyDueHandover();
     try {
         // Service-role client: RLS is default-deny, so anon reads no longer work.
         const { data } = await db

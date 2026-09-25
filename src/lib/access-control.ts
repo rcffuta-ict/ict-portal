@@ -15,12 +15,16 @@ import { canReadModule, canWriteModule, getModuleAccessConfig, type ModuleId } f
 import { db } from "@/lib/db";
 import { computeLevel } from "@/lib/levels";
 import { getActiveTenure } from "@/utils/action";
+import { applyDueHandover } from "@/lib/handover-schedule";
 
 /**
  * Resolve the current session's enriched profile context (single RPC), or null.
  * Prefer this in server actions that need scope data (managed units/levels).
  */
 export async function getCurrentContext(): Promise<ProfileContext | null> {
+    // A handover whose hour is up is applied before anything reads who holds which
+    // office, so nobody acts on the outgoing tenure a moment after it has closed.
+    await applyDueHandover();
     const profileId = await getSessionProfileId();
     if (!profileId) return null;
     return getProfileContext(profileId);

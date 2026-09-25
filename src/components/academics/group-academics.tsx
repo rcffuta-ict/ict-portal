@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EyeOff, FileDown, GraduationCap, Loader2, RefreshCw } from "lucide-react";
-import { StatsSkeleton } from "@/components/dashboard/roster/stats-strip";
-import { ReportPeople, ReportSummary } from "@/components/academics/report-view";
+import { ReportPeople, ReportSkeleton, ReportSummary } from "@/components/academics/report-view";
 import { semesterKey } from "@/lib/academics";
 import type { RecordExportRow, SemesterReport } from "@/lib/academics-report";
 import { csvFilename, downloadCsv, fileSlug } from "@/lib/csv";
@@ -82,7 +81,7 @@ export function GroupAcademics({
             </div>
         );
     }
-    if (!data) return <StatsSkeleton />;
+    if (!data) return <ReportSkeleton label={`Loading ${groupName}'s academics…`} />;
 
     if (!data.report) {
         return (
@@ -114,10 +113,17 @@ export function GroupAcademics({
                         </option>
                     ))}
                 </select>
-                {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400 motion-reduce:animate-none" aria-label="Loading" />}
+                {loading && (
+                    <span className="flex items-center gap-1.5 text-xs text-slate-500" role="status">
+                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Loading…
+                    </span>
+                )}
             </div>
 
-            <div className={loading ? "space-y-4 opacity-60 transition-opacity motion-reduce:transition-none" : "space-y-4"}>
+            <div
+                aria-busy={loading}
+                className={loading ? "pointer-events-none space-y-4 opacity-50 transition-opacity motion-reduce:transition-none" : "space-y-4"}
+            >
                 <ReportSummary report={data.report} />
                 {data.individuals ? (
                     <>
