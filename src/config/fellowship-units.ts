@@ -21,6 +21,8 @@
  * Client-safe: plain data, no server imports.
  */
 
+import type { Gender } from "@/lib/gender";
+
 export interface UnitSpec {
     /** Immutable. The EXCO privilege scope. Never regenerate from `name`. */
     slug: string;
@@ -33,6 +35,23 @@ export interface UnitSpec {
      */
     positionAlias: string;
     description: string;
+    /**
+     * Set only on the Brothers' and Sisters' units, which are NOT units anybody joins.
+     *
+     * Every brother is in the Brothers' Unit and every sister in the Sisters' Unit by
+     * virtue of being one. There is no induction, no roster to curate and no decision
+     * for the coordinator to make about who belongs — so membership is DERIVED from
+     * `profiles.gender` rather than stored in `membership_units`, and the unit reads as
+     * a standing figure rather than a list somebody maintains.
+     *
+     * Storing it instead would mean two answers to "is she in the Sisters' Unit?" —
+     * her gender, and whether anyone remembered to add her — and they would disagree
+     * from the first member who registered after the roster was last touched.
+     *
+     * The offices are real and stay in the catalogue: the Sisters' Coord ministers to
+     * the sisters. What changes is that her congregation is computed, not enrolled.
+     */
+    genderCategory?: Gender;
 }
 
 /**
@@ -158,7 +177,8 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
         name: "Sisters' Unit",
         type: "UNIT",
         positionAlias: "Sisters' Coord",
-        description: "Ministers to the sisters of the fellowship.",
+        description: "Every sister in the fellowship. Membership follows gender, not induction.",
+        genderCategory: "female",
     },
     {
         slug: "bible-study",
@@ -186,7 +206,8 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
         name: "Brothers' Unit",
         type: "UNIT",
         positionAlias: "Brothers' Coord",
-        description: "Ministers to the brothers of the fellowship.",
+        description: "Every brother in the fellowship. Membership follows gender, not induction.",
+        genderCategory: "male",
     },
     {
         slug: "commerce",
@@ -194,13 +215,6 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
         type: "TEAM",
         positionAlias: "Director of Commerce",
         description: "Runs the fellowship's trade, sales and commercial ventures.",
-    },
-    {
-        slug: "secretariat",
-        name: "Secretariat",
-        type: "TEAM",
-        positionAlias: "Secretariat Keeper",
-        description: "Keeps the fellowship's office, its records and its correspondence.",
     },
     {
         slug: "protocol",
@@ -230,4 +244,30 @@ export const FELLOWSHIP_UNITS: UnitSpec[] = [
 /** Look one up by its immutable slug. */
 export function unitBySlug(slug: string): UnitSpec | undefined {
     return FELLOWSHIP_UNITS.find((u) => u.slug === slug);
+}
+
+/**
+ * The units whose membership is a gender, not a decision — keyed by slug.
+ *
+ * Read this rather than testing for the slugs "brothers"/"sisters" by hand: the slug is
+ * frozen but the concept is not, and a third category (should one ever exist) must not
+ * require hunting for string literals.
+ */
+export const GENDER_CATEGORY_UNITS: Readonly<Record<string, Gender>> = Object.freeze(
+    Object.fromEntries(
+        FELLOWSHIP_UNITS
+            .filter((u) => u.genderCategory)
+            .map((u) => [u.slug, u.genderCategory as Gender]),
+    ),
+);
+
+/** The gender a unit stands for, or null when it is an ordinary unit you join. */
+export function genderForUnitSlug(slug: string | null | undefined): Gender | null {
+    if (!slug) return null;
+    return GENDER_CATEGORY_UNITS[slug] ?? null;
+}
+
+/** True when this unit's roster is computed from gender and cannot be edited. */
+export function isGenderCategoryUnit(slug: string | null | undefined): boolean {
+    return genderForUnitSlug(slug) !== null;
 }

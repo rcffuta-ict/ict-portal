@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getZoneMembers, createZone } from "@/lib/fellowship";
 import { getActiveTenure } from "@/utils/action";
-import { requireContext, requireAccess } from "@/lib/access-control";
+import { requireContext, requireAdminWrite } from "@/lib/access-control";
 
 /**
  * Zone module. Hall/zone pastors are NOT leadership positions — they live in the
@@ -67,7 +67,7 @@ async function getZonesOverview(tenureId: string | null) {
 
 export async function createZoneAction(formData: FormData) {
     try {
-        await requireAccess("ADMIN");
+        await requireAdminWrite();
         await createZone(
             formData.get("name") as string,
             formData.get("description") as string,
@@ -82,7 +82,7 @@ export async function createZoneAction(formData: FormData) {
 /** Assign a hall/zone pastor (by email) into the zone_pastors table. */
 export async function assignPastorAction(formData: FormData) {
     try {
-        await requireAccess("ADMIN");
+        await requireAdminWrite();
         const email = (formData.get("email") as string)?.trim().toLowerCase();
         const zoneId = formData.get("zoneId") as string;
         const tenureId = formData.get("tenureId") as string;
@@ -139,7 +139,7 @@ export async function getZoneDetailsAction(zoneId: string, tenureId: string) {
 
 export async function removePastorAction(zonePastorId: string) {
     try {
-        await requireAccess("ADMIN");
+        await requireAdminWrite();
         const { error } = await db.from("zone_pastors").delete().eq("id", zonePastorId);
         if (error) throw error;
         revalidatePath("/dashboard/zones");

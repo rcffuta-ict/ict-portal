@@ -5,7 +5,7 @@
  * any server-only imports so it can be bundled for the browser.
  */
 
-export const MODULES = ["tenure", "zones", "workforce", "level"] as const;
+export const MODULES = ["tenure", "zones", "workforce", "level", "academics"] as const;
 export type ModuleId = (typeof MODULES)[number];
 
 export type WriteScope = "ALL" | "OWN";
@@ -85,4 +85,34 @@ export const MODULE_META: Record<ModuleId, { label: string; description: string 
         label: "Levels",
         description: "Level (generation) members and invite links.",
     },
+    academics: {
+        label: "Academics",
+        description: "Results rounds, members' GPA/CGPA, analytics and departments.",
+    },
 };
+
+/**
+ * Modules whose access is FIXED BY POLICY rather than configured in Settings.
+ *
+ * Tenure is the fellowship's constitution — the session, coronation, cabinet,
+ * generations and handover. Who may see it and who may change it is a decision of the
+ * fellowship, not an app setting, so it is written here and the `module_access` row for
+ * it is ignored:
+ *
+ *   READ  — the President, both Vice Presidents (the CENTRAL tag) and the System Admin.
+ *   WRITE — the System Admin and the VP Admin only. Everyone else who can read it,
+ *           VP Church Growth and the President included, reads it and nothing more.
+ *
+ * Enforced in canReadModule / canWriteModule (src/lib/module-access.ts); Settings shows
+ * the module as locked and its save action refuses it.
+ */
+export const POLICY_FIXED_MODULES: Partial<Record<ModuleId, { read: string; write: string }>> = {
+    tenure: {
+        read: "President, Vice Presidents and the System Admin",
+        write: "System Admin and VP Admin only",
+    },
+};
+
+export function isPolicyFixedModule(module: ModuleId): boolean {
+    return module in POLICY_FIXED_MODULES;
+}

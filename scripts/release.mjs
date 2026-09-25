@@ -62,7 +62,11 @@ function commitsSince(from) {
  * is a PATCH.
  */
 function migrationsSince(from) {
-    const range = from ? from + "..HEAD" : "HEAD";
+    // Before the first tag, compare against the EMPTY tree. `git diff HEAD` alone
+    // compares HEAD with the working tree, which found no migrations at all and
+    // proposed a code-only PATCH for a first release carrying the whole schema.
+    const base = from ?? git("hash-object", "-t", "tree", "/dev/null");
+    const range = base + "..HEAD";
     const out = git("diff", "--name-only", "--diff-filter=A", range, "--", "supabase/migrations/");
     return out ? out.split("\n").filter((f) => f.endsWith(".sql")) : [];
 }

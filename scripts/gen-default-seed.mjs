@@ -35,13 +35,32 @@ function readUnits() {
     const body = src.slice(src.indexOf("export const FELLOWSHIP_UNITS"));
     const units = [];
 
-    // Each entry is a { ... } object literal with the five known keys.
-    const entry = /\{\s*(?:\/\/[^\n]*\n\s*)*slug:\s*"([^"]+)",\s*name:\s*"([^"]+)",\s*type:\s*"(UNIT|TEAM)",\s*positionAlias:\s*"([^"]+)",\s*description:\s*\n?\s*"([^"]*)",?\s*\}/g;
+    // Each entry is a { ... } object literal with the five required keys, optionally
+    // followed by genderCategory on the Brothers' and Sisters' units.
+    const entry = /\{\s*(?:\/\/[^\n]*\n\s*)*slug:\s*"([^"]+)",\s*name:\s*"([^"]+)",\s*type:\s*"(UNIT|TEAM)",\s*positionAlias:\s*"([^"]+)",\s*description:\s*\n?\s*"([^"]*)",?\s*(?:genderCategory:\s*"(male|female)",?\s*)?\}/g;
     let m;
     while ((m = entry.exec(body)) !== null) {
-        units.push({ slug: m[1], name: m[2], type: m[3], positionAlias: m[4], description: m[5] });
+        units.push({
+            slug: m[1], name: m[2], type: m[3], positionAlias: m[4], description: m[5],
+            genderCategory: m[6] ?? null,
+        });
     }
-    if (units.length === 0) throw new Error("Parsed zero units — the config format changed.");
+
+    // Count the entries independently and insist the two agree.
+    //
+    // This regex matches whole object literals, so ANY unrecognised key makes an entry
+    // simply not match -- and the old guard only fired when NOTHING matched. Adding
+    // `genderCategory` therefore dropped exactly two units and their Exco offices out
+    // of a seed that runs in production, and the generator reported success. A parser
+    // that can half-read its input has to say so.
+    const declared = (body.match(/^\s*slug:\s*"/gm) ?? []).length;
+    if (units.length !== declared) {
+        throw new Error(
+            `Parsed ${units.length} units but the config declares ${declared}. ` +
+            "An entry has a key this parser does not know about — extend the pattern " +
+            "in readUnits() rather than letting units vanish from the seed.",
+        );
+    }
     return units;
 }
 
@@ -188,13 +207,20 @@ function render() {
     L.push("-- Matched on slug, so re-running restores an edited name without minting a");
     L.push("-- duplicate unit.");
     L.push("-- ----------------------------------------------------------------------------");
+    L.push("-- is_workforce is FALSE for the Brothers' and Sisters' units. They are gender");
+    L.push("-- categories rather than units anybody joins -- every member is in one of them");
+    L.push("-- already -- so counting them as workforce would make every member a worker and");
+    L.push("-- the \"who is serving?\" figure meaningless.");
     L.push("INSERT INTO public.units (slug, name, type, description, is_workforce)");
     L.push("VALUES");
-    L.push(units.map((u) => `    (${q(u.slug)}, ${q(u.name)}, ${q(u.type)}, ${q(u.description)}, true)`).join(",\n"));
+    L.push(units.map((u) => `    (${q(u.slug)}, ${q(u.name)}, ${q(u.type)}, ${q(u.description)}, ${u.genderCategory ? "false" : "true"})`).join(",\n"));
     L.push("ON CONFLICT (slug) DO UPDATE");
-    L.push("    SET name        = EXCLUDED.name,");
-    L.push("        type        = EXCLUDED.type,");
-    L.push("        description = EXCLUDED.description;");
+    L.push("    SET name         = EXCLUDED.name,");
+    L.push("        type         = EXCLUDED.type,");
+    L.push("        description  = EXCLUDED.description,");
+    // is_workforce was omitted here, so re-running the seed could never CORRECT the
+    // flag on a unit already in the database -- which is exactly what is needed now.
+    L.push("        is_workforce = EXCLUDED.is_workforce;");
     L.push("");
 
     // --- positions ---
@@ -256,12 +282,22 @@ function render() {
     L.push("-- and a reset seed that overwrote a deliberate access decision would be a");
     L.push("-- security regression dressed up as housekeeping.");
     L.push("-- ----------------------------------------------------------------------------");
+    L.push("--");
+    L.push("-- The tenure row is IGNORED by the app: its access is fixed by policy in");
+    L.push("-- src/lib/modules.ts (POLICY_FIXED_MODULES) -- President, VPs and System Admin");
+    L.push("-- read; only the System Admin and VP Admin write. Kept so the table has a row");
+    L.push("-- for every module, with values that match what the code enforces.");
+    L.push("--");
+    L.push("-- academics: the Academic Coord (EXCO:academic) reads and writes it by default.");
+    L.push("-- Faculties and departments are NOT seeded here: they are data the Academic Unit");
+    L.push("-- maintains, seeded once by the academics_module migration.");
     L.push("INSERT INTO public.module_access (module, read_slugs, write_slugs, write_scope)");
     L.push("VALUES");
-    L.push("    ('tenure',    ARRAY['CENTRAL'],          ARRAY['CENTRAL'], 'ALL'),");
+    L.push("    ('tenure',    ARRAY['CENTRAL'],          ARRAY[]::text[],  'ALL'),");
     L.push("    ('zones',     ARRAY['CENTRAL','ZONE'],   ARRAY['ZONE'],    'OWN'),");
     L.push("    ('workforce', ARRAY['CENTRAL','EXCO'],   ARRAY['EXCO'],    'OWN'),");
-    L.push("    ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN')");
+    L.push("    ('level',     ARRAY['CENTRAL','LEVEL'],  ARRAY['LEVEL'],   'OWN'),");
+    L.push("    ('academics', ARRAY['EXCO:academic'],    ARRAY['EXCO:academic'], 'ALL')");
     L.push("ON CONFLICT (module) DO NOTHING;");
     L.push("");
     L.push("COMMIT;");

@@ -29,6 +29,12 @@ export interface EventRegistrationConfig {
 export interface EventConfig {
     registration?: Partial<EventRegistrationConfig>;
     location?: Partial<EventLocation>;
+    /**
+     * The unit running the event, by its immutable slug. Its leadership (every holder of
+     * `EXCO:<slug>`, lead or assistant) gets the event's admin console alongside the
+     * System Admin, the VPs and the President. See src/lib/event-access.ts.
+     */
+    unit?: string | null;
     [key: string]: unknown;
 }
 
@@ -60,6 +66,12 @@ export function getRegistrationConfig(
         allowAlumni: raw?.allowAlumni ?? true,
         allowStudents: raw?.allowStudents ?? true,
     };
+}
+
+/** The slug of the unit running the event, or null when none is assigned. */
+export function getEventUnitSlug(config: Record<string, unknown> | null | undefined): string | null {
+    const raw = (config as EventConfig | null | undefined)?.unit;
+    return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 
 /** Returns null when no venue has been set, so callers can hide the block entirely. */

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { checkEnhancedAdminAccess } from "@/lib/access-control";
+import { checkEnhancedAdminAccess, checkEnhancedAdminWriteAccess } from "@/lib/access-control";
 import { getLoMember, requireLoMember } from "@/lib/lo-member";
 import {
     TESTIMONY_CATEGORIES,
@@ -357,7 +357,7 @@ export async function moderateTestimony(
     note?: string,
 ) {
     try {
-        const admin = await checkEnhancedAdminAccess();
+        const admin = await checkEnhancedAdminWriteAccess();
         if (!admin.isAdmin || !admin.user) {
             return { success: false, error: "Unauthorized: Admin access required" };
         }

@@ -4,7 +4,7 @@
 import { db } from "@/lib/db";
 import { requireModuleRead, canManageLevel } from "@/lib/access-control";
 import { getActiveTenure } from "@/utils/action";
-import { computeLevel } from "@/lib/levels";
+import { compareGenerations, computeLevel } from "@/lib/levels";
 import { getProfileContext, type ProfileContext } from "@/lib/auth/profile-context";
 import {
     listInvitesByClassSet,
@@ -14,10 +14,17 @@ import {
     logInviteEvent,
 } from "@/lib/invites";
 import { revalidatePath } from "next/cache";
+import { canReadModule, getModuleAccessConfig } from "@/lib/module-access";
+import { getAcademicSettings, listRounds, loadRecords, classSetsById, MEMBER_COLUMNS, type MemberRow } from "@/lib/academics-db";
+import { buildSemesterReport, recordExportRows } from "@/lib/academics-report";
+import { getDepartments, getFaculties } from "@/lib/departments-db";
+import { bySemester, isValidSession, semesterKey, semesterLabel } from "@/lib/academics";
+import { fetchAll } from "@/lib/fetch-all";
 import { EXPORT_FIELDS, MIN_EXPORT_FIELDS } from "./export-fields";
 // Shared with the Oracle export — the formula-injection guard in csvCell is not
 // something that should exist in two places.
 import { csvCell } from "@/lib/csv";
+import { addToGenderTally, emptyGenderTally, tallyGender, type GenderTally } from "@/lib/gender";
 
 /**
  * Level module — level (generation) member management for level coordinators.
@@ -69,13 +76,15 @@ function managedLevelIds(ctx: ProfileContext, sets: ClassSetRow[], session: stri
     return ids;
 }
 
-type GenderTally = { total: number; male: number; female: number };
-const emptyTally = (): GenderTally => ({ total: 0, male: 0, female: 0 });
+// Gender tallies live in @/lib/gender. The local pair here counted only male and
+// female, so a generation's split never added up to its member count whenever somebody
+// had not recorded a gender -- which is most newly-registered members.
+const emptyTally = emptyGenderTally;
 
 export async function getLevelModuleData() {
     try {
-        const ctx = await requireModuleRead("level");
-        const tenure = await getActiveTenure();
+        // Together: the tenure is only used once the gate has passed.
+        const [ctx, tenure] = await Promise.all([requireModuleRead("level"), getActiveTenure()]);
         const session = tenure?.session ?? null;
         const seesAll = seesAllLevels(ctx);
         const canWriteAny = ctx.isSysAdmin || ctx.isVpAdmin; // write-bypass tier
@@ -103,13 +112,11 @@ export async function getLevelModuleData() {
         for (const p of profs ?? []) {
             if (!p.class_set_id) continue;
             if (!stats.has(p.class_set_id)) stats.set(p.class_set_id, emptyTally());
-            const t = stats.get(p.class_set_id)!;
-            t.total += 1;
-            if (p.gender === "male") t.male += 1;
-            else if (p.gender === "female") t.female += 1;
+            addToGenderTally(stats.get(p.class_set_id)!, p.gender);
         }
 
-        const generations = (sets ?? []).map((s: any) => ({
+        // PDS/UABS first, then 100 Level to the oldest (compareGenerations).
+        const generations = [...(sets ?? [])].sort(compareGenerations).map((s: any) => ({
             classSetId: s.id,
             familyName: s.family_name,
             entryYear: s.entry_year,
@@ -257,16 +264,15 @@ export async function getLevelStatsAction(classSetId: string) {
             }
         }
 
-        const male = rows.filter((m) => m.gender === "male").length;
-        const female = rows.filter((m) => m.gender === "female").length;
+        const split = tallyGender(rows, (m) => m.gender);
 
         return {
             success: true,
             stats: {
-                total: rows.length,
-                male,
-                female,
-                unspecified: rows.length - male - female,
+                total: split.total,
+                male: split.male,
+                female: split.female,
+                unspecified: split.unspecified,
                 workers: workerIds.size,
                 nonWorkers: rows.length - workerIds.size,
             },
@@ -284,7 +290,9 @@ export async function getMemberDetailAction(profileId: string) {
     try {
         const ctx = await requireModuleRead("level");
         const { data: prof } = await db
-            .from("profiles").select("class_set_id").eq("id", profileId).maybeSingle();
+            // `dob` here, not from the context: rcf_profile_context doesn't carry it, and
+            // the member page's "Date of birth" row read empty for everyone.
+            .from("profiles").select("class_set_id, dob").eq("id", profileId).maybeSingle();
         if (!prof) return { success: false as const, error: "Member not found.", canWrite: false };
         if (prof.class_set_id == null || !(await canReadLevel(ctx, prof.class_set_id))) {
             return { success: false as const, error: "You don't have access to this member.", canWrite: false };
@@ -294,7 +302,12 @@ export async function getMemberDetailAction(profileId: string) {
         // `canWrite` drives the member-page update-link control only; the invite action
         // re-checks `canManageLevel` itself, so this flag is UI convenience, not a gate.
         const canWrite = await canManageLevel(ctx, prof.class_set_id);
-        return { success: true as const, data: context, canWrite, classSetId: prof.class_set_id };
+        return {
+            success: true as const,
+            data: { ...context, profile: { ...context.profile, dob: prof.dob ?? null } },
+            canWrite,
+            classSetId: prof.class_set_id,
+        };
     } catch (e: any) {
         return { success: false as const, error: e.message, canWrite: false };
     }
@@ -306,7 +319,7 @@ export async function getMemberDetailAction(profileId: string) {
 //
 // A LEVEL TOKEN belongs to the generation, not to a person or a purpose. One token
 // backs both flows — the *link* is assembled at share time
-// (`/register?invite=<token>&reason=register|update`) — so the raw token stays a plain
+// (`/profile?invite=<token>&reason=register|update`) — so the raw token stays a plain
 // string a coordinator can paste anywhere. Generate/revoke needs WRITE on the level;
 // listing is the same, since a token is a credential and shouldn't be visible to
 // read-only viewers.
@@ -593,5 +606,123 @@ export async function exportLevelMembersAction(classSetId: string, fields: strin
         return { success: true, csv, filename, count: rows.length };
     } catch (e: any) {
         return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Whether this viewer may see individual results for this generation: anyone who can
+ * read the Academics module, or the level's coordinator when the Academic Unit allows
+ * it. Not exported: "use server" file.
+ */
+async function coordSeesIndividuals(
+    ctx: ProfileContext,
+    classSetId: string,
+    allowed: boolean,
+    config: Awaited<ReturnType<typeof getModuleAccessConfig>>,
+): Promise<boolean> {
+    if (canReadModule(ctx, "academics", config)) return true;
+    return allowed && (await canManageLevel(ctx, classSetId));
+}
+
+/**
+ * Levels → Academics: one semester's results for this generation.
+ *
+ * Gated like the members list (canReadLevel). Totals always; names and grades only to
+ * this level's coordinator when the Academic Unit allows it
+ * (academic_settings.level_coords_see_individuals), or to anyone who can read the
+ * Academics module anyway. Decided here, so with the switch off the rows never leave
+ * the server.
+ */
+export async function getLevelAcademicsAction(classSetId: string, session?: string, semester?: number) {
+    try {
+        const ctx = await requireModuleRead("level");
+        if (!(await canReadLevel(ctx, classSetId))) {
+            return { success: false as const, error: "You don't coordinate this level." };
+        }
+        const [members, rounds, settings, config, classSets, departments, faculties] = await Promise.all([
+            fetchAll<MemberRow>((from, to) =>
+                db.from("profiles").select(MEMBER_COLUMNS).eq("class_set_id", classSetId).order("id").range(from, to) as never,
+            ),
+            listRounds(),
+            getAcademicSettings(),
+            getModuleAccessConfig(),
+            classSetsById(),
+            getDepartments(true),
+            getFaculties(),
+        ]);
+        const records = await loadRecords(members.map((m) => m.id));
+
+        const options = new Map<string, { session: string; semester: number; label: string }>();
+        for (const r of rounds) options.set(semesterKey(r.session, r.semester), { session: r.session, semester: r.semester, label: r.label });
+        for (const r of records) {
+            const k = semesterKey(r.session, r.semester);
+            if (!options.has(k)) options.set(k, { session: r.session, semester: r.semester, label: semesterLabel(r.session, r.semester) });
+        }
+        const semesters = [...options.values()].sort(bySemester).reverse();
+        const fallback = rounds.find((r) => r.isOpen) ?? semesters[0] ?? null;
+        const chosen =
+            session && isValidSession(session) && (semester === 1 || semester === 2)
+                ? { session, semester }
+                : fallback
+                    ? { session: fallback.session, semester: fallback.semester }
+                    : null;
+
+        const individuals = await coordSeesIndividuals(ctx, classSetId, settings.levelCoordsSeeIndividuals, config);
+
+        return {
+            success: true as const,
+            semesters,
+            individuals,
+            report: chosen
+                ? buildSemesterReport({
+                    session: chosen.session,
+                    semester: chosen.semester,
+                    members,
+                    classSets,
+                    records,
+                    departments,
+                    facultyNames: new Map(faculties.map((f) => [f.code, f.name])),
+                    includeIndividuals: individuals,
+                })
+                : null,
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+/** Levels → Academics → "Full record": every semester of every member, same rule as the names. */
+export async function exportLevelAcademicRecordsAction(classSetId: string) {
+    try {
+        const ctx = await requireModuleRead("level");
+        if (!(await canReadLevel(ctx, classSetId))) {
+            return { success: false as const, error: "You don't coordinate this level.", data: [] };
+        }
+        const [settings, config, tenure] = await Promise.all([getAcademicSettings(), getModuleAccessConfig(), getActiveTenure()]);
+        if (!(await coordSeesIndividuals(ctx, classSetId, settings.levelCoordsSeeIndividuals, config))) {
+            return { success: false as const, error: "The Academic Unit shows totals only here.", data: [] };
+        }
+        const members = await fetchAll<MemberRow>((from, to) =>
+            db.from("profiles").select(MEMBER_COLUMNS).eq("class_set_id", classSetId).order("id").range(from, to) as never,
+        );
+        const [records, classSets, departments, faculties] = await Promise.all([
+            loadRecords(members.map((m) => m.id)),
+            classSetsById(),
+            getDepartments(true),
+            getFaculties(),
+        ]);
+        return {
+            success: true as const,
+            data: recordExportRows({
+                members,
+                classSets,
+                records,
+                departments,
+                facultyNames: new Map(faculties.map((f) => [f.code, f.name])),
+                session: tenure?.session ?? null,
+            }),
+        };
+    } catch (e: any) {
+        return { success: false as const, error: e.message, data: [] };
     }
 }

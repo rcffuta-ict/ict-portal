@@ -3,6 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { fetchAll } from "@/lib/fetch-all";
 import { requireSysAdmin, requirePresidentOrSysAdmin } from "@/lib/access-control";
 import { getActiveTenure } from "@/utils/action";
 import { computeLevel } from "@/lib/levels";
@@ -165,13 +166,18 @@ async function resolveRelationalIds(
     // Inverted operators select the complement of the positive set.
     const negate = c.op === "is_not" || c.op === "is_empty";
 
+    // Both reads below are paged (fetchAll): a single read stops at 1000 rows without an
+    // error, and a search by unit or office would silently miss everyone after that.
     if (c.field === "leadership") {
-        let q = db
-            .from("leadership")
-            .select("profile_id, position:leadership_positions(title)");
-        if (tenureId) q = q.eq("tenure_id", tenureId);
-        const { data } = await q;
-        const ids = ((data ?? []) as any[])
+        const data = await fetchAll<any>((from, to) => {
+            let q = db
+                .from("leadership")
+                .select("profile_id, position:leadership_positions(title)")
+                .is("ended_at", null);
+            if (tenureId) q = q.eq("tenure_id", tenureId);
+            return q.order("id").range(from, to);
+        });
+        const ids = data
             .filter((r) => {
                 const pos = Array.isArray(r.position) ? r.position[0] : r.position;
                 return nameMatches(pos?.title ?? "");
@@ -182,12 +188,14 @@ async function resolveRelationalIds(
 
     // unit / teams both live in membership_units, split by units.type.
     const wantType = c.field === "teams" ? "TEAM" : "UNIT";
-    let q = db
-        .from("membership_units")
-        .select("profile_id, unit:units(name, type)");
-    if (tenureId) q = q.eq("tenure_id", tenureId);
-    const { data } = await q;
-    const ids = ((data ?? []) as any[])
+    const data = await fetchAll<any>((from, to) => {
+        let q = db
+            .from("membership_units")
+            .select("profile_id, unit:units(name, type)");
+        if (tenureId) q = q.eq("tenure_id", tenureId);
+        return q.order("id").range(from, to);
+    });
+    const ids = data
         .filter((r) => {
             const unit = Array.isArray(r.unit) ? r.unit[0] : r.unit;
             if (!unit || unit.type !== wantType) return false;
@@ -259,6 +267,13 @@ async function fetchRows(query: OracleQuery, opts: { paged: boolean }): Promise<
         // Chained .or() calls are ANDed together, so one call per condition gives AND.
         for (const term of columnTerms) q = q.or(term);
         for (const { ids, negate } of idSets) {
+            // The set travels in the request URL; past this size the gateway rejects it
+            // with an error nobody can act on. Say what to do instead.
+            if (ids.length > MAX_ID_SET) {
+                throw new Error(
+                    "That query matches too many members through a unit or position. Add a narrower condition.",
+                );
+            }
             if (negate) {
                 // "not in an empty set" is everyone — skip the filter rather than emit
                 // `not.in.()`, which PostgREST rejects.
@@ -378,7 +393,8 @@ async function decorate(rows: any[], columns: string[], tenureId: string | null)
         let lq = db
             .from("leadership")
             .select("profile_id, position:leadership_positions(title)")
-            .in("profile_id", ids);
+            .in("profile_id", ids)
+            .is("ended_at", null);
         if (tenureId) lq = lq.eq("tenure_id", tenureId);
         const { data: leads } = await lq;
         const by = new Map<string, string[]>();

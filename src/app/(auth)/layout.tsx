@@ -1,6 +1,6 @@
 import { AuthBrandPanel } from "@/components/auth/auth-brand-panel";
 import { Copyright } from "@/components/ui/copyright";
-import { getActiveTenureName } from "@/utils/action";
+import { getActiveTenureLabel } from "@/utils/action";
 
 
 export default async function AuthLayout({
@@ -8,12 +8,12 @@ export default async function AuthLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const tenureName = await getActiveTenureName();
+    const tenureLabel = await getActiveTenureLabel();
     return (
         <div className="min-h-screen w-full lg:grid lg:grid-cols-3 overflow-hidden bg-slate-50">
             {/* Left Side - Extracted to Client Component for Animation */}
             <div className="hidden lg:block lg:col-span-1 h-full shadow-2xl relative z-10">
-                <AuthBrandPanel tenureName={tenureName} />
+                <AuthBrandPanel tenureLabel={tenureLabel} />
             </div>
 
             {/* Right Side - Form Area */}
@@ -39,7 +39,7 @@ export default async function AuthLayout({
                     {children}
 
                     <footer className="flex justify-center text-center md:hidden">
-                        <Copyright tenure={tenureName} variant="dark"/>
+                        <Copyright tenure={tenureLabel} variant="dark"/>
                     </footer>
                 </div>
             </div>

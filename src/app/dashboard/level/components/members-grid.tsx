@@ -2,22 +2,23 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import {
     Users,
     Search,
     Loader2,
-    Mail,
-    Phone,
     Mars,
     Venus,
     Briefcase,
     UserMinus,
+    UserRound,
     AlertCircle,
 } from "lucide-react";
 import { getLevelMembersAction, getLevelStatsAction } from "../actions";
 import { ExportPanel } from "./export-panel";
-import { Skeleton, SkeletonCard, SkeletonRegion } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
+import { GENDER_UNSPECIFIED_LABEL } from "@/lib/gender";
+import { RosterCard } from "@/components/dashboard/roster/roster-card";
+import { StatsStrip, StatsSkeleton, type StatItem } from "@/components/dashboard/roster/stats-strip";
 
 const PAGE_SIZE = 24;
 
@@ -107,7 +108,7 @@ export function MembersGrid({
 
     return (
         <div className="space-y-4">
-            {stats ? <StatsStrip stats={stats} /> : <StatsSkeleton />}
+            {stats ? <StatsStrip items={levelStatItems(stats)} /> : <StatsSkeleton />}
 
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -164,8 +165,17 @@ export function MembersGrid({
                     <>
                         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                             {members.map((m) => (
-                                <li key={m.id}>
-                                    <MemberCard classSetId={classSetId} member={m} />
+                                <li key={m.id} className="min-w-0">
+                                    <RosterCard
+                                        href={`/dashboard/level/${classSetId}/member/${m.id}`}
+                                        firstName={m.first_name}
+                                        lastName={m.last_name}
+                                        gender={m.gender}
+                                        avatarUrl={m.avatar_url}
+                                        email={m.email}
+                                        phone={m.phone_number}
+                                        meta={m.department}
+                                    />
                                 </li>
                             ))}
                         </ul>
@@ -193,80 +203,19 @@ export function MembersGrid({
     );
 }
 
-function MemberCard({ classSetId, member }: { classSetId: string; member: any }) {
-    const name = [member.first_name, member.last_name].filter(Boolean).join(" ");
-    return (
-        <Link
-            href={`/dashboard/level/${classSetId}/member/${member.id}`}
-            className="flex h-full items-center gap-3 rounded-xl border border-slate-100 p-3 transition-colors hover:border-rcf-navy/30 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rcf-navy"
-        >
-            <span
-                aria-hidden
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                    member.gender === "female"
-                        ? "bg-pink-50 text-pink-600"
-                        : "bg-emerald-50 text-emerald-700"
-                }`}
-            >
-                {member.first_name?.[0]}
-                {member.last_name?.[0]}
-            </span>
-            <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-bold text-slate-900">{name}</span>
-                {member.email && (
-                    <span className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-500">
-                        <Mail className="h-3 w-3 shrink-0" /> {member.email}
-                    </span>
-                )}
-                {member.phone_number && (
-                    <span className="flex items-center gap-1 truncate text-[11px] text-slate-400">
-                        <Phone className="h-3 w-3 shrink-0" /> {member.phone_number}
-                    </span>
-                )}
-            </span>
-        </Link>
-    );
-}
-
-/** Same footprint as StatsStrip so the page doesn't jump when the numbers arrive. */
-function StatsSkeleton() {
-    return (
-        <SkeletonRegion label="statistics">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-                {Array.from({ length: 5 }).map((_, i) => (
-                    <SkeletonCard key={i} className="h-15.5 rounded-xl" />
-                ))}
-            </div>
-        </SkeletonRegion>
-    );
-}
-
-function StatsStrip({ stats }: { stats: Stats }) {
-    const items = [
+/** Levels' figures, drawn with the strip Workforce shares. */
+function levelStatItems(stats: Stats): StatItem[] {
+    const items: StatItem[] = [
         { label: "Total", value: stats.total, icon: Users, tone: "text-slate-700 bg-slate-100" },
         { label: "Male", value: stats.male, icon: Mars, tone: "text-sky-600 bg-sky-50" },
         { label: "Female", value: stats.female, icon: Venus, tone: "text-pink-600 bg-pink-50" },
         { label: "Workers", value: stats.workers, icon: Briefcase, tone: "text-emerald-600 bg-emerald-50" },
         { label: "Non-workers", value: stats.nonWorkers, icon: UserMinus, tone: "text-amber-600 bg-amber-50" },
     ];
-    return (
-        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-            {items.map((s) => (
-                <div
-                    key={s.label}
-                    className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3"
-                >
-                    <span className={`rounded-lg p-2 ${s.tone}`}>
-                        <s.icon className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0">
-                        <dt className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                            {s.label}
-                        </dt>
-                        <dd className="text-lg font-bold leading-tight text-slate-900">{s.value}</dd>
-                    </span>
-                </div>
-            ))}
-        </dl>
-    );
+    // Only when there is something to show: Male + Female not adding up to Total is a
+    // question a coordinator will ask, but a permanent "0" is noise on a phone.
+    if (stats.unspecified > 0) {
+        items.push({ label: GENDER_UNSPECIFIED_LABEL, value: stats.unspecified, icon: UserRound, tone: "text-slate-600 bg-slate-100" });
+    }
+    return items;
 }

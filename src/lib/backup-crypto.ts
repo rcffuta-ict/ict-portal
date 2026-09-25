@@ -64,7 +64,7 @@ export interface EncryptedEnvelope {
         /** What the ciphertext contains once decrypted. */
         payload: BackupPayload;
         /** Cleartext so a backup can be identified and filed. */
-        tenure: { id: string | null; name: string | null; session: string | null };
+        tenure: { id: string | null; session: string | null; label: string | null; name?: string | null };
         label: string;
         takenAt: string;
         hint: string;
@@ -78,7 +78,7 @@ export async function encryptBackup(
     passphrase: string,
     meta: {
         payload: BackupPayload;
-        tenure: { id: string | null; name: string | null; session: string | null };
+        tenure: { id: string | null; session: string | null; label: string | null; name?: string | null };
         label: string;
         takenAt: string;
         hint: string;
