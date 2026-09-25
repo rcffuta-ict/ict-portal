@@ -5,6 +5,7 @@ import { AlertTriangle, Award, BarChart3, ClipboardCheck, Download, Loader2, Sea
 import { StatsSkeleton, StatsStrip, type StatItem } from "@/components/dashboard/roster/stats-strip";
 import { SkeletonCard, SkeletonRegion } from "@/components/ui/skeleton";
 import { PaginatedGrid } from "@/components/dashboard/roster/paginated-grid";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 import { MAX_GRADE, formatGrade } from "@/lib/academics";
 import { byLevel } from "@/lib/levels";
 import { downloadCsv, fileSlug } from "@/lib/csv";
@@ -334,7 +335,8 @@ function PersonCard({ row, showUnit }: { row: ResultRow | OutstandingRow; showUn
     const graded = "cgpa" in row;
     return (
         <div className="flex h-full items-start justify-between gap-3 rounded-xl border border-slate-200 p-3">
-            <div className="min-w-0 space-y-0.5">
+            <MemberAvatar url={row.avatarUrl} first={row.name.split(" ")[0]} last={row.name.split(" ").slice(-1)[0]} gender={row.gender} size={36} />
+            <div className="min-w-0 flex-1 space-y-0.5">
                 <p className="truncate text-sm font-bold text-slate-800">{row.name}</p>
                 <p className="truncate text-xs text-slate-500">
                     {[row.level, row.department, showUnit ? row.unit : null].filter(Boolean).join(" · ") || "—"}

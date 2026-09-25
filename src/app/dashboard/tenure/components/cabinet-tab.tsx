@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 
 import { useRef, useState } from "react";
 import {
@@ -267,9 +268,13 @@ function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) 
                             <tr key={l.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">
-                                        <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
-                                            {l.profile.first_name[0]}
-                                        </div>
+                                        <MemberAvatar
+                                            url={l.profile.avatar_url}
+                                            first={l.profile.first_name}
+                                            last={l.profile.last_name}
+                                            gender={l.profile.gender}
+                                            size={32}
+                                        />
                                         <div>
                                             <p className="font-bold text-slate-900">
                                                 {l.profile.first_name} {l.profile.last_name}

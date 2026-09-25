@@ -312,6 +312,27 @@ it is a CLI credential, and `supabase login` stores it in the CLI's own credenti
 store where it will not be picked up and loaded into `process.env` by every script
 that calls `chooseEnvironment()`.
 
+### The deploy is green, but the portal is slow or hangs
+
+Symptom: after migrations, sign-in or every dashboard load takes 30 seconds or more, and
+Vercel's log shows requests with a long duration or with no outgoing calls at all.
+
+Cause: Supabase's API (PostgREST) is still serving its map of the OLD schema, so reads
+get `503` ("schema cache not loaded") and supabase-js retries each one with backoff.
+This happened on production after the 1.0.0 release.
+
+Fix: in the SQL editor of that project, run
+
+```sql
+notify pgrst, 'reload schema';
+```
+
+Both deploy workflows now do this after every migration run ("Reload the API's schema
+cache"). If it keeps happening, look in Supabase → Logs → PostgREST for "Failed to load
+the schema cache"; a statement timeout there means the rebuild needs longer:
+`alter role authenticator set statement_timeout = '60s';` then
+`notify pgrst, 'reload config';` and the reload above.
+
 ## Resetting staging
 
 `stage` and `dev` are for breaking things. When testing has left a project in a state

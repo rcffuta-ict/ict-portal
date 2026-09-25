@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, ShieldCheck, KeyRound, UserCheck } from "lucide-react";
+import { Search, ShieldCheck, KeyRound, UserCheck, UserPlus } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
 import { PrivilegePills } from "../privilege-pills";
 
@@ -58,26 +58,38 @@ export function OfficeStep({
         return map;
     }, [leadership]);
 
-    // Offices that already have a lead are not offered: there is one lead per office
-    // (enforced in the database), so picking one could only end in a refusal. Replacing
-    // a holder starts from the Roster — Replace ends the appointment and comes back here
-    // with the office chosen.
-    const filledIds = useMemo(() => {
+    // Offices that already have a lead. One lead per office is enforced in the
+    // database, but assistants are unlimited, so a led office is still offered: the
+    // member step then appoints the new person as an assistant. Replacing the lead
+    // itself starts from the Roster (Replace ends the appointment first).
+    const ledIds = useMemo(() => {
         const ids = new Set<string>();
         for (const row of leadership ?? []) {
             if (row?.position_id && row.is_lead !== false) ids.add(row.position_id);
         }
         return ids;
     }, [leadership]);
+
+    // Only the President and the Vice Presidents are held by one person with no
+    // assistant (assignLeaderAction forces them to lead), so only those disappear
+    // once filled: there is nothing left to appoint to them.
+    const fullIds = useMemo(
+        () => new Set(
+            (positions ?? [])
+                .filter((p: any) => ledIds.has(p.id) && (p.tier === "PRESIDENT" || p.tier === "VP"))
+                .map((p: any) => p.id as string),
+        ),
+        [positions, ledIds],
+    );
     const hiddenCount = (positions ?? []).filter(
-        (p: any) => p.is_active !== false && filledIds.has(p.id),
+        (p: any) => p.is_active !== false && fullIds.has(p.id),
     ).length;
 
     const grouped = useMemo(() => {
         const needle = query.trim().toLowerCase();
         const active = (positions ?? [])
             .filter((p: any) => p.is_active !== false)
-            .filter((p: any) => !filledIds.has(p.id))
+            .filter((p: any) => !fullIds.has(p.id))
             .filter((p: any) =>
                 !needle ||
                 `${p.title} ${p.alias ?? ""} ${p.slug ?? ""}`.toLowerCase().includes(needle),
@@ -91,7 +103,7 @@ export function OfficeStep({
         return [...TIER_ORDER, "OTHER"]
             .filter((tier) => buckets.has(tier))
             .map((tier) => ({ tier, label: TIER_LABEL[tier], offices: buckets.get(tier)! }));
-    }, [positions, query, filledIds]);
+    }, [positions, query, fullIds]);
 
     const total = grouped.reduce((sum, g) => sum + g.offices.length, 0);
 
@@ -106,7 +118,8 @@ export function OfficeStep({
                 {hiddenCount > 0 && (
                     <p className="mt-2 text-xs text-slate-500">
                         {hiddenCount} office{hiddenCount === 1 ? " is" : "s are"} already filled and
-                        not shown. To change who holds one, use <strong>Replace</strong> on the Roster.
+                        not shown (the President and Vice Presidents have no assistants). To change
+                        who holds one, use <strong>Replace</strong> on the Roster.
                     </p>
                 )}
             </div>
@@ -122,7 +135,7 @@ export function OfficeStep({
 
             {total === 0 && (
                 <p className="rounded-xl border-2 border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
-                    {query.trim() ? <>No vacant office matches “{query}”.</> : "Every office is filled."}
+                    {query.trim() ? <>No office matches “{query}”.</> : "Every office is filled."}
                 </p>
             )}
 
@@ -163,6 +176,15 @@ export function OfficeStep({
                                     </div>
 
                                     <PrivilegePills privileges={office.position_privileges} />
+
+                                    {ledIds.has(office.id) && (
+                                        // Picking a led office appoints an assistant; say so on
+                                        // the card, not as a surprise on the next step.
+                                        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-rcf-navy">
+                                            <UserPlus className="h-3 w-3 shrink-0" aria-hidden="true" />
+                                            Has a lead: add an assistant
+                                        </p>
+                                    )}
 
                                     <p className="flex items-center gap-1.5 text-[11px] text-slate-500">
                                         {holders.length > 0 ? (

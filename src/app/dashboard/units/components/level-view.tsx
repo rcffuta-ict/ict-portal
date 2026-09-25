@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 import { useEffect, useState } from "react";
 import { GraduationCap, Users, X, Link2, Copy, Check, Trash2, Loader2, Mail, Phone } from "lucide-react";
 import { getLevelMembersAction } from "../actions";
@@ -175,9 +176,7 @@ function LevelModal({ level, onClose }: { level: any; onClose: () => void }) {
                             <div className="space-y-2">
                                 {members.map((m) => (
                                     <div key={m.id} className="flex items-center gap-3 p-3 border border-slate-100 rounded-xl">
-                                        <div className="h-10 w-10 bg-emerald-100 rounded-full flex items-center justify-center font-bold text-emerald-700 text-xs">
-                                            {m.first_name?.[0]}{m.last_name?.[0]}
-                                        </div>
+                                        <MemberAvatar url={m.avatar_url} first={m.first_name} last={m.last_name} size={40} />
                                         <div className="min-w-0">
                                             <p className="font-bold text-sm text-slate-900 truncate">{m.first_name} {m.last_name}</p>
                                             <div className="flex items-center gap-3 text-[10px] text-slate-500">

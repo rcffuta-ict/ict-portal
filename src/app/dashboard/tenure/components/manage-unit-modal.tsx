@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 import {
     X,
     UserPlus,
@@ -150,10 +151,13 @@ export function ManageUnitModal({ unit, positions, onClose }: any) {
                                             className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-all group"
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
-                                                    {l.profile.first_name[0]}
-                                                    {l.profile.last_name[0]}
-                                                </div>
+                                                <MemberAvatar
+                                                    url={l.profile.avatar_url}
+                                                    first={l.profile.first_name}
+                                                    last={l.profile.last_name}
+                                                    gender={l.profile.gender}
+                                                    size={40}
+                                                />
                                                 <div>
                                                     <p className="font-bold text-slate-900 text-sm">
                                                         {l.profile.first_name}{" "}

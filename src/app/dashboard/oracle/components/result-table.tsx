@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { ArrowDown, ArrowUp, ChevronRight, Users } from "lucide-react";
 import { getField } from "../fields";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 
 export interface ResultRow {
     id: string;
+    /** Always present, whatever columns were chosen: the leading photo column. */
+    person?: { avatarUrl: string | null; first: string | null; last: string | null; gender: string | null };
     cells: Record<string, unknown>;
 }
 
@@ -95,6 +98,9 @@ export function ResultTable({
                 <table className="w-full min-w-max text-left text-sm">
                     <thead>
                         <tr className="border-b border-slate-100 bg-slate-50">
+                            <th scope="col" className="w-12 py-2.5 pl-4 pr-0">
+                                <span className="sr-only">Photo</span>
+                            </th>
                             {columns.map((c) => {
                                 const field = getField(c);
                                 const active = sort?.field === c;
@@ -139,6 +145,15 @@ export function ResultTable({
                     <tbody className="divide-y divide-slate-50">
                         {rows.map((row) => (
                             <tr key={row.id} className="transition-colors hover:bg-slate-50/60">
+                                <td className="py-2 pl-4 pr-0">
+                                    <MemberAvatar
+                                        url={row.person?.avatarUrl}
+                                        first={row.person?.first}
+                                        last={row.person?.last}
+                                        gender={row.person?.gender}
+                                        size={32}
+                                    />
+                                </td>
                                 {columns.map((c) => (
                                     <td key={c} className="px-4 py-2.5 text-slate-700">
                                         {show(row.cells[c])}

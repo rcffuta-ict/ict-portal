@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { ReactNode } from "react";
 import { ServiceHistory } from "@/components/dashboard/service-history";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 
 /** Presentational full-member detail. The server page fetches the profile context. */
 export function MemberDetailView({ detail }: { detail: any }) {
@@ -11,14 +12,13 @@ export function MemberDetailView({ detail }: { detail: any }) {
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center font-bold text-emerald-700 text-lg overflow-hidden shrink-0">
-                    {p.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.avatarUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                        <span>{p.firstName?.[0]}{p.lastName?.[0]}</span>
-                    )}
-                </div>
+                <MemberAvatar
+                    url={p.avatarUrl}
+                    first={p.firstName}
+                    last={p.lastName}
+                    gender={p.gender}
+                    size={64}
+                />
                 <div>
                     <h2 className="text-lg font-bold text-slate-900">
                         {p.firstName} {p.middleName} {p.lastName}

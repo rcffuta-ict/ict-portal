@@ -31,6 +31,8 @@ export interface ReportMember {
     department: string | null;
     faculty: string | null;
     class_set_id: string | null;
+    /** Shown beside the name on report cards; optional so older callers still fit. */
+    avatar_url?: string | null;
 }
 
 export interface ReportClassSet {
@@ -65,6 +67,8 @@ export interface TrendPoint {
 export interface ResultRow {
     profileId: string;
     name: string;
+    avatarUrl: string | null;
+    gender: string | null;
     email: string | null;
     phone: string | null;
     level: string | null;
@@ -80,6 +84,8 @@ export interface ResultRow {
 export interface OutstandingRow {
     profileId: string;
     name: string;
+    avatarUrl: string | null;
+    gender: string | null;
     email: string | null;
     phone: string | null;
     level: string | null;
@@ -231,6 +237,8 @@ export function buildSemesterReport(input: {
                 .map((t) => ({
                     profileId: t.m.id,
                     name: nameOf(t.m),
+                    avatarUrl: t.m.avatar_url ?? null,
+                    gender: t.m.gender,
                     email: t.m.email,
                     phone: t.m.phone_number,
                     level: t.level,
@@ -249,6 +257,8 @@ export function buildSemesterReport(input: {
                 .map((m) => ({
                     profileId: m.id,
                     name: nameOf(m),
+                    avatarUrl: m.avatar_url ?? null,
+                    gender: m.gender,
                     email: m.email,
                     phone: m.phone_number,
                     level: levelOf(m),

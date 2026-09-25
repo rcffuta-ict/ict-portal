@@ -211,7 +211,9 @@ async function resolveRelationalIds(
 
 /** Columns the main select must carry so derived values can be resolved afterwards. */
 function selectColumnsFor(columns: string[]): string[] {
-    const cols = new Set<string>(["id"]);
+    // The photo and name are always read, whatever columns were picked, so every row can
+    // show who it is (the result table's leading photo column).
+    const cols = new Set<string>(["id", "avatar_url", "first_name", "last_name", "gender"]);
     for (const key of columns) {
         const f = getField(key);
         if (f?.column) cols.add(f.column);
@@ -449,6 +451,12 @@ export async function runOracleQuery(query: OracleQuery) {
             columns,
             rows: rows.map((r) => ({
                 id: r.id,
+                person: {
+                    avatarUrl: (r.avatar_url as string | null) ?? null,
+                    first: (r.first_name as string | null) ?? null,
+                    last: (r.last_name as string | null) ?? null,
+                    gender: (r.gender as string | null) ?? null,
+                },
                 cells: Object.fromEntries(columns.map((c) => [c, cellValue(r, c) ?? null])),
             })),
             total,

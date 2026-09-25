@@ -2,6 +2,7 @@
 "use client";
 import { Search, Phone, User, MapPin } from "lucide-react";
 import { useState } from "react";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 
 export function PastorView({ data }: any) {
     const [search, setSearch] = useState("");
@@ -50,19 +51,13 @@ export function PastorView({ data }: any) {
                             className="p-4 flex items-center justify-between hover:bg-blue-50/30 transition-colors group"
                         >
                             <div className="flex items-center gap-4">
-                                <div className="h-10 w-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold overflow-hidden border border-slate-200">
-                                    {m.avatar_url ? (
-                                        <img
-                                            src={m.avatar_url}
-                                            className="h-full w-full object-cover"
-                                        />
-                                    ) : (
-                                        <span>
-                                            {m.first_name[0]}
-                                            {m.last_name[0]}
-                                        </span>
-                                    )}
-                                </div>
+                                <MemberAvatar
+                                    url={m.avatar_url}
+                                    first={m.first_name}
+                                    last={m.last_name}
+                                    gender={m.gender}
+                                    size={40}
+                                />
                                 <div>
                                     <p className="font-bold text-sm text-slate-900">
                                         {m.first_name} {m.last_name}

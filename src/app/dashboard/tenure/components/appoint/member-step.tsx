@@ -6,6 +6,7 @@ import { Search, Loader2, GraduationCap, Phone, BadgeCheck, KeyRound, AlertTrian
 import FormInput from "@/components/ui/FormInput";
 import { getGenerationRosterAction } from "../../actions";
 import { fellowshipTitle } from "@/lib/gender";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 
 /**
  * Step 3 — who.
@@ -165,10 +166,13 @@ export function MemberStep({
                                     : "border-slate-200 bg-white hover:border-rcf-navy/40 hover:bg-slate-50"
                             }`}
                         >
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
-                                {member.first_name?.[0]}
-                                {member.last_name?.[0]}
-                            </span>
+                            <MemberAvatar
+                                url={member.avatar_url}
+                                first={member.first_name}
+                                last={member.last_name}
+                                gender={member.gender}
+                                size={40}
+                            />
                             <span className="min-w-0 flex-1">
                                 <span className="flex items-center gap-2">
                                     <span className="truncate text-sm font-bold text-slate-900">

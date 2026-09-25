@@ -31,6 +31,7 @@ import { useAlertModal, AlertModal } from "@/components/ui/alert-modal";
 import FormInput from "@/components/ui/FormInput";
 import { BackupPicker } from "@/components/dashboard/backup-picker";
 import { tenureFullLabel } from "@/lib/tenure";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 
 /**
  * The handover wizard.
@@ -60,6 +61,7 @@ interface PickedMember {
     id: string;
     first_name?: string | null;
     last_name?: string | null;
+    avatar_url?: string | null;
     email?: string | null;
     level?: string | null;
 }
@@ -795,7 +797,8 @@ function MemberPicker({
                     {label}
                 </span>
                 <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-                    <span className="min-w-0 truncate text-sm font-medium text-emerald-900">
+                    <MemberAvatar url={selected.avatar_url} first={selected.first_name} last={selected.last_name} size={32} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-emerald-900">
                         {selected.first_name} {selected.last_name}
                     </span>
                     <button
@@ -837,13 +840,16 @@ function MemberPicker({
                             <button
                                 type="button"
                                 onClick={() => onSelect(m)}
-                                className="flex w-full flex-col items-start px-3 py-2 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-50"
+                                className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-50"
                             >
-                                <span className="text-sm font-medium text-slate-800">
-                                    {m.first_name} {m.last_name}
-                                </span>
-                                <span className="text-[11px] text-slate-400">
-                                    {[m.email, m.level].filter(Boolean).join(" · ")}
+                                <MemberAvatar url={m.avatar_url} first={m.first_name} last={m.last_name} size={32} />
+                                <span className="flex min-w-0 flex-col">
+                                    <span className="truncate text-sm font-medium text-slate-800">
+                                        {m.first_name} {m.last_name}
+                                    </span>
+                                    <span className="truncate text-[11px] text-slate-400">
+                                        {[m.email, m.level].filter(Boolean).join(" · ")}
+                                    </span>
                                 </span>
                             </button>
                         </li>

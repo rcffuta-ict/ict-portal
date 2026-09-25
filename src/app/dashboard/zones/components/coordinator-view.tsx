@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 import { useState, useEffect } from "react";
 import {
     createZoneAction,
@@ -287,10 +288,7 @@ function ManageZoneModal({ zone, tenureId, onClose, onSuccess }: any) {
                                         className="flex items-center justify-between p-3 border border-slate-100 rounded-xl hover:bg-slate-50"
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center font-bold text-blue-600">
-                                                {p.first_name[0]}
-                                                {p.last_name[0]}
-                                            </div>
+                                            <MemberAvatar url={p.avatar_url} first={p.first_name} last={p.last_name} size={40} />
                                             <div>
                                                 <p className="font-bold text-sm text-slate-900">
                                                     {p.first_name} {p.last_name}
@@ -326,9 +324,7 @@ function ManageZoneModal({ zone, tenureId, onClose, onSuccess }: any) {
                                     className="flex items-center justify-between p-3 border-b border-slate-50 last:border-0 hover:bg-slate-50"
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className="h-8 w-8 bg-slate-100 rounded-full flex items-center justify-center font-bold text-slate-500 text-xs">
-                                            {m.first_name[0]}
-                                        </div>
+                                        <MemberAvatar url={m.avatar_url} first={m.first_name} last={m.last_name} size={32} />
                                         <div>
                                             <p className="font-bold text-sm text-slate-900">
                                                 {m.first_name} {m.last_name}

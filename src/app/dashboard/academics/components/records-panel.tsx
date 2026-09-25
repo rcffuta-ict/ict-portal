@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -211,7 +212,8 @@ export function RecordsPanel({ canWrite, activeSession }: { canWrite: boolean; a
                             onClick={() => setOpenId(r.id)}
                             className="flex h-full w-full items-start justify-between gap-3 rounded-xl border border-slate-200 p-3 text-left hover:border-rcf-navy/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
                         >
-                            <span className="min-w-0 space-y-0.5">
+                            <MemberAvatar url={r.avatarUrl} first={r.name.split(" ")[0]} last={r.name.split(" ").slice(-1)[0]} gender={r.gender} size={36} />
+                            <span className="min-w-0 flex-1 space-y-0.5">
                                 <span className="block truncate text-sm font-bold text-slate-800">{r.name}</span>
                                 <span className="block truncate text-xs text-slate-500">
                                     {[r.level, r.department].filter(Boolean).join(" · ") || "—"}

@@ -126,3 +126,12 @@ jobs:
                       supabase db push 2>&1 | tee /dev/stderr
                       echo '```'
                   } >> "$GITHUB_STEP_SUMMARY"
+
+            # Supabase's API (PostgREST) keeps a cached map of the schema and should rebuild
+            # it after DDL, but after the 1.0.0 release production kept serving the stale
+            # map. Every read then got 503 "schema cache not loaded", which supabase-js
+            # retries with backoff, and sign-in took 35 s until someone ran this by hand.
+            # Always ask for the rebuild; it is harmless when nothing changed.
+            - name: Reload the API's schema cache
+              if: success()
+              run: supabase db query --linked "notify pgrst, 'reload schema';"

@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import { MemberAvatar } from "@/components/dashboard/roster/member-avatar";
 import { createUnitAction } from "../actions";
 import { Plus, Layers, Users, Search, X, AlertCircle, Mars, Venus, Info } from "lucide-react";
 import FormInput from "@/components/ui/FormInput";
@@ -87,14 +88,13 @@ function StructureCard({ item }: { item: any }) {
                 <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wide mb-2">Leader</p>
                 {mainLeader ? (
                     <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
-                        <div className="h-8 w-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm overflow-hidden">
-                            {mainLeader.avatar_url ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={mainLeader.avatar_url} alt="" className="h-full w-full object-cover" />
-                            ) : (
-                                <span>{mainLeader.first_name?.[0]}{mainLeader.last_name?.[0]}</span>
-                            )}
-                        </div>
+                        <MemberAvatar
+                            url={mainLeader.avatar_url}
+                            first={mainLeader.first_name}
+                            last={mainLeader.last_name}
+                            gender={mainLeader.gender}
+                            size={32}
+                        />
                         <div className="overflow-hidden">
                             <p className="text-xs font-bold text-slate-900 truncate">
                                 {mainLeader.first_name} {mainLeader.last_name}
