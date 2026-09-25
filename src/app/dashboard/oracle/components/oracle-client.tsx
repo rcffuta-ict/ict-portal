@@ -16,6 +16,39 @@ import { ResultTable, type ResultRow, type SortState } from "./result-table";
 const PAGE_SIZE = 25;
 
 /**
+ * Where the current question is kept while the admin opens a record. Only its SHAPE
+ * (conditions, columns, search, sort), never member data. Session storage, so it lasts
+ * for the tab and is gone when the browser closes.
+ */
+const QUERY_KEY = "oracle:query:v1";
+
+interface SavedQuery {
+    conditions: Condition[];
+    match: MatchMode;
+    columns: string[];
+    search: string;
+    sort?: SortState;
+}
+
+function readSavedQuery(): SavedQuery | null {
+    try {
+        const raw = sessionStorage.getItem(QUERY_KEY);
+        if (!raw) return null;
+        const q = JSON.parse(raw) as Partial<SavedQuery>;
+        if (!Array.isArray(q.conditions) || !Array.isArray(q.columns) || !q.columns.length) return null;
+        return {
+            conditions: q.conditions,
+            match: q.match === "any" ? "any" : "all",
+            columns: q.columns,
+            search: typeof q.search === "string" ? q.search : "",
+            sort: q.sort,
+        };
+    } catch {
+        return null; // private mode, blocked storage, or a malformed value: start fresh
+    }
+}
+
+/**
  * The Oracle query screen.
  *
  * Paging, filtering and sorting all run in Postgres — the fellowship is a few thousand
@@ -93,6 +126,36 @@ export function OracleClient({
         },
         [buildQuery],
     );
+
+    // Coming back from a record: put the question back and run it again. Deferred a
+    // tick, so it isn't a state change during the effect's own commit.
+    const restored = useRef(false);
+    useEffect(() => {
+        const saved = readSavedQuery();
+        restored.current = true;
+        if (!saved) return;
+        const t = setTimeout(() => {
+            setConditions(saved.conditions);
+            setMatch(saved.match);
+            setColumns(saved.columns);
+            setSearch(saved.search);
+            setSort(saved.sort);
+            fetchPage(1, false, saved);
+        }, 0);
+        return () => clearTimeout(t);
+        // Mount only: this reads what the previous visit left behind.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Remember the question as it changes (after the restore above has had its turn).
+    useEffect(() => {
+        if (!restored.current) return;
+        try {
+            sessionStorage.setItem(QUERY_KEY, JSON.stringify({ conditions, match, columns, search, sort }));
+        } catch {
+            // Storage unavailable: the query just won't survive leaving the page.
+        }
+    }, [conditions, match, columns, search, sort]);
 
     // Debounced re-query whenever the shape of the question changes.
     useEffect(() => {

@@ -225,6 +225,11 @@ body[data-preview-banner="true"] .h-screen {
   height: calc(100vh - var(--preview-banner-h));
 }
 
+body[data-preview-banner="true"] .h-app {
+  height: calc(100vh - var(--preview-banner-h));
+  height: calc(100dvh - var(--preview-banner-h));
+}
+
 body[data-preview-banner="true"] .min-h-screen {
   min-height: calc(100vh - var(--preview-banner-h));
 }

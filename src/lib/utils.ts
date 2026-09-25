@@ -73,6 +73,15 @@ export const getRoleCategories = (roles: LeadershipRole[] | null, unit: UnitMemb
     // 1. Leadership Roles
     if (roles && roles.length > 0) {
         roles.forEach((role) => {
+            // The ICT Coordinator's System Admin tag makes rcf_position_kind() report the
+            // office as CENTRAL (so it counts as church-wide for access), but the person
+            // is the ICT team's executive with System Admin rights, not a central officer
+            // like a VP. The badge says what they are.
+            if (role.slug === "ict-coord") {
+                badges.add("System Admin");
+                badges.add("Executive");
+                return;
+            }
             switch (role.scope) {
                 case "PRESIDENT":
                     badges.add("President");
@@ -110,6 +119,7 @@ export const getRoleCategories = (roles: LeadershipRole[] | null, unit: UnitMemb
     return Array.from(badges).sort((a, b) => {
         const priority = [
             "President",
+            "System Admin",
             "Central",
             "Executive",
             "Hall Pastor",

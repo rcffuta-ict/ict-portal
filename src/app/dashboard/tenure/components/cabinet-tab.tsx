@@ -23,6 +23,7 @@ import {
     RefreshCw,
     KeyRound,
     X,
+    ChevronLeft,
     ChevronRight,
 } from "lucide-react";
 import { AlertModal, useAlertModal } from "@/components/ui/alert-modal";
@@ -32,9 +33,10 @@ import { PrivilegePills } from "./privilege-pills";
 import { OfficeStep } from "./appoint/office-step";
 import { LevelStep } from "./appoint/level-step";
 import { MemberStep } from "./appoint/member-step";
-import { normalizePrivileges } from "@/lib/privileges";
+import { heldPrivileges, normalizePrivileges } from "@/lib/privileges";
 import type { Privilege } from "@/lib/modules";
 import { tenureFullLabel } from "@/lib/tenure";
+import { TIER_ORDER } from "@/config/leadership-positions";
 
 export function CabinetTab({ data, onSuccess }: any) {
     const [mode, setMode] = useState<"LIST" | "APPOINT" | "CONFIGURE">("LIST");
@@ -155,16 +157,48 @@ function KeepHistoryChoice({ onChange }: { onChange: (keep: boolean) => void }) 
 }
 
 // --- SUB-COMPONENT 1: ROSTER ---
+/** Rows per roster page: a cabinet is about forty, so two or three pages at most. */
+const ROSTER_PAGE_SIZE = 15;
+
+/**
+ * Where an appointment sits in the fellowship's order: the System Admin (the ICT
+ * Coordinator) first, then the President, the VPs, the Executives and the Level
+ * Coordinators. Only the roster puts the System Admin first; everywhere else follows
+ * the catalogue's tiers.
+ */
+function rosterRank(l: any): number {
+    if (l.position?.slug === "ict-coord") return -1;
+    return TIER_ORDER[l.position?.tier as keyof typeof TIER_ORDER] ?? 99;
+}
+
+function compareRoster(a: any, b: any): number {
+    return rosterRank(a) - rosterRank(b)
+        || (a.position?.title ?? "").localeCompare(b.position?.title ?? "")
+        // The lead before their assistants.
+        || Number(a.is_lead === false) - Number(b.is_lead === false)
+        || `${a.profile?.first_name} ${a.profile?.last_name}`.localeCompare(`${b.profile?.first_name} ${b.profile?.last_name}`);
+}
+
 function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) {
     const leaders = data?.leadership || [];
     const [search, setSearch] = useState("");
+    const [page, setPage] = useState(1);
 
-    const filtered = leaders.filter(
-        (l: any) =>
-            l.profile.first_name.toLowerCase().includes(search.toLowerCase()) ||
-            l.profile.last_name.toLowerCase().includes(search.toLowerCase()) ||
-            l.position.title.toLowerCase().includes(search.toLowerCase()),
-    );
+    const needle = search.toLowerCase();
+    const filtered = leaders
+        .filter(
+            (l: any) =>
+                l.profile.first_name.toLowerCase().includes(needle) ||
+                l.profile.last_name.toLowerCase().includes(needle) ||
+                l.position.title.toLowerCase().includes(needle),
+        )
+        .sort(compareRoster);
+
+    // Paged in the browser: the roster already arrives in one request. The page is
+    // clamped, so ending the last appointment on the final page steps back a page.
+    const pageCount = Math.max(1, Math.ceil(filtered.length / ROSTER_PAGE_SIZE));
+    const current = Math.min(page, pageCount);
+    const visible = filtered.slice((current - 1) * ROSTER_PAGE_SIZE, current * ROSTER_PAGE_SIZE);
 
     // A ref, not state: `onConfirm` is a closure captured when the dialog opens, so it
     // would otherwise read whatever the checkbox was set to BEFORE the admin touched it.
@@ -237,7 +271,10 @@ function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) 
                         type="text"
                         placeholder="Search roster..."
                         value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        onChange={(e) => {
+                            setSearch(e.target.value);
+                            setPage(1);
+                        }}
                         className="w-full h-9 pl-9 pr-4 rounded-xl bg-slate-50 border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-rcf-navy"
                     />
                 </div>
@@ -264,7 +301,7 @@ function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) 
                                 </td>
                             </tr>
                         )}
-                        {filtered.map((l: any) => (
+                        {visible.map((l: any) => (
                             <tr key={l.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">
@@ -298,8 +335,9 @@ function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) 
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
+                                    {/* What THIS holder has: an assistant doesn't get CENTRAL. */}
                                     <PrivilegePills
-                                        privileges={l.position?.position_privileges}
+                                        privileges={heldPrivileges(l.position?.position_privileges, l.is_lead)}
                                         slug={l.position?.slug}
                                         emptyLabel="—"
                                     />
@@ -349,6 +387,34 @@ function RosterView({ data, onSuccess, showAlert, canRevoke, onReplaced }: any) 
                     </tbody>
                 </table>
             </div>
+
+            {pageCount > 1 && (
+                <nav
+                    aria-label="Cabinet roster, pages"
+                    className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 pt-4 sm:px-0"
+                >
+                    <button
+                        type="button"
+                        onClick={() => setPage(current - 1)}
+                        disabled={current === 1}
+                        className="inline-flex h-10 items-center gap-1 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Previous
+                    </button>
+                    <p className="text-xs text-slate-500" aria-live="polite">
+                        Page <strong className="text-slate-700">{current}</strong> of {pageCount}
+                        <span className="hidden sm:inline"> · {filtered.length} in all</span>
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => setPage(current + 1)}
+                        disabled={current === pageCount}
+                        className="inline-flex h-10 items-center gap-1 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        Next <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                </nav>
+            )}
         </div>
     );
 }

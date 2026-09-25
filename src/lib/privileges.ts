@@ -271,3 +271,19 @@ export function scopeLabel(priv: Privilege): string {
     }
     return `${meta.shortLabel}:${priv.scope}`;
 }
+
+/**
+ * The tags one HOLDER of an office actually has. An office's tags apply to everyone
+ * holding it, except CENTRAL, which is the lead's alone: an assistant to a central
+ * office is not central. Mirrors rcf_profile_context in the database (migration
+ * 20260925024757_assistants_are_not_central), so what a screen shows matches what the
+ * person can actually do.
+ */
+export function heldPrivileges<T extends { tag?: string; privilege?: string } | null>(
+    officeTags: T[] | null | undefined,
+    isLead: boolean | null | undefined,
+): T[] {
+    const tags = officeTags ?? [];
+    if (isLead !== false) return tags;
+    return tags.filter((t) => (t?.tag ?? t?.privilege) !== "CENTRAL");
+}

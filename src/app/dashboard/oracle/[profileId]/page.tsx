@@ -77,11 +77,13 @@ export default async function OracleMemberPage({
 
     return (
         <div className="space-y-5">
+            {/* A real tap target: the old text link was 16px tall and easy to miss on a
+                phone. The Oracle restores the question you were asking (oracle-client). */}
             <Link
                 href="/dashboard/oracle"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 transition-colors hover:text-rcf-navy focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+                className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:border-rcf-navy/40 hover:text-rcf-navy focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
             >
-                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                 Back to Oracle
             </Link>
 
