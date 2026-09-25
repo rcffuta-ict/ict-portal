@@ -24,8 +24,12 @@ over. Since the last deploy to production it adds:
 - **Workforce**: switched on, with member details, birthdays and a membership log.
 - **Test emails**: outside production only `@rcffuta.test` addresses are accepted.
 
+- **Structure reset**: units, offices and access tags now match the catalogue exactly;
+  offices and units from before it are removed. Both entry levels, PDS/UABS and
+  100 Level, always exist.
+
 Production already has the first five migrations listed below (the baseline and
-0011–0013); the other eight are new to it.
+0011–0013 and `20260920162209`); the other ten are new to it.
 
 ### Database
 
@@ -47,6 +51,8 @@ insurance). Migrations in this release:
 - `supabase/migrations/20260924222626_academics_module.sql`
 - `supabase/migrations/20260924235714_handover_takes_effect_after_an_hour.sql`
 - `supabase/migrations/20260925002458_name_entry_levels.sql`
+- `supabase/migrations/20260925012927_reset_structure_to_catalogue.sql`
+- `supabase/migrations/20260925014110_ensure_entry_levels.sql`
 
 ### Added
 
