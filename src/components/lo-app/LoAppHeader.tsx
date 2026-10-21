@@ -12,6 +12,8 @@ type FeedTab = "questions" | "testimonies" | "events";
 
 interface LoAppHeaderProps {
     isAdmin: boolean;
+    /** Testimonies awaiting review — shown on the Admin button for moderators. */
+    reviewCount?: number;
     authenticatedUser: AuthUser | null;
     activeTab: ViewTab;
     setActiveTab: (tab: ViewTab) => void;
@@ -25,6 +27,7 @@ interface LoAppHeaderProps {
 
 export function LoAppHeader({
     isAdmin,
+    reviewCount = 0,
     authenticatedUser,
     activeTab,
     setActiveTab,
@@ -103,6 +106,14 @@ export function LoAppHeader({
                                 >
                                     <Shield className="w-3 h-3" />
                                     Admin
+                                    {reviewCount > 0 && (
+                                        <span
+                                            aria-label={`${reviewCount} testimonies awaiting review`}
+                                            className="ml-0.5 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-bold leading-4 text-white"
+                                        >
+                                            {reviewCount > 99 ? "99+" : reviewCount}
+                                        </span>
+                                    )}
                                 </button>
                             </div>
                         )}

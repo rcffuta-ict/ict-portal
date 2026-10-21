@@ -97,14 +97,21 @@ export function DashboardShell({
                 onClose={() => setIsMobileMenuOpen(false)}
             />
 
-            <div className="flex flex-1 flex-col min-h-0">
+            {/* min-w-0: a flex item won't shrink below its content's width by default, so
+                one wide child (a sideways-scrolling tab strip, a long email) used to stretch
+                this column past the phone's edge and push every page off-screen. */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <MobileHeader
                     onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                     isMenuOpen={isMobileMenuOpen}
                 />
                 {/* Generous bottom room on phones: the last card must clear the browser's
-                    toolbar and the home indicator, not sit half under them. */}
-                <main className="flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:p-8 md:pb-16">
+                    toolbar and the home indicator, not sit half under them.
+                    `relative` makes this the containing block for absolutely positioned
+                    descendants (every `sr-only` label is one). Without it they were placed
+                    against the page instead, sat below the fold, and gave the document a
+                    second scrollbar with an empty strip at the bottom. */}
+                <main className="relative flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:p-8 md:pb-16">
                     <div className="mx-auto max-w-6xl">{children}</div>
                 </main>
             </div>

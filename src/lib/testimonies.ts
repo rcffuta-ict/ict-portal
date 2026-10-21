@@ -5,6 +5,8 @@
  * feed components and the server actions can import it.
  */
 
+import { z } from "zod";
+
 export type TestimonyStatus = "pending" | "approved" | "rejected" | "hidden";
 
 export type TestimonyCategory =
@@ -58,7 +60,31 @@ export interface Testimony {
     shareCount: number;
     amenCount: number;
     viewerHasAmened: boolean;
+    /** Pinned to the top of the feed by a moderator. Only ever true when approved. */
+    isFeatured: boolean;
+    /** Set when a moderator corrected the text; the author is told. */
+    editedAt: string | null;
 }
+
+/** Feed page size — small enough for mobile data, big enough to read for a while. */
+export const TESTIMONY_PAGE_SIZE = 20;
+
+/** Moderation queue page size. */
+export const REVIEW_PAGE_SIZE = 30;
+
+/**
+ * What a moderator may change before publishing. Mirrors the CHECK constraints on
+ * `testimonies` (title 3-120, body 20-5000, a known category), so a form that passes
+ * this never meets a database error. Shared by the edit form and the server action.
+ */
+export const testimonyEditSchema = z.object({
+    title: z.string().trim().min(3, "At least 3 characters.").max(120, "120 characters at most."),
+    body: z.string().trim().min(20, "At least 20 characters.").max(5000, "5000 characters at most."),
+    category: z.enum(TESTIMONY_CATEGORIES.map((c) => c.id) as [TestimonyCategory, ...TestimonyCategory[]]),
+    scriptureReference: z.string().trim().max(80, "80 characters at most.").optional(),
+});
+
+export type TestimonyEdit = z.infer<typeof testimonyEditSchema>;
 
 /** First ~180 characters, cut on a word boundary — for cards and link previews. */
 export function testimonyExcerpt(body: string, length = 180): string {
