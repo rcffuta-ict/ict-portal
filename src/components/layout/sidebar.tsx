@@ -74,16 +74,14 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             {/* Sidebar */}
             <aside
                 className={clsx(
-                    "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-rcf-navy text-white transition-transform duration-300 ease-in-out",
+                    // h-app (100dvh), not 100vh: on a phone 100vh is taller than the
+                    // visible area while the address bar shows, which hid the bottom of
+                    // the menu (and Sign out) under the browser toolbar.
+                    "fixed inset-y-0 left-0 z-50 flex h-app w-64 shrink-0 flex-col border-r border-gray-200 bg-rcf-navy text-white transition-transform duration-300 ease-in-out",
                     "md:relative md:translate-x-0",
                     "safe-top safe-bottom", // Safe area padding for mobile devices
                     isOpen ? "translate-x-0" : "-translate-x-full"
                 )}
-                style={{
-                    // Use dynamic viewport height for better mobile support
-                    height: '100vh',
-                    maxHeight: '-webkit-fill-available',
-                }}
             >
             {/* 1. Brand / Logo Area */}
             <div className="flex h-16 shrink-0 items-center justify-center gap-3 border-b border-white/10 safe-left">

@@ -279,6 +279,13 @@ export const BACKUP_TABLES: TableSpec[] = [
         group: "activity",
         required: false,
     },
+    {
+        name: "lo_admins",
+        label: "Lo! admins",
+        description: "Leaders appointed to moderate Lo!, per tenure.",
+        group: "activity",
+        required: false,
+    },
 ];
 
 /**

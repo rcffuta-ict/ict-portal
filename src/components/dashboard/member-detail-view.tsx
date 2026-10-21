@@ -84,7 +84,9 @@ function DetailRow({ label, value }: { label: string; value: any }) {
     return (
         <div className="flex items-start justify-between gap-4 px-4 py-2.5">
             <span className="text-xs font-medium text-slate-400 shrink-0">{label}</span>
-            <span className="text-sm text-slate-800 text-right break-words">
+            {/* min-w-0 + wrap-anywhere: a long email has no spaces to wrap at, and would
+                otherwise push the row wider than a phone screen. */}
+            <span className="min-w-0 text-sm text-slate-800 text-right wrap-anywhere">
                 {value === null || value === undefined || value === "" ? (
                     <span className="text-slate-300">—</span>
                 ) : (

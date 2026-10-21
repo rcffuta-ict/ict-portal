@@ -29,6 +29,7 @@ export const PORTAL_TABLES = [
     // depends on it. See migration 0013.
     "question_flags",
     "testimonies", "testimony_amens", "lo_member_links", "lo_member_verify_attempts",
+    "lo_admins",
     "admin_audit_log", "unit_transfer_requests", "handover_intents", "handover_events",
     "faculties", "departments", "academic_rounds", "academic_records",
     "academic_settings", "academic_submit_attempts",
