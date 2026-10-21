@@ -32,6 +32,7 @@ export const PORTAL_TABLES = [
     "admin_audit_log", "unit_transfer_requests", "handover_intents", "handover_events",
     "faculties", "departments", "academic_rounds", "academic_records",
     "academic_settings", "academic_submit_attempts",
+    "event_member_verify_attempts",
 ];
 
 /** Other applications sharing this database. NEVER ours to touch. */

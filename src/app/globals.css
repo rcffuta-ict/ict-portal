@@ -97,6 +97,16 @@
     height: 100dvh;
   }
 
+  /*
+   * The tallest a bottom-sheet modal may be: most of the VISIBLE screen, for the same
+   * reason as .h-app. At 92vh a phone's address bar covered the modal's footer, so its
+   * Save button sat out of reach.
+   */
+  .max-h-modal {
+    max-height: 92vh;
+    max-height: 92dvh;
+  }
+
   /* Safe area utilities for mobile devices with notches */
   .safe-top {
     padding-top: env(safe-area-inset-top);

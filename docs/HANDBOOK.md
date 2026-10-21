@@ -396,13 +396,27 @@ audit log with who, what, old and new value.
 - **Create or edit** (System Admin, from **Events**):
   - title, link slug, date and time (always Lagos time), description, venue, and the
     **Run by** unit;
-  - *active* (listed), *exclusive* (members only, sign-in required);
+  - *active* (listed), *members only* (see below);
   - registration on/off, which fields to collect, and who may register (guests, alumni,
     students).
 - **Run by.** The assigned unit's Executive and assistants get the event's console,
   alongside the System Admin and the VPs. The President can view it.
 - **Registration.** Visitors register at `/events/<slug>/register` and get a **QR ticket**
   on the confirmation screen. Tell them to screenshot it.
+- **Members-only events.** When *Members only* is ticked, only fellowship members can
+  register.
+  - A member enters their **level token** (`RCF-XXXXX`, from their level coordinator)
+    and the **email on their member record**. The email must belong to someone in that
+    token's generation.
+  - They're registered with their recorded name, email and level, whatever else is
+    typed. A phone number is asked for only if their record has none.
+  - A leader signed in to the portal just presses **Register me**.
+  - Guests can't register.
+  - This is recognition, not a login: it gives one ticket and nothing else. Failed
+    attempts are logged and limited to 8 per 15 minutes per device.
+  - "We couldn't match that level token and email" usually means a wrong email (not the
+    one on their record), a revoked token, or a member who isn't in that token's
+    generation. Check them in **Levels**.
 - **Admin console** (`/events/<slug>/admin`):
   - *Overview*: registered, members, guests, checked in, levels.
   - *Attendees*: filter, then **Export CSV**.
