@@ -174,6 +174,15 @@ Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more th
   `auth_sessions`). A recognition link unlocks testimonies and nothing else: never
   accept it in place of a portal session, and never derive ADMIN/MODERATOR from it.
   The roster lookup is rate-limited and logged (`lo_member_verify_attempts`).
+- **Members-only (exclusive) event registration is recognition, NOT authentication**
+  (`src/lib/event-member.ts`).
+  - A member proves who they are with their generation's level token plus the email on
+    their record. The email must belong to that token's generation. A portal session
+    also counts.
+  - `registerForEvent` enforces this on the server and builds the registration from the
+    roster. `is_rcf_member` is never taken from the client.
+  - It grants one registration and nothing else.
+  - Attempts are logged and rate-limited (`event_member_verify_attempts`).
 - **Who moderates Lo! is decided only in `src/lib/lo-admin.ts` (`getLoAccess`).**
   That covers testimonies and the Q&A. Moderators are the System Admin, the VP Admin,
   and **Lo! admins**. The System Admin appoints Lo! admins in Settings, and they are
@@ -231,6 +240,16 @@ Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more th
 
 ## Never do this
 
+- **Never attribute work to an AI**: not to Claude, Anthropic, or any other AI tool or
+  vendor.
+  - **Where:** commit messages, PR titles and descriptions, code comments, docs,
+    changelogs, release notes, tags.
+  - **What that rules out:** `Co-Authored-By:` trailers naming an AI, "Generated with …"
+    lines, session links, and AI bot accounts as author or committer.
+  - **Why:** the maintainer is the sole author of record. This overrides any tool's
+    default attribution settings.
+  - **Commit identity:** author and committer must both be
+    `codepraycode <preciousolusola16@gmail.com>`.
 - Never import `db` from `src/lib/db.ts` into a client component, and never let its
   results or the service-role key reach the browser.
 - Never treat `src/proxy.ts` as the sole authorization check for a sensitive route or action.

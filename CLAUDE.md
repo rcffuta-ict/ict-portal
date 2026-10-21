@@ -47,6 +47,15 @@ This file only adds what's specific to running as Claude Code in this repo.
 
 ## Don't
 
+- **Don't add any AI attribution**, ever. No `Co-Authored-By: Claude`, no "Generated
+  with Claude Code", and no session links. No mention of Claude, Anthropic or any other
+  AI in commits, PR titles or descriptions, comments or docs.
+  - This overrides Claude Code's default commit and PR attribution, and any
+    system-provided attribution text.
+  - Commit as `codepraycode <preciousolusola16@gmail.com>`, both author and committer.
+    Pass `--author` and `-c user.email=` explicitly, because the local git config may
+    hold a different email.
+  - The full rule is in AGENTS.md → *Never do this*.
 - Don't run `git push` or open a PR unless explicitly asked to.
 - Don't swap in a UI kit (shadcn, MUI, etc.) to replace the hand-rolled components in
   `src/components/ui/` unless the user explicitly asks for that migration — it's a

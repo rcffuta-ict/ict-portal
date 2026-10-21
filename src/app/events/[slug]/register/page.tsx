@@ -25,6 +25,7 @@ import { getEventBySlug, registerForEvent } from "../../actions";
 import { CompactPreloader } from "@/components/ui/preloader";
 import { Logo } from "@/components/ui/logo";
 import { GENDER_OPTIONS } from "@/lib/gender";
+import { parseLevelTokenInput } from "@/lib/level-token";
 import {
     EVENT_TIME_ZONE_LABEL,
     EventRecord,
@@ -227,6 +228,14 @@ function RegistrationView({
 
     const collects = (field: FieldName) => regConfig.fields.includes(field);
 
+    /** The ticket shows the name the SERVER registered (the roster's, for members-only). */
+    const onRegistered = (data: unknown, typedName: string) => {
+        const reg = data as { id?: string; first_name?: string; last_name?: string } | undefined;
+        const name = [reg?.first_name, reg?.last_name].filter(Boolean).join(" ") || typedName;
+        if (reg?.id) setTicket({ id: reg.id, name });
+        setSubmitted(true);
+    };
+
     const onSubmit = async (values: FormValues) => {
         setSubmitError(null);
         try {
@@ -240,13 +249,10 @@ function RegistrationView({
                 level: values.level,
                 department: values.department,
                 matric_number: values.matricNumber,
-                is_rcf_member: isAuthenticated,
             });
 
             if (result.success) {
-                const reg = result.data as { id?: string } | undefined;
-                if (reg?.id) setTicket({ id: reg.id, name: `${values.firstName} ${values.lastName}`.trim() });
-                setSubmitted(true);
+                onRegistered(result.data, `${values.firstName} ${values.lastName}`.trim());
             } else {
                 setSubmitError(result.error || "Registration failed. Please try again.");
             }
@@ -270,29 +276,6 @@ function RegistrationView({
                     className="rounded-2xl bg-rcf-navy px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light"
                 >
                     Event details
-                </Link>
-            </Centered>
-        );
-    }
-
-    if (event.is_exclusive && !isAuthenticated) {
-        return (
-            <Centered
-                title="Members only"
-                description="This event is exclusive to fellowship members. Log in to continue."
-                icon={<Lock className="h-8 w-8 text-rcf-navy" />}
-            >
-                <Link
-                    href={`/login?returnUrl=/events/${slug}/register`}
-                    className="rounded-2xl bg-rcf-navy px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light"
-                >
-                    Log in
-                </Link>
-                <Link
-                    href="/profile"
-                    className="rounded-2xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                    Join the fellowship
                 </Link>
             </Centered>
         );
@@ -401,211 +384,418 @@ function RegistrationView({
                         transition={{ duration: 0.25 }}
                         className="mx-auto max-w-lg"
                     >
-                        <h2 className="text-xl font-bold text-slate-900">Your details</h2>
-                        <p className="mt-1 text-sm text-slate-500">
+                        {event.is_exclusive ? (
+                            <MemberRegistration
+                                eventId={event.id}
+                                collectsPhone={collects("phone")}
+                                signedInName={
+                                    isAuthenticated && user?.profile
+                                        ? `${user.profile.firstName ?? ""} ${user.profile.lastName ?? ""}`.trim()
+                                        : null
+                                }
+                                onRegistered={onRegistered}
+                            />
+                        ) : (
+                            <>
+                                <h2 className="text-xl font-bold text-slate-900">Your details</h2>
+                                <p className="mt-1 text-sm text-slate-500">
                             All fields below are required to complete your registration.
-                        </p>
+                                </p>
 
-                        {!isAuthenticated && showLoginHint && (
-                            <div className="mt-5 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-                                <LogIn className="mt-0.5 h-5 w-5 shrink-0 text-rcf-navy" />
-                                <div className="flex-1">
-                                    <p className="text-sm font-semibold text-slate-900">
+                                {!isAuthenticated && showLoginHint && (
+                                    <div className="mt-5 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                                        <LogIn className="mt-0.5 h-5 w-5 shrink-0 text-rcf-navy" />
+                                        <div className="flex-1">
+                                            <p className="text-sm font-semibold text-slate-900">
                                         Already a member?
-                                    </p>
-                                    <p className="mt-0.5 text-sm text-slate-500">
+                                            </p>
+                                            <p className="mt-0.5 text-sm text-slate-500">
                                         Log in and we&apos;ll fill this in for you.
-                                    </p>
-                                    <div className="mt-3 flex gap-2">
-                                        <Link
-                                            href={`/login?returnUrl=/events/${slug}/register`}
-                                            className="rounded-xl bg-rcf-navy px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-rcf-navy-light"
-                                        >
+                                            </p>
+                                            <div className="mt-3 flex gap-2">
+                                                <Link
+                                                    href={`/login?returnUrl=/events/${slug}/register`}
+                                                    className="rounded-xl bg-rcf-navy px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-rcf-navy-light"
+                                                >
                                             Log in
-                                        </Link>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowLoginHint(false)}
-                                            className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-900"
-                                        >
+                                                </Link>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowLoginHint(false)}
+                                                    className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-900"
+                                                >
                                             Dismiss
-                                        </button>
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        )}
+                                )}
 
-                        {submitError && (
-                            <div
-                                role="alert"
-                                className="mt-5 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4"
-                            >
-                                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
-                                <p className="text-sm font-medium text-red-700">{submitError}</p>
-                            </div>
-                        )}
-
-                        <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-5" noValidate>
-                            <div className="grid gap-5 sm:grid-cols-2">
-                                {collects("firstName") && (
-                                    <Field
-                                        id="firstName"
-                                        label="First name"
-                                        error={errors.firstName?.message}
+                                {submitError && (
+                                    <div
+                                        role="alert"
+                                        className="mt-5 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4"
                                     >
-                                        <input
-                                            id="firstName"
-                                            autoComplete="given-name"
-                                            className={inputClass(!!errors.firstName)}
-                                            placeholder="Grace"
-                                            {...register("firstName")}
-                                        />
-                                    </Field>
+                                        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                                        <p className="text-sm font-medium text-red-700">{submitError}</p>
+                                    </div>
                                 )}
 
-                                {collects("lastName") && (
-                                    <Field
-                                        id="lastName"
-                                        label="Last name"
-                                        error={errors.lastName?.message}
+                                <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-5" noValidate>
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        {collects("firstName") && (
+                                            <Field
+                                                id="firstName"
+                                                label="First name"
+                                                error={errors.firstName?.message}
+                                            >
+                                                <input
+                                                    id="firstName"
+                                                    autoComplete="given-name"
+                                                    className={inputClass(!!errors.firstName)}
+                                                    placeholder="Grace"
+                                                    {...register("firstName")}
+                                                />
+                                            </Field>
+                                        )}
+
+                                        {collects("lastName") && (
+                                            <Field
+                                                id="lastName"
+                                                label="Last name"
+                                                error={errors.lastName?.message}
+                                            >
+                                                <input
+                                                    id="lastName"
+                                                    autoComplete="family-name"
+                                                    className={inputClass(!!errors.lastName)}
+                                                    placeholder="Adeyemi"
+                                                    {...register("lastName")}
+                                                />
+                                            </Field>
+                                        )}
+
+                                        {collects("email") && (
+                                            <Field
+                                                id="email"
+                                                label="Email address"
+                                                error={errors.email?.message}
+                                                className="sm:col-span-2"
+                                            >
+                                                <input
+                                                    id="email"
+                                                    type="email"
+                                                    inputMode="email"
+                                                    autoComplete="email"
+                                                    className={inputClass(!!errors.email)}
+                                                    placeholder="you@example.com"
+                                                    {...register("email")}
+                                                />
+                                            </Field>
+                                        )}
+
+                                        {collects("phone") && (
+                                            <Field
+                                                id="phone"
+                                                label="Phone number"
+                                                error={errors.phone?.message}
+                                            >
+                                                <input
+                                                    id="phone"
+                                                    type="tel"
+                                                    inputMode="tel"
+                                                    autoComplete="tel"
+                                                    className={inputClass(!!errors.phone)}
+                                                    placeholder="080..."
+                                                    {...register("phone")}
+                                                />
+                                            </Field>
+                                        )}
+
+                                        {collects("gender") && (
+                                            <Field id="gender" label="Gender" error={errors.gender?.message}>
+                                                <select
+                                                    id="gender"
+                                                    className={inputClass(!!errors.gender)}
+                                                    {...register("gender")}
+                                                >
+                                                    <option value="">Select</option>
+                                                    {GENDER_OPTIONS.map((o) => (
+                                                        <option key={o.value} value={o.value}>{o.fellowshipLabel}</option>
+                                                    ))}
+                                                </select>
+                                            </Field>
+                                        )}
+
+                                        {collects("level") && (
+                                            <Field
+                                                id="level"
+                                                label="Level / status"
+                                                error={errors.level?.message}
+                                            >
+                                                <select
+                                                    id="level"
+                                                    className={inputClass(!!errors.level)}
+                                                    {...register("level")}
+                                                >
+                                                    <option value="">Select</option>
+                                                    {levels.map((lvl) => (
+                                                        <option key={lvl} value={lvl}>
+                                                            {lvl}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </Field>
+                                        )}
+
+                                        {collects("department") && (
+                                            <Field
+                                                id="department"
+                                                label="Department"
+                                                error={errors.department?.message}
+                                            >
+                                                <input
+                                                    id="department"
+                                                    className={inputClass(!!errors.department)}
+                                                    placeholder="Computer Science"
+                                                    {...register("department")}
+                                                />
+                                            </Field>
+                                        )}
+
+                                        {collects("matricNumber") && (
+                                            <Field
+                                                id="matricNumber"
+                                                label="Matric number"
+                                                error={errors.matricNumber?.message}
+                                            >
+                                                <input
+                                                    id="matricNumber"
+                                                    className={inputClass(!!errors.matricNumber)}
+                                                    placeholder="CSC/20/1234"
+                                                    {...register("matricNumber")}
+                                                />
+                                            </Field>
+                                        )}
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmitting}
+                                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rcf-navy px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light disabled:cursor-not-allowed disabled:opacity-60"
                                     >
-                                        <input
-                                            id="lastName"
-                                            autoComplete="family-name"
-                                            className={inputClass(!!errors.lastName)}
-                                            placeholder="Adeyemi"
-                                            {...register("lastName")}
-                                        />
-                                    </Field>
-                                )}
-
-                                {collects("email") && (
-                                    <Field
-                                        id="email"
-                                        label="Email address"
-                                        error={errors.email?.message}
-                                        className="sm:col-span-2"
-                                    >
-                                        <input
-                                            id="email"
-                                            type="email"
-                                            inputMode="email"
-                                            autoComplete="email"
-                                            className={inputClass(!!errors.email)}
-                                            placeholder="you@example.com"
-                                            {...register("email")}
-                                        />
-                                    </Field>
-                                )}
-
-                                {collects("phone") && (
-                                    <Field
-                                        id="phone"
-                                        label="Phone number"
-                                        error={errors.phone?.message}
-                                    >
-                                        <input
-                                            id="phone"
-                                            type="tel"
-                                            inputMode="tel"
-                                            autoComplete="tel"
-                                            className={inputClass(!!errors.phone)}
-                                            placeholder="080..."
-                                            {...register("phone")}
-                                        />
-                                    </Field>
-                                )}
-
-                                {collects("gender") && (
-                                    <Field id="gender" label="Gender" error={errors.gender?.message}>
-                                        <select
-                                            id="gender"
-                                            className={inputClass(!!errors.gender)}
-                                            {...register("gender")}
-                                        >
-                                            <option value="">Select</option>
-                                            {GENDER_OPTIONS.map((o) => (
-                                                <option key={o.value} value={o.value}>{o.fellowshipLabel}</option>
-                                            ))}
-                                        </select>
-                                    </Field>
-                                )}
-
-                                {collects("level") && (
-                                    <Field
-                                        id="level"
-                                        label="Level / status"
-                                        error={errors.level?.message}
-                                    >
-                                        <select
-                                            id="level"
-                                            className={inputClass(!!errors.level)}
-                                            {...register("level")}
-                                        >
-                                            <option value="">Select</option>
-                                            {levels.map((lvl) => (
-                                                <option key={lvl} value={lvl}>
-                                                    {lvl}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </Field>
-                                )}
-
-                                {collects("department") && (
-                                    <Field
-                                        id="department"
-                                        label="Department"
-                                        error={errors.department?.message}
-                                    >
-                                        <input
-                                            id="department"
-                                            className={inputClass(!!errors.department)}
-                                            placeholder="Computer Science"
-                                            {...register("department")}
-                                        />
-                                    </Field>
-                                )}
-
-                                {collects("matricNumber") && (
-                                    <Field
-                                        id="matricNumber"
-                                        label="Matric number"
-                                        error={errors.matricNumber?.message}
-                                    >
-                                        <input
-                                            id="matricNumber"
-                                            className={inputClass(!!errors.matricNumber)}
-                                            placeholder="CSC/20/1234"
-                                            {...register("matricNumber")}
-                                        />
-                                    </Field>
-                                )}
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rcf-navy px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {isSubmitting ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        {isSubmitting ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
                                         Submitting...
-                                    </>
-                                ) : (
-                                    "Complete registration"
-                                )}
-                            </button>
+                                            </>
+                                        ) : (
+                                            "Complete registration"
+                                        )}
+                                    </button>
 
-                            <p className="pb-safe text-center text-xs text-slate-400">
+                                    <p className="pb-safe text-center text-xs text-slate-400">
                                 Your details are used only for this event.
-                            </p>
-                        </form>
+                                    </p>
+                                </form>
+                            </>
+                        )}
                     </motion.div>
                 </main>
             </div>
         </div>
+    );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Members-only (exclusive) events                                             */
+/* -------------------------------------------------------------------------- */
+
+const memberSchema = z.object({
+    levelToken: z
+        .string()
+        .trim()
+        .min(1, "Enter your level token")
+        .refine((v) => parseLevelTokenInput(v) !== null, "That doesn't look like a level token, e.g. RCF-7KX2P"),
+    email: z
+        .string()
+        .trim()
+        .min(1, "Enter your email address")
+        .regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, "Enter a valid email address"),
+    phone: z
+        .string()
+        .trim()
+        .refine((v) => !v || /^[0-9+\-\s()]{7,20}$/.test(v), "Enter a valid phone number")
+        .optional(),
+});
+type MemberValues = z.infer<typeof memberSchema>;
+
+/**
+ * Registration for an event only fellowship members may attend.
+ *
+ * Members prove who they are with their level token and the email on their record —
+ * no login, since most members have none. The server checks the pair against the
+ * roster and registers them with their recorded details (src/lib/event-member.ts), so
+ * there is nothing else to fill in. A signed-in leader is recognised from their session.
+ */
+function MemberRegistration({
+    eventId,
+    collectsPhone,
+    signedInName,
+    onRegistered,
+}: {
+    eventId: string;
+    collectsPhone: boolean;
+    signedInName: string | null;
+    onRegistered: (data: unknown, typedName: string) => void;
+}) {
+    const [submitError, setSubmitError] = useState<string | null>(null);
+    // The signed-in path has no fields to validate, so it can't use the form's pending flag.
+    const [registering, setRegistering] = useState(false);
+    const {
+        register,
+        handleSubmit,
+        formState: { errors, isSubmitting },
+    } = useForm<MemberValues>({
+        resolver: zodResolver(memberSchema),
+        defaultValues: { levelToken: "", email: "", phone: "" },
+    });
+
+    const submit = async (values?: MemberValues) => {
+        setSubmitError(null);
+        try {
+            const result = await registerForEvent({
+                event_id: eventId,
+                level_token: values?.levelToken,
+                email: values?.email,
+                phone_number: values?.phone,
+            });
+            if (result.success) onRegistered(result.data, signedInName ?? "");
+            else setSubmitError(result.error || "Registration failed. Please try again.");
+        } catch {
+            setSubmitError("Something went wrong. Please check your connection and retry.");
+        }
+    };
+
+    const errorBox = submitError && (
+        <div role="alert" className="mt-5 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" aria-hidden="true" />
+            <p className="text-sm font-medium text-red-700">{submitError}</p>
+        </div>
+    );
+
+    const heading = (
+        <>
+            <p className="inline-flex items-center gap-1.5 rounded-full bg-rcf-navy/5 px-3 py-1 text-xs font-semibold text-rcf-navy">
+                <Lock className="h-3.5 w-3.5" aria-hidden="true" /> Members only
+            </p>
+            <h2 className="mt-3 text-xl font-bold text-slate-900">Confirm you&apos;re a member</h2>
+        </>
+    );
+
+    // A signed-in leader: the session already says who they are.
+    if (signedInName) {
+        return (
+            <div>
+                {heading}
+                <p className="mt-1 text-sm text-slate-500">
+                    You&apos;re signed in as <span className="font-semibold text-slate-700">{signedInName}</span>.
+                    We&apos;ll register you with the details on your member record.
+                </p>
+                {errorBox}
+                <SubmitButton
+                    busy={registering}
+                    onClick={async () => {
+                        if (registering) return;
+                        setRegistering(true);
+                        await submit();
+                        setRegistering(false);
+                    }}
+                    label="Register me"
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            {heading}
+            <p className="mt-1 text-sm leading-relaxed text-slate-500">
+                Enter your level token (your level coordinator shares it, e.g. <span className="font-mono">RCF-7KX2P</span>)
+                and the email on your member record. We&apos;ll register you with your recorded details.
+            </p>
+            {errorBox}
+
+            <form onSubmit={handleSubmit(submit)} className="mt-6 space-y-5" noValidate>
+                <Field id="levelToken" label="Level token" error={errors.levelToken?.message}>
+                    <input
+                        id="levelToken"
+                        autoComplete="off"
+                        autoCapitalize="characters"
+                        spellCheck={false}
+                        aria-invalid={!!errors.levelToken}
+                        className={`${inputClass(!!errors.levelToken)} font-mono uppercase`}
+                        placeholder="RCF-7KX2P"
+                        {...register("levelToken")}
+                    />
+                </Field>
+
+                <Field id="memberEmail" label="Email on your member record" error={errors.email?.message}>
+                    <input
+                        id="memberEmail"
+                        type="email"
+                        inputMode="email"
+                        autoComplete="email"
+                        aria-invalid={!!errors.email}
+                        className={inputClass(!!errors.email)}
+                        placeholder="you@example.com"
+                        {...register("email")}
+                    />
+                </Field>
+
+                {collectsPhone && (
+                    <Field id="memberPhone" label="Phone number (if not on your record)" error={errors.phone?.message}>
+                        <input
+                            id="memberPhone"
+                            type="tel"
+                            inputMode="tel"
+                            autoComplete="tel"
+                            aria-invalid={!!errors.phone}
+                            className={inputClass(!!errors.phone)}
+                            placeholder="080..."
+                            {...register("phone")}
+                        />
+                    </Field>
+                )}
+
+                <SubmitButton busy={isSubmitting} label="Complete registration" />
+
+                <p className="pb-safe text-center text-xs text-slate-400">
+                    Not a member yet? This event is for members of the fellowship. Ask your
+                    level coordinator about joining.
+                </p>
+            </form>
+        </div>
+    );
+}
+
+function SubmitButton({ busy, label, onClick }: { busy: boolean; label: string; onClick?: () => void }) {
+    return (
+        <button
+            type={onClick ? "button" : "submit"}
+            onClick={onClick}
+            disabled={busy}
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-rcf-navy px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light focus:outline-none focus-visible:ring-4 focus-visible:ring-rcf-navy/30 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+            {busy ? (
+                <>
+                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                    Registering…
+                </>
+            ) : (
+                label
+            )}
+        </button>
     );
 }
 

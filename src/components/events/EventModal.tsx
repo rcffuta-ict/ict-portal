@@ -126,6 +126,25 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
         };
     }, [isOpen]);
 
+    // While the modal is open the page behind it must not scroll: /events scrolls the
+    // whole document, so without this a swipe on the form moved the page underneath and
+    // the modal seemed to drift. Restores whatever was there before, on close or unmount.
+    // Escape closes, as a dialog should.
+    useEffect(() => {
+        if (!isOpen) return;
+        const html = document.documentElement;
+        const previous = html.style.overflow;
+        html.style.overflow = "hidden";
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && !isSubmitting) onClose();
+        };
+        window.addEventListener("keydown", onKey);
+        return () => {
+            html.style.overflow = previous;
+            window.removeEventListener("keydown", onKey);
+        };
+    }, [isOpen, isSubmitting, onClose]);
+
     const {
         register,
         handleSubmit,
@@ -171,6 +190,7 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
     }, [isOpen, event, reset]);
 
     const isRecurring = watch("is_recurring");
+    const isExclusive = watch("is_exclusive");
     const requiresRegistration = watch("requires_registration");
     const selectedFields = watch("reg_fields") || [];
 
@@ -260,7 +280,7 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="event-modal-title"
-                        className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+                        className="max-h-modal relative flex w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
                     >
                         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-8">
                             <div>
@@ -286,7 +306,10 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
 
                         <form
                             onSubmit={handleSubmit(onSubmit)}
-                            className="flex-1 space-y-8 overflow-y-auto px-5 py-6 sm:px-8"
+                            // min-h-0 lets the form shrink so IT scrolls instead of
+                            // pushing the footer off; overscroll-contain stops a fling at
+                            // the end of the form from scrolling the page behind.
+                            className="min-h-0 flex-1 space-y-8 overflow-y-auto overscroll-contain px-5 py-6 sm:px-8"
                         >
                             {error && (
                                 <div className="flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4">
@@ -477,11 +500,18 @@ export function EventModal({ isOpen, onClose, onSuccess, event }: EventModalProp
                                         {...register("is_recurring")}
                                     />
                                     <Toggle
-                                        label="Exclusive"
-                                        hint="Login required"
+                                        label="Members only"
+                                        hint="Level token + email to register"
                                         {...register("is_exclusive")}
                                     />
                                 </div>
+                                {isExclusive && (
+                                    <p className="rounded-2xl bg-rcf-navy/5 px-4 py-3 text-xs leading-relaxed text-slate-600">
+                                        Only fellowship members can register. They enter their level
+                                        token and the email on their member record, and are registered
+                                        with their recorded details. Guests can&apos;t register.
+                                    </p>
+                                )}
                             </section>
 
                             {/* Registration */}
