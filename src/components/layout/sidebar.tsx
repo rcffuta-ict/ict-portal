@@ -85,7 +85,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             >
             {/* 1. Brand / Logo Area */}
             <div className="flex h-16 shrink-0 items-center justify-center gap-3 border-b border-white/10 safe-left">
-                <Logo variant="white" width={50} />
+                <Logo variant="white" width={50} asLink />
             </div>
 
             {/* 2. Navigation Items — grouped into sections (Personal / Events / Apps / Tools) */}
@@ -171,7 +171,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                                 {user?.profile.firstName}
                             </p>
                             <p className="text-xs text-slate-400 truncate">
-                                {user?.academics.currentLevel || "Member"}
+                                {user?.academics?.currentLevel || "Member"}
                             </p>
                         </div>
                     </div>

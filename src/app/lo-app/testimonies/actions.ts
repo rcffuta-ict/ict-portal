@@ -166,6 +166,54 @@ export async function getTestimonyCycleSettings(): Promise<TestimonyCycleSetting
 }
 
 /**
+ * Count approved testimonies in each Sunday reading cycle for the cycle filter pills.
+ */
+export async function getTestimonyCycleCounts(): Promise<Record<TestimonyCycleId, number>> {
+    try {
+        const settings = await getTestimonyCycleSettings();
+        const cycles = computeTestimonyCycles(new Date(), settings);
+
+        const { data, error } = await db
+            .from("testimonies")
+            .select("created_at")
+            .eq("status", "approved");
+
+        const counts: Record<TestimonyCycleId, number> = {
+            this_week: 0,
+            last_week: 0,
+            two_weeks_ago: 0,
+            older: 0,
+            all: data?.length ?? 0,
+        };
+
+        if (error || !data) return counts;
+
+        for (const row of data) {
+            const date = new Date(row.created_at);
+            for (const c of cycles.allCycles) {
+                if (c.id === "all") continue;
+                const afterStart = !c.start || date > c.start;
+                const beforeEnd = !c.end || date <= c.end;
+                if (afterStart && beforeEnd) {
+                    counts[c.id]++;
+                    break;
+                }
+            }
+        }
+
+        return counts;
+    } catch {
+        return {
+            this_week: 0,
+            last_week: 0,
+            two_weeks_ago: 0,
+            older: 0,
+            all: 0,
+        };
+    }
+}
+
+/**
  * One page of the public feed: approved testimonies, newest first. When the viewer
  * is a recognised member, their own pending/rejected posts are folded in so they can
  * see what happened to what they submitted.

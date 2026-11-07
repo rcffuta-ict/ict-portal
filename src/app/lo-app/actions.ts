@@ -1,6 +1,7 @@
 "use server";
 
 import { getLoAccess } from "@/lib/lo-admin";
+import { getCurrentContext } from "@/lib/access-control";
 import { validateSession } from "@/lib/auth-utils";
 import { db } from "@/lib/db";
 import { getProfileContext } from "@/lib/auth/profile-context";
@@ -286,7 +287,26 @@ export async function clusterQuestions(questionIds: string[]) {
  */
 export async function getLoViewer() {
     const access = await getLoAccess();
-    return { canRead: access.canRead, canModerate: access.canModerate };
+    let isExco = false;
+    try {
+        const ctx = await getCurrentContext();
+        if (ctx) {
+            isExco = !!(
+                (ctx.leadership && ctx.leadership.length > 0) ||
+                (ctx.roles && ctx.roles.length > 0) ||
+                ctx.isAdmin ||
+                ctx.isSysAdmin ||
+                ctx.isVpAdmin
+            );
+        }
+    } catch {
+        isExco = false;
+    }
+    return {
+        canRead: access.canRead,
+        canModerate: access.canModerate,
+        isExco,
+    };
 }
 
 // ─── Member recognition (see src/lib/lo-member.ts) ───

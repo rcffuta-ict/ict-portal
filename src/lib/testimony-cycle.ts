@@ -181,3 +181,5 @@ export function computeTestimonyCycles(
         effectiveCutoff: effectiveRefCutoff,
     };
 }
+
+export type TestimonyCycles = ReturnType<typeof computeTestimonyCycles>;

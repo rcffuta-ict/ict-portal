@@ -1,18 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, HandHeart, Loader2, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, BookOpen, HandHeart, Loader2, RefreshCw, Search } from "lucide-react";
 import { MemberGate } from "./MemberGate";
 import { TestimonyCard } from "./TestimonyCard";
 import { TestimonyComposer } from "./TestimonyComposer";
+import { PulpitView } from "./PulpitView";
 import {
     getFeaturedTestimony,
     getTestimonies,
     getTestimonyCategoryCounts,
+    getTestimonyCycleCounts,
     getTestimonyCycleSettings,
     toggleAmen,
 } from "@/app/lo-app/testimonies/actions";
-import { forgetLoMember, getLoMemberIdentity } from "@/app/lo-app/actions";
+import { forgetLoMember, getLoMemberIdentity, getLoViewer } from "@/app/lo-app/actions";
 import { TESTIMONY_CATEGORIES, type Testimony, type TestimonyCategory } from "@/lib/testimonies";
 import {
     computeTestimonyCycles,
@@ -46,8 +48,17 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
     const [loadingMore, setLoadingMore] = useState(false);
     const [moreError, setMoreError] = useState<string | null>(null);
     const [category, setCategory] = useState<CategoryFilter>("all");
-    const [cycle, setCycle] = useState<TestimonyCycleId>("all");
+    const [cycle, setCycle] = useState<TestimonyCycleId>("this_week");
     const [cycleSettings, setCycleSettings] = useState<TestimonyCycleSettings>(DEFAULT_CYCLE_SETTINGS);
+    const [cycleCounts, setCycleCounts] = useState<Record<TestimonyCycleId, number>>({
+        this_week: 0,
+        last_week: 0,
+        two_weeks_ago: 0,
+        older: 0,
+        all: 0,
+    });
+    const [isExco, setIsExco] = useState(false);
+    const [isPulpitMode, setIsPulpitMode] = useState(false);
     const [search, setSearch] = useState("");
 
     const cycles = useMemo(() => computeTestimonyCycles(new Date(), cycleSettings), [cycleSettings]);
@@ -73,10 +84,12 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
     // once (and again after a post), not on every keystroke. Both are extras: if either
     // fails the feed still works, so their errors are swallowed.
     const loadExtras = useCallback(async () => {
-        const [featuredResult, countsResult, settings] = await Promise.all([
+        const [featuredResult, countsResult, settings, cycleCountsRes, viewer] = await Promise.all([
             getFeaturedTestimony().catch(() => null),
             getTestimonyCategoryCounts().catch(() => null),
             getTestimonyCycleSettings().catch(() => DEFAULT_CYCLE_SETTINGS),
+            getTestimonyCycleCounts().catch(() => null),
+            getLoViewer().catch(() => null),
         ]);
         if (featuredResult?.success) setFeatured(featuredResult.data);
         if (countsResult?.success) {
@@ -84,6 +97,8 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
             setPublishedTotal(countsResult.total);
         }
         if (settings) setCycleSettings(settings);
+        if (cycleCountsRes) setCycleCounts(cycleCountsRes);
+        if (viewer?.isExco) setIsExco(true);
     }, []);
 
     useEffect(() => {
@@ -220,30 +235,61 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
                         ))}
                 </div>
 
-                {/* Sunday Cycle Filter Chips */}
-                <div className="no-scrollbar -mx-1 mt-2.5 flex items-center gap-1.5 overflow-x-auto px-1">
-                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
-                        Sunday:
-                    </span>
-                    {cycles.allCycles.map((c) => (
+                {/* Sunday Cycle Filter Chips & Exco Pulpit Mode */}
+                <div className="no-scrollbar -mx-1 mt-2.5 flex items-center justify-between gap-2 overflow-x-auto px-1">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                            Sunday:
+                        </span>
+                        {cycles.allCycles.map((c) => {
+                            const count = cycleCounts[c.id];
+                            return (
+                                <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => setCycle(c.id)}
+                                    className={`min-h-7 shrink-0 rounded-full border px-2.5 text-[11px] font-semibold whitespace-nowrap transition-colors inline-flex items-center gap-1.5 ${
+                                        cycle === c.id
+                                            ? "border-rcf-navy bg-rcf-navy text-white shadow-xs"
+                                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                                    }`}
+                                >
+                                    <span>{c.label}</span>
+                                    {c.id !== "all" && c.id !== "older" && (
+                                        <span className={`text-[9px] ${cycle === c.id ? "text-rcf-gold font-bold" : "text-slate-400"}`}>
+                                            ({c.sundayLabel})
+                                        </span>
+                                    )}
+                                    {count !== undefined && (
+                                        <span
+                                            className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                                                cycle === c.id
+                                                    ? "bg-white/20 text-white"
+                                                    : "bg-slate-100 text-slate-600"
+                                            }`}
+                                        >
+                                            {count}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {isExco && (
                         <button
-                            key={c.id}
                             type="button"
-                            onClick={() => setCycle(c.id)}
-                            className={`min-h-7 shrink-0 rounded-full border px-2.5 text-[11px] font-semibold whitespace-nowrap transition-colors ${
-                                cycle === c.id
-                                    ? "border-rcf-navy bg-rcf-navy text-white shadow-xs"
-                                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                            onClick={() => setIsPulpitMode(!isPulpitMode)}
+                            className={`shrink-0 inline-flex min-h-7 items-center gap-1.5 rounded-full px-3 text-[11px] font-bold transition-all shadow-xs ${
+                                isPulpitMode
+                                    ? "bg-rcf-gold text-rcf-navy"
+                                    : "bg-rcf-navy text-white hover:bg-rcf-navy-light"
                             }`}
                         >
-                            {c.label}
-                            {c.id !== "all" && c.id !== "older" && (
-                                <span className={`ml-1 text-[9px] ${cycle === c.id ? "text-rcf-gold font-bold" : "text-slate-400"}`}>
-                                    ({c.sundayLabel})
-                                </span>
-                            )}
+                            <BookOpen className="h-3.5 w-3.5" />
+                            <span>{isPulpitMode ? "Exit pulpit mode" : "Pulpit mode"}</span>
                         </button>
-                    ))}
+                    )}
                 </div>
             </div>
 
@@ -300,7 +346,19 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
                     </div>
                 ))}
 
-            {loading && testimonies.length === 0 && !(showFeatured && featured) ? (
+            {isPulpitMode ? (
+                <div className="p-4">
+                    <PulpitView
+                        items={testimonies}
+                        cycle={cycle}
+                        cycles={cycles}
+                        cycleCounts={cycleCounts}
+                        onCycleChange={(newCycle) => setCycle(newCycle)}
+                        onClose={() => setIsPulpitMode(false)}
+                        onNotify={onNotify}
+                    />
+                </div>
+            ) : loading && testimonies.length === 0 && !(showFeatured && featured) ? (
                 <div className="flex flex-col items-center py-20 text-center">
                     <Loader2 className="mb-3 h-5 w-5 animate-spin text-rcf-navy motion-reduce:animate-none" />
                     <p className="text-sm text-slate-500">Loading testimonies...</p>

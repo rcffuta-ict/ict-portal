@@ -22,12 +22,14 @@ import {
 import {
     editTestimonyAction,
     getTestimoniesForReview,
+    getTestimonyCycleCounts,
     getTestimonyCycleSettings,
     moderateTestimony,
     setTestimonyFeatured,
     updateWeeklyCutoffAction,
     type ReviewFilter,
 } from "@/app/lo-app/testimonies/actions";
+import { PulpitView } from "./PulpitView";
 import {
     computeTestimonyCycles,
     DEFAULT_CYCLE_SETTINGS,
@@ -73,11 +75,17 @@ type Action = "approve" | "reject" | "hide" | "restore";
 export function TestimonyModeration({ onNotify, onQueueChanged }: TestimonyModerationProps) {
     const [items, setItems] = useState<Testimony[]>([]);
     const [filter, setFilter] = useState<ReviewFilter>("pending");
-    const [cycle, setCycle] = useState<TestimonyCycleId>("all");
+    const [cycle, setCycle] = useState<TestimonyCycleId>("this_week");
     const [cycleSettings, setCycleSettings] = useState<TestimonyCycleSettings>(DEFAULT_CYCLE_SETTINGS);
+    const [cycleCounts, setCycleCounts] = useState<Record<TestimonyCycleId, number>>({
+        this_week: 0,
+        last_week: 0,
+        two_weeks_ago: 0,
+        older: 0,
+        all: 0,
+    });
     const [showCutoffModal, setShowCutoffModal] = useState(false);
     const [isPulpitMode, setIsPulpitMode] = useState(false);
-    const [readIds, setReadIds] = useState<Record<string, boolean>>({});
     const [updatingCutoff, setUpdatingCutoff] = useState(false);
     const [overrideInput, setOverrideInput] = useState("");
     const [defaultInput, setDefaultInput] = useState("");
@@ -95,11 +103,13 @@ export function TestimonyModeration({ onNotify, onQueueChanged }: TestimonyModer
         setLoading(true);
         setLoadError(null);
         try {
-            const [result, settings] = await Promise.all([
+            const [result, settings, counts] = await Promise.all([
                 getTestimoniesForReview({ filter: which, cycle: whichCycle }),
                 getTestimonyCycleSettings(),
+                getTestimonyCycleCounts().catch(() => null),
             ]);
             setCycleSettings(settings);
+            if (counts) setCycleCounts(counts);
             if (result.success) {
                 setItems(result.data);
                 setHasMore(result.hasMore);
@@ -337,27 +347,41 @@ export function TestimonyModeration({ onNotify, onQueueChanged }: TestimonyModer
                     <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
                         Cycle:
                     </span>
-                    {cycles.allCycles.map((c) => (
-                        <button
-                            key={c.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={cycle === c.id}
-                            onClick={() => setCycle(c.id)}
-                            className={`min-h-8 shrink-0 rounded-full border px-3 text-xs font-semibold whitespace-nowrap transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy ${
-                                cycle === c.id
-                                    ? "border-rcf-navy bg-rcf-navy text-white shadow-xs"
-                                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                            }`}
-                        >
-                            {c.label}
-                            {c.id !== "all" && c.id !== "older" && (
-                                <span className={`ml-1 text-[10px] ${cycle === c.id ? "text-rcf-gold font-bold" : "text-slate-400"}`}>
-                                    ({c.sundayLabel})
-                                </span>
-                            )}
-                        </button>
-                    ))}
+                    {cycles.allCycles.map((c) => {
+                        const count = cycleCounts[c.id];
+                        return (
+                            <button
+                                key={c.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={cycle === c.id}
+                                onClick={() => setCycle(c.id)}
+                                className={`min-h-8 shrink-0 rounded-full border px-3 text-xs font-semibold whitespace-nowrap transition-colors inline-flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy ${
+                                    cycle === c.id
+                                        ? "border-rcf-navy bg-rcf-navy text-white shadow-xs"
+                                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                                }`}
+                            >
+                                <span>{c.label}</span>
+                                {c.id !== "all" && c.id !== "older" && (
+                                    <span className={`text-[10px] ${cycle === c.id ? "text-rcf-gold font-bold" : "text-slate-400"}`}>
+                                        ({c.sundayLabel})
+                                    </span>
+                                )}
+                                {count !== undefined && (
+                                    <span
+                                        className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                                            cycle === c.id
+                                                ? "bg-white/20 text-white"
+                                                : "bg-slate-100 text-slate-600"
+                                        }`}
+                                    >
+                                        {count}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
@@ -378,99 +402,15 @@ export function TestimonyModeration({ onNotify, onQueueChanged }: TestimonyModer
                     </button>
                 </div>
             ) : isPulpitMode ? (
-                <div className="space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-rcf-navy p-4 text-white shadow-sm">
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <BookOpen className="h-5 w-5 text-rcf-gold" />
-                                <h3 className="text-base font-bold text-white">Pulpit Reading View</h3>
-                            </div>
-                            <p className="mt-1 text-xs text-white/70">
-                                Clean, high-contrast reading cards for Sunday service altar readings.
-                            </p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={handleCopyAll}
-                            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-rcf-gold px-3.5 text-xs font-bold text-rcf-navy shadow-sm transition-transform active:scale-95"
-                        >
-                            <Copy className="h-3.5 w-3.5" />
-                            <span>Copy for WhatsApp / Bulletin</span>
-                        </button>
-                    </div>
-
-                    {items.filter((t) => t.status === "approved").length === 0 ? (
-                        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center">
-                            <BookOpen className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
-                            <p className="mt-3 text-sm font-medium text-slate-500">
-                                No published testimonies in this cycle to read.
-                            </p>
-                        </div>
-                    ) : (
-                        <ul className="space-y-4">
-                            {items
-                                .filter((t) => t.status === "approved")
-                                .map((item, idx) => {
-                                    const isRead = !!readIds[item.id];
-                                    return (
-                                        <li
-                                            key={item.id}
-                                            className={`rounded-2xl border p-5 transition-all ${
-                                                isRead
-                                                    ? "border-slate-200 bg-slate-50 opacity-60"
-                                                    : "border-slate-200/90 bg-white shadow-sm"
-                                            }`}
-                                        >
-                                            <div className="mb-2 flex items-start justify-between gap-3">
-                                                <div className="flex items-center gap-2.5">
-                                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rcf-navy/10 text-xs font-extrabold text-rcf-navy">
-                                                        {idx + 1}
-                                                    </span>
-                                                    <h4 className="text-base font-bold text-slate-900 sm:text-lg">
-                                                        {item.title}
-                                                    </h4>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setReadIds((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
-                                                    className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-colors ${
-                                                        isRead
-                                                            ? "border-green-300 bg-green-50 text-green-700"
-                                                            : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                                                    }`}
-                                                >
-                                                    <Check className="h-3.5 w-3.5" />
-                                                    <span>{isRead ? "Marked Read" : "Mark as Read"}</span>
-                                                </button>
-                                            </div>
-
-                                            {item.scriptureReference && (
-                                                <p className="mb-3 text-xs font-semibold italic text-rcf-gold">
-                                                    📖 {item.scriptureReference}
-                                                </p>
-                                            )}
-
-                                            <p className="text-sm font-medium leading-relaxed text-slate-800 whitespace-pre-wrap">
-                                                {item.body}
-                                            </p>
-
-                                            <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
-                                                <span>
-                                                    Shared by:{" "}
-                                                    <strong className="text-slate-900">
-                                                        {item.isAnonymous ? "Anonymous Member" : item.authorName}
-                                                    </strong>
-                                                </span>
-                                                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                                                    {categoryLabel(item.category)}
-                                                </span>
-                                            </div>
-                                        </li>
-                                    );
-                                })}
-                        </ul>
-                    )}
-                </div>
+                <PulpitView
+                    items={items}
+                    cycle={cycle}
+                    cycles={cycles}
+                    cycleCounts={cycleCounts}
+                    onCycleChange={(newCycle) => setCycle(newCycle)}
+                    onClose={() => setIsPulpitMode(false)}
+                    onNotify={onNotify}
+                />
             ) : items.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center">
                     <CheckCircle2 className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />

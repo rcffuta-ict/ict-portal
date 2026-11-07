@@ -38,7 +38,7 @@ export function LoAppEntry({ initialFeedTab }: { initialFeedTab?: FeedTab }) {
             firstName: user.profile.firstName || user.profile.email?.split("@")[0] || "",
             lastName: user.profile.lastName || "",
             email: user.profile.email || "",
-            level: user.academics.currentLevel,
+            level: user.academics?.currentLevel ?? null,
         };
     }, [user]);
 
