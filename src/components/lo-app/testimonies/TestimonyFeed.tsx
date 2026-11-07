@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, HandHeart, Loader2, RefreshCw, Search } from "lucide-react";
 import { MemberGate } from "./MemberGate";
 import { TestimonyCard } from "./TestimonyCard";
@@ -9,10 +9,17 @@ import {
     getFeaturedTestimony,
     getTestimonies,
     getTestimonyCategoryCounts,
+    getTestimonyCycleSettings,
     toggleAmen,
 } from "@/app/lo-app/testimonies/actions";
 import { forgetLoMember, getLoMemberIdentity } from "@/app/lo-app/actions";
 import { TESTIMONY_CATEGORIES, type Testimony, type TestimonyCategory } from "@/lib/testimonies";
+import {
+    computeTestimonyCycles,
+    DEFAULT_CYCLE_SETTINGS,
+    type TestimonyCycleId,
+    type TestimonyCycleSettings,
+} from "@/lib/testimony-cycle";
 import type { LoEvent } from "../LoAppClient";
 import type { LoMember } from "@/lib/lo-member";
 
@@ -39,7 +46,11 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
     const [loadingMore, setLoadingMore] = useState(false);
     const [moreError, setMoreError] = useState<string | null>(null);
     const [category, setCategory] = useState<CategoryFilter>("all");
+    const [cycle, setCycle] = useState<TestimonyCycleId>("all");
+    const [cycleSettings, setCycleSettings] = useState<TestimonyCycleSettings>(DEFAULT_CYCLE_SETTINGS);
     const [search, setSearch] = useState("");
+
+    const cycles = useMemo(() => computeTestimonyCycles(new Date(), cycleSettings), [cycleSettings]);
 
     // Who is this? A portal session counts automatically; otherwise it's whoever
     // confirmed themselves on this device before.
@@ -62,15 +73,17 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
     // once (and again after a post), not on every keystroke. Both are extras: if either
     // fails the feed still works, so their errors are swallowed.
     const loadExtras = useCallback(async () => {
-        const [featuredResult, countsResult] = await Promise.all([
+        const [featuredResult, countsResult, settings] = await Promise.all([
             getFeaturedTestimony().catch(() => null),
             getTestimonyCategoryCounts().catch(() => null),
+            getTestimonyCycleSettings().catch(() => DEFAULT_CYCLE_SETTINGS),
         ]);
         if (featuredResult?.success) setFeatured(featuredResult.data);
         if (countsResult?.success) {
             setCategoryCounts(countsResult.data);
             setPublishedTotal(countsResult.total);
         }
+        if (settings) setCycleSettings(settings);
     }, []);
 
     useEffect(() => {
@@ -84,7 +97,7 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
         setError(null);
         setMoreError(null);
         try {
-            const result = await getTestimonies({ category, search });
+            const result = await getTestimonies({ category, search, cycle });
             if (result.success) {
                 setTestimonies(result.data);
                 setHasMore(result.hasMore);
@@ -96,7 +109,7 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
         } finally {
             setLoading(false);
         }
-    }, [category, search]);
+    }, [category, search, cycle]);
 
     /**
      * The next page, on request. A button, not infinite scroll: on mobile data the
@@ -108,7 +121,7 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
         setLoadingMore(true);
         setMoreError(null);
         try {
-            const result = await getTestimonies({ category, search, before: last.createdAt });
+            const result = await getTestimonies({ category, search, before: last.createdAt, cycle });
             if (result.success) {
                 setTestimonies((prev) => {
                     const seen = new Set(prev.map((t) => t.id));
@@ -205,6 +218,32 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
                                 count={categoryCounts?.[option.id]}
                             />
                         ))}
+                </div>
+
+                {/* Sunday Cycle Filter Chips */}
+                <div className="no-scrollbar -mx-1 mt-2.5 flex items-center gap-1.5 overflow-x-auto px-1">
+                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                        Sunday:
+                    </span>
+                    {cycles.allCycles.map((c) => (
+                        <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => setCycle(c.id)}
+                            className={`min-h-7 shrink-0 rounded-full border px-2.5 text-[11px] font-semibold whitespace-nowrap transition-colors ${
+                                cycle === c.id
+                                    ? "border-rcf-navy bg-rcf-navy text-white shadow-xs"
+                                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                            }`}
+                        >
+                            {c.label}
+                            {c.id !== "all" && c.id !== "older" && (
+                                <span className={`ml-1 text-[9px] ${cycle === c.id ? "text-rcf-gold font-bold" : "text-slate-400"}`}>
+                                    ({c.sundayLabel})
+                                </span>
+                            )}
+                        </button>
+                    ))}
                 </div>
             </div>
 

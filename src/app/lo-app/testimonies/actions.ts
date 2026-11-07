@@ -4,6 +4,16 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getLoAccess } from "@/lib/lo-admin";
 import { getLoMember, requireLoMember } from "@/lib/lo-member";
+import { getCurrentContext } from "@/lib/access-control";
+import {
+    computeTestimonyCycles,
+    createWatDate,
+    getWatDateBreakdown,
+    parseTimeString,
+    DEFAULT_CYCLE_SETTINGS,
+    type TestimonyCycleId,
+    type TestimonyCycleSettings,
+} from "@/lib/testimony-cycle";
 import {
     REVIEW_PAGE_SIZE,
     TESTIMONY_CATEGORIES,
@@ -134,6 +144,28 @@ function isCategory(value: unknown): value is TestimonyCategory {
 // ─── Reads ───
 
 /**
+ * Sunday reading cut-off settings (default 09:00 AM WAT, plus any temporary override for today).
+ */
+export async function getTestimonyCycleSettings(): Promise<TestimonyCycleSettings> {
+    try {
+        const { data } = await db
+            .from("testimony_settings")
+            .select("cutoff_time, current_override_cutoff")
+            .eq("id", true)
+            .maybeSingle();
+
+        if (!data) return DEFAULT_CYCLE_SETTINGS;
+
+        return {
+            cutoffTime: data.cutoff_time || "09:00",
+            currentOverrideCutoff: data.current_override_cutoff || null,
+        };
+    } catch {
+        return DEFAULT_CYCLE_SETTINGS;
+    }
+}
+
+/**
  * One page of the public feed: approved testimonies, newest first. When the viewer
  * is a recognised member, their own pending/rejected posts are folded in so they can
  * see what happened to what they submitted.
@@ -145,6 +177,7 @@ export async function getTestimonies(options?: {
     category?: TestimonyCategory | "all";
     search?: string;
     before?: string | null;
+    cycle?: TestimonyCycleId;
 }) {
     try {
         const [member, access] = await Promise.all([getLoMember(), getLoAccess()]);
@@ -168,6 +201,16 @@ export async function getTestimonies(options?: {
 
         if (options?.category && options.category !== "all" && isCategory(options.category)) {
             query = query.eq("category", options.category);
+        }
+
+        if (options?.cycle && options.cycle !== "all") {
+            const settings = await getTestimonyCycleSettings();
+            const cycles = computeTestimonyCycles(new Date(), settings);
+            const target = cycles.allCycles.find((c) => c.id === options.cycle);
+            if (target) {
+                if (target.start) query = query.gt("created_at", target.start.toISOString());
+                if (target.end) query = query.lte("created_at", target.end.toISOString());
+            }
         }
 
         const term = cleanSearch(options?.search);
@@ -347,6 +390,7 @@ export type ReviewFilter = TestimonyStatus | "featured" | "all";
 export async function getTestimoniesForReview(options?: {
     filter?: ReviewFilter;
     before?: string | null;
+    cycle?: TestimonyCycleId;
 }) {
     try {
         const access = await getLoAccess();
@@ -369,6 +413,16 @@ export async function getTestimoniesForReview(options?: {
         const filter = options?.filter ?? "pending";
         if (filter === "featured") query = query.eq("is_featured", true);
         else if (filter !== "all") query = query.eq("status", filter);
+
+        if (options?.cycle && options.cycle !== "all") {
+            const settings = await getTestimonyCycleSettings();
+            const cycles = computeTestimonyCycles(new Date(), settings);
+            const target = cycles.allCycles.find((c) => c.id === options.cycle);
+            if (target) {
+                if (target.start) query = query.gt("created_at", target.start.toISOString());
+                if (target.end) query = query.lte("created_at", target.end.toISOString());
+            }
+        }
 
         if (options?.before) query = query.lt("created_at", options.before);
 
@@ -640,6 +694,83 @@ export async function setTestimonyFeatured(testimonyId: string, featured: boolea
         return { success: true };
     } catch (error) {
         const message = error instanceof Error ? error.message : "Couldn't change the feature";
+        return { success: false, error: message };
+    }
+}
+
+async function requireCutoffManager() {
+    const access = await getLoAccess();
+    if (access.canModerate && access.profileId) {
+        return access;
+    }
+
+    const ctx = await getCurrentContext();
+    if (!ctx) throw new Error("Authentication required.");
+    if (ctx.isPresident) throw new Error("The President has view-only access and can't make changes.");
+
+    const isSecretariat = (ctx.leadership ?? []).some(
+        (l) => l.slug === "gen-sec" || l.slug === "asst-gen-sec"
+    );
+    if (!isSecretariat) {
+        throw new Error("Only the General Secretary, VP Admin, or Lo! admins can adjust the cut-off.");
+    }
+    return { canModerate: true, profileId: ctx.profile.id, canRead: true, viaLoAdmin: false };
+}
+
+/**
+ * Adjust the Sunday reading cut-off (General Secretary, VP Admin, ICT Coordinator).
+ */
+export async function updateWeeklyCutoffAction(input: {
+    defaultTime?: string;
+    overrideTimeToday?: string | null;
+}) {
+    try {
+        const access = await requireCutoffManager();
+        const now = new Date();
+        const update: Record<string, unknown> = {
+            updated_by: access.profileId,
+            updated_at: now.toISOString(),
+        };
+
+        if (input.defaultTime !== undefined) {
+            const clean = input.defaultTime.trim();
+            if (!/^\d{1,2}:\d{2}$/.test(clean)) {
+                return { success: false, error: "Invalid time format (expected HH:mm)." };
+            }
+            update.cutoff_time = clean;
+        }
+
+        if (input.overrideTimeToday !== undefined) {
+            if (input.overrideTimeToday === null) {
+                update.current_override_cutoff = null;
+            } else {
+                const { hours, minutes } = parseTimeString(input.overrideTimeToday);
+                const wat = getWatDateBreakdown(now);
+                const daysToSunday = wat.dayOfWeek === 0 ? 0 : 7 - wat.dayOfWeek;
+                const refSundayMidnight = new Date(Date.UTC(wat.year, wat.month, wat.day + daysToSunday));
+                const targetCutoff = createWatDate(
+                    refSundayMidnight.getUTCFullYear(),
+                    refSundayMidnight.getUTCMonth(),
+                    refSundayMidnight.getUTCDate(),
+                    hours,
+                    minutes,
+                );
+                update.current_override_cutoff = targetCutoff.toISOString();
+            }
+        }
+
+        const { error } = await db
+            .from("testimony_settings")
+            .upsert({ id: true, ...update });
+
+        if (error) throw new Error(error.message);
+
+        revalidatePath("/lo-app");
+        revalidatePath("/lo-app/testimonies");
+
+        return { success: true };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to update cut-off";
         return { success: false, error: message };
     }
 }

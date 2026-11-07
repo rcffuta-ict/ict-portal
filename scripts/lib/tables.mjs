@@ -28,7 +28,7 @@ export const PORTAL_TABLES = [
     // question_flags is KEPT deliberately — the event_questions_with_details view
     // depends on it. See migration 0013.
     "question_flags",
-    "testimonies", "testimony_amens", "lo_member_links", "lo_member_verify_attempts",
+    "testimonies", "testimony_amens", "testimony_settings", "lo_member_links", "lo_member_verify_attempts",
     "lo_admins",
     "admin_audit_log", "unit_transfer_requests", "handover_intents", "handover_events",
     "faculties", "departments", "academic_rounds", "academic_records",
