@@ -42,7 +42,7 @@ jobs:
 
             - uses: supabase/setup-cli@v1
               with:
-                  version: latest
+                  version: 2.x
 
             # Diagnosing a link failure is hard when the ref is masked, so the ref comes
             # from a repository VARIABLE, falling back to a secret if you already made
