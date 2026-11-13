@@ -32,7 +32,7 @@ jobs:
 
             - uses: supabase/setup-cli@v1
               with:
-                  version: 2.x
+                  version: 2.122.0
 
             # Starts the local Postgres only -- everything else is excluded, because
             # this job tests SQL, not the API gateway or Studio. `supabase start`

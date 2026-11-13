@@ -198,6 +198,42 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
     return (
         <>
             <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+                {/* Conspicuous Exco Pulpit Mode Banner */}
+                {isExco && (
+                    <div className="mb-3 flex items-center justify-between rounded-xl bg-rcf-navy px-3.5 py-2.5 text-white shadow-xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rcf-gold text-rcf-navy shadow-xs">
+                                <BookOpen className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-white tracking-wide">
+                                        Pulpit Reading Mode
+                                    </span>
+                                    <span className="rounded-full bg-rcf-gold/20 px-1.5 py-0.5 text-[9px] font-semibold text-rcf-gold">
+                                        Excos
+                                    </span>
+                                </div>
+                                <p className="text-[10px] text-slate-300 truncate">
+                                    {isPulpitMode ? "Active: Large text & read tracker" : "Optimized for reading on the pulpit"}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsPulpitMode(!isPulpitMode)}
+                            className={`shrink-0 ml-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all shadow-xs active:scale-95 ${
+                                isPulpitMode
+                                    ? "bg-rcf-gold text-rcf-navy hover:bg-amber-300"
+                                    : "bg-white text-rcf-navy hover:bg-slate-100"
+                            }`}
+                        >
+                            <BookOpen className="h-3.5 w-3.5" />
+                            <span>{isPulpitMode ? "Exit Pulpit" : "Enter Pulpit"}</span>
+                        </button>
+                    </div>
+                )}
+
                 <div className="relative">
                     <Search className="absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <label htmlFor="testimony-search" className="sr-only">
@@ -235,61 +271,44 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
                         ))}
                 </div>
 
-                {/* Sunday Cycle Filter Chips & Exco Pulpit Mode */}
-                <div className="no-scrollbar -mx-1 mt-2.5 flex items-center justify-between gap-2 overflow-x-auto px-1">
-                    <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
-                            Sunday:
-                        </span>
-                        {cycles.allCycles.map((c) => {
-                            const count = cycleCounts[c.id];
-                            return (
-                                <button
-                                    key={c.id}
-                                    type="button"
-                                    onClick={() => setCycle(c.id)}
-                                    className={`min-h-7 shrink-0 rounded-full border px-2.5 text-[11px] font-semibold whitespace-nowrap transition-colors inline-flex items-center gap-1.5 ${
-                                        cycle === c.id
-                                            ? "border-rcf-navy bg-rcf-navy text-white shadow-xs"
-                                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                                    }`}
-                                >
-                                    <span>{c.label}</span>
-                                    {c.id !== "all" && c.id !== "older" && (
-                                        <span className={`text-[9px] ${cycle === c.id ? "text-rcf-gold font-bold" : "text-slate-400"}`}>
-                                            ({c.sundayLabel})
-                                        </span>
-                                    )}
-                                    {count !== undefined && (
-                                        <span
-                                            className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                                                cycle === c.id
-                                                    ? "bg-white/20 text-white"
-                                                    : "bg-slate-100 text-slate-600"
-                                            }`}
-                                        >
-                                            {count}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {isExco && (
-                        <button
-                            type="button"
-                            onClick={() => setIsPulpitMode(!isPulpitMode)}
-                            className={`shrink-0 inline-flex min-h-7 items-center gap-1.5 rounded-full px-3 text-[11px] font-bold transition-all shadow-xs ${
-                                isPulpitMode
-                                    ? "bg-rcf-gold text-rcf-navy"
-                                    : "bg-rcf-navy text-white hover:bg-rcf-navy-light"
-                            }`}
-                        >
-                            <BookOpen className="h-3.5 w-3.5" />
-                            <span>{isPulpitMode ? "Exit pulpit mode" : "Pulpit mode"}</span>
-                        </button>
-                    )}
+                {/* Sunday Cycle Filter Chips */}
+                <div className="no-scrollbar -mx-1 mt-2.5 flex items-center gap-1.5 overflow-x-auto px-1">
+                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                        Sunday:
+                    </span>
+                    {cycles.allCycles.map((c) => {
+                        const count = cycleCounts[c.id];
+                        return (
+                            <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => setCycle(c.id)}
+                                className={`min-h-7 shrink-0 rounded-full border px-2.5 text-[11px] font-semibold whitespace-nowrap transition-colors inline-flex items-center gap-1.5 ${
+                                    cycle === c.id
+                                        ? "border-rcf-navy bg-rcf-navy text-white shadow-xs"
+                                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                                }`}
+                            >
+                                <span>{c.label}</span>
+                                {c.id !== "all" && c.id !== "older" && (
+                                    <span className={`text-[9px] ${cycle === c.id ? "text-rcf-gold font-bold" : "text-slate-400"}`}>
+                                        ({c.sundayLabel})
+                                    </span>
+                                )}
+                                {count !== undefined && (
+                                    <span
+                                        className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                                            cycle === c.id
+                                                ? "bg-white/20 text-white"
+                                                : "bg-slate-100 text-slate-600"
+                                        }`}
+                                    >
+                                        {count}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
@@ -438,6 +457,20 @@ export function TestimonyFeed({ events, onNotify }: TestimonyFeedProps) {
             {loading && testimonies.length > 0 && (
                 <div className="flex justify-center py-6">
                     <RefreshCw className="h-4 w-4 animate-spin text-slate-400" />
+                </div>
+            )}
+
+            {/* Mobile Floating Action Button for Excos */}
+            {isExco && !isPulpitMode && (
+                <div className="fixed right-4 bottom-20 z-40 lg:hidden">
+                    <button
+                        type="button"
+                        onClick={() => setIsPulpitMode(true)}
+                        className="inline-flex items-center gap-2 rounded-full bg-rcf-navy px-4 py-2.5 text-xs font-bold text-white shadow-xl ring-2 ring-white/80 transition-all active:scale-95 hover:bg-rcf-navy-light"
+                    >
+                        <BookOpen className="h-4 w-4 text-rcf-gold" />
+                        <span>Pulpit Mode</span>
+                    </button>
                 </div>
             )}
         </>
