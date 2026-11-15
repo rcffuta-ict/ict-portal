@@ -21,6 +21,7 @@ import { AdminPanel } from "./AdminPanel";
 import { EventCard } from "./EventCard";
 import { TestimonyFeed } from "./testimonies/TestimonyFeed";
 import { TestimonyModeration } from "./testimonies/TestimonyModeration";
+import { getPendingTestimonyCount } from "@/app/lo-app/testimonies/actions";
 import {
     getQuestions,
     answerQuestion,
@@ -83,10 +84,12 @@ interface LoAppClientProps {
     authenticatedUser: AuthUser | null;
     initialStarCounts: Record<string, number>;
     initialUserStars: string[];
+    /** Which feed opens first. Testimonies, unless a link asked for another. */
+    initialFeedTab?: FeedTab;
 }
 
 type ViewTab = "feed" | "admin";
-type FeedTab = "questions" | "testimonies" | "events";
+export type FeedTab = "questions" | "testimonies" | "events";
 type FilterType = "all" | "answered" | "unanswered";
 type AdminSection = "questions" | "testimonies";
 
@@ -99,11 +102,15 @@ export function LoAppClient({
     authenticatedUser,
     initialStarCounts,
     initialUserStars,
+    initialFeedTab = "testimonies",
 }: LoAppClientProps) {
     // ── State ──
     const [activeTab, setActiveTab] = useState<ViewTab>("feed");
-    const [feedTab, setFeedTab] = useState<FeedTab>("questions");
-    const [adminSection, setAdminSection] = useState<AdminSection>("questions");
+    // Testimonies are Lo!'s front door; Q&A and events are a tab away.
+    const [feedTab, setFeedTab] = useState<FeedTab>(initialFeedTab);
+    const [adminSection, setAdminSection] = useState<AdminSection>("testimonies");
+    /** Testimonies awaiting review — the badge on every way into moderation. */
+    const [reviewCount, setReviewCount] = useState(0);
     const [questions, setQuestions] = useState<Question[]>(initialQuestions);
     const [filter, setFilter] = useState<FilterType>("all");
     const [searchTerm, setSearchTerm] = useState("");
@@ -130,6 +137,19 @@ export function LoAppClient({
     };
 
     // ── Data Fetching ──
+    const refreshReviewCount = useCallback(async () => {
+        if (!isAdmin) return;
+        const result = await getPendingTestimonyCount();
+        if (result.success) setReviewCount(result.count);
+    }, [isAdmin]);
+
+    // Re-counted whenever moderation is opened or closed, so the badge follows the
+    // queue without polling a slow connection in the background.
+    useEffect(() => {
+        const timer = setTimeout(() => void refreshReviewCount(), 0);
+        return () => clearTimeout(timer);
+    }, [refreshReviewCount, activeTab]);
+
     const fetchQuestions = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -294,6 +314,7 @@ export function LoAppClient({
             {/* Header */}
             <LoAppHeader
                 isAdmin={isAdmin}
+                reviewCount={reviewCount}
                 authenticatedUser={authenticatedUser}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
@@ -353,14 +374,19 @@ export function LoAppClient({
                             <AdminSectionTabs
                                 section={adminSection}
                                 setSection={setAdminSection}
+                                reviewCount={reviewCount}
                             />
-                            <TestimonyModeration onNotify={showToast} />
+                            <TestimonyModeration
+                                onNotify={showToast}
+                                onQueueChanged={refreshReviewCount}
+                            />
                         </>
                     ) : (
                         <>
                             <AdminSectionTabs
                                 section={adminSection}
                                 setSection={setAdminSection}
+                                reviewCount={reviewCount}
                             />
                             <AdminPanel
                                 questions={questions}
@@ -392,6 +418,7 @@ export function LoAppClient({
             {/* Mobile Bottom Nav */}
             <LoAppMobileNav
                 isAdmin={isAdmin}
+                reviewCount={reviewCount}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
                 feedTab={feedTab}
@@ -475,23 +502,23 @@ function FeedView({
                 <div className="px-4 pt-3 pb-0">
                     <LoLogo size="md" variant="light" mode="full" />
                     <p className="text-xs text-slate-500 mb-3">
-                        Behold — questions, answers &amp; fellowship events
+                        Behold — testimonies, questions &amp; fellowship events
                     </p>
                 </div>
 
                 {/* Feed Tabs */}
                 <div className="flex">
                     <FeedTabButton
-                        label="Questions"
-                        count={totalQuestions}
-                        active={feedTab === "questions"}
-                        onClick={() => setFeedTab("questions")}
-                    />
-                    <FeedTabButton
                         label="Testimonies"
                         count={0}
                         active={feedTab === "testimonies"}
                         onClick={() => setFeedTab("testimonies")}
+                    />
+                    <FeedTabButton
+                        label="Questions"
+                        count={totalQuestions}
+                        active={feedTab === "questions"}
+                        onClick={() => setFeedTab("questions")}
                     />
                     <FeedTabButton
                         label="Events"
@@ -744,13 +771,15 @@ function EmptyState({
 function AdminSectionTabs({
     section,
     setSection,
+    reviewCount = 0,
 }: {
     section: "questions" | "testimonies";
     setSection: (s: "questions" | "testimonies") => void;
+    reviewCount?: number;
 }) {
     return (
         <div className="sticky top-14 z-20 flex gap-1 border-b border-slate-200/80 bg-white/95 px-4 py-2 backdrop-blur-xl">
-            {(["questions", "testimonies"] as const).map((id) => (
+            {(["testimonies", "questions"] as const).map((id) => (
                 <button
                     key={id}
                     type="button"
@@ -763,6 +792,12 @@ function AdminSectionTabs({
                     }`}
                 >
                     {id}
+                    {id === "testimonies" && reviewCount > 0 && (
+                        <span className="ml-1.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            {reviewCount}
+                            <span className="sr-only"> awaiting review</span>
+                        </span>
+                    )}
                 </button>
             ))}
         </div>

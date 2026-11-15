@@ -1,6 +1,7 @@
 "use server";
 
-import { checkEnhancedAdminWriteAccess } from "@/lib/access-control";
+import { getLoAccess } from "@/lib/lo-admin";
+import { getCurrentContext } from "@/lib/access-control";
 import { validateSession } from "@/lib/auth-utils";
 import { db } from "@/lib/db";
 import { getProfileContext } from "@/lib/auth/profile-context";
@@ -34,12 +35,25 @@ export async function getActiveEvents() {
 
 // ─── Questions ───
 
+const PUBLIC_QUESTION_STATUSES: string[] = ["visible", "answered"];
+
 export async function getQuestions(options?: {
     eventId?: string;
     status?: string[];
     search_term?: string;
 }) {
     try {
+        // The status list comes from the browser, so it is trimmed here: hidden and
+        // flagged questions are for Lo! moderators only, whatever the caller asks for.
+        const access = await getLoAccess();
+        const allowed = access.canRead ? null : PUBLIC_QUESTION_STATUSES;
+        const requested = options?.status ?? (allowed ? [...allowed] : undefined);
+        const status = allowed ? requested?.filter((s) => allowed.includes(s)) : requested;
+        // Asked only for statuses this viewer may not see: nothing, rather than an
+        // empty filter that a lower layer might read as "no filter".
+        if (status && status.length === 0) return { success: true, data: [] };
+        options = { ...options, status };
+
         if (options?.eventId) {
             const response = await qa.getEventQuestions(options.eventId, {
                 status: options.status as any,
@@ -55,7 +69,7 @@ export async function getQuestions(options?: {
 
             let data = response.data;
             if (options?.status) {
-                data = data.filter((q: any) => options.status?.includes(q.status));
+                data = data.filter((q: any) => status?.includes(q.status));
             }
             return { success: true, data };
         }
@@ -110,15 +124,15 @@ export async function askQuestion(data: {
 
 export async function answerQuestion(questionId: string, answerText: string) {
     try {
-        const adminCheck = await checkEnhancedAdminWriteAccess();
-        if (!adminCheck.isAdmin || !adminCheck.user) {
-            return { success: false, error: "Unauthorized: Admin access required" };
+        const access = await getLoAccess();
+        if (!access.canModerate || !access.profileId) {
+            return { success: false, error: "Only Lo! admins can answer questions." };
         }
 
         const response = await qa.answerQuestion(
             questionId,
             answerText,
-            adminCheck.user.id
+            access.profileId
         );
 
         if (response.error) throw new Error(response.error);
@@ -133,9 +147,9 @@ export async function toggleVisibility(
     status: "visible" | "hidden" | "answered"
 ) {
     try {
-        const adminCheck = await checkEnhancedAdminWriteAccess();
-        if (!adminCheck.isAdmin) {
-            return { success: false, error: "Unauthorized" };
+        const access = await getLoAccess();
+        if (!access.canModerate) {
+            return { success: false, error: "Only Lo! admins can do that." };
         }
 
         const response = await qa.toggleQuestionVisibility({
@@ -244,9 +258,9 @@ export async function searchQuestions(eventId: string, searchTerm: string) {
 
 export async function clusterQuestions(questionIds: string[]) {
     try {
-        const adminCheck = await checkEnhancedAdminWriteAccess();
-        if (!adminCheck.isAdmin) {
-            return { success: false, error: "Unauthorized" };
+        const access = await getLoAccess();
+        if (!access.canModerate) {
+            return { success: false, error: "Only Lo! admins can do that." };
         }
 
         if (questionIds.length < 2) {
@@ -262,6 +276,37 @@ export async function clusterQuestions(questionIds: string[]) {
     } catch (error: any) {
         return { success: false, error: error.message };
     }
+}
+
+// ─── Who is viewing (see src/lib/lo-admin.ts) ───
+
+/**
+ * What the Lo! shell may show this viewer: the moderation tab, and whether its buttons
+ * act. Decided on the server from the real session — the same rule every moderation
+ * action re-checks — so the tab can't disagree with what the actions allow.
+ */
+export async function getLoViewer() {
+    const access = await getLoAccess();
+    let isExco = false;
+    try {
+        const ctx = await getCurrentContext();
+        if (ctx) {
+            isExco = !!(
+                (ctx.leadership && ctx.leadership.length > 0) ||
+                (ctx.roles && ctx.roles.length > 0) ||
+                ctx.isAdmin ||
+                ctx.isSysAdmin ||
+                ctx.isVpAdmin
+            );
+        }
+    } catch {
+        isExco = false;
+    }
+    return {
+        canRead: access.canRead,
+        canModerate: access.canModerate,
+        isExco,
+    };
 }
 
 // ─── Member recognition (see src/lib/lo-member.ts) ───

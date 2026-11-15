@@ -174,6 +174,18 @@ Always import via `@/...` (maps to `src/*`). Avoid `../../../` chains of more th
   `auth_sessions`). A recognition link unlocks testimonies and nothing else: never
   accept it in place of a portal session, and never derive ADMIN/MODERATOR from it.
   The roster lookup is rate-limited and logged (`lo_member_verify_attempts`).
+- **Who moderates Lo! is decided only in `src/lib/lo-admin.ts` (`getLoAccess`).**
+  That covers testimonies and the Q&A. Moderators are the System Admin, the VP Admin,
+  and **Lo! admins**. The System Admin appoints Lo! admins in Settings, and they are
+  stored in `lo_admins`.
+  - Only leaders of the active tenure who already have an active `profile_login` can
+    be Lo! admins. Appointing one never creates a login.
+  - A grant belongs to its tenure, so it lapses at handover. It also stops working the
+    moment its holder stops leading or loses their login. All of this is checked on
+    every request.
+  - It gives no ADMIN or MODERATOR role and no dashboard module.
+  - The President can read the moderation queue but not act on it.
+  - Never gate a Lo! moderation action with `checkEnhancedAdmin*`. Use `getLoAccess()`.
 - `AUTHENTICATION.md` and `AUTH_MANUAL.md` at the repo root describe an earlier/
   aspirational version of this architecture (e.g. they reference a
   `src/types/app.type.ts` that doesn't currently exist). When these docs disagree with

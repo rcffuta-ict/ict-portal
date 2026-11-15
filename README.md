@@ -1,8 +1,8 @@
 # RCF FUTA ICT Portal
 
 The web portal for the RCF FUTA fellowship: public event pages with QR check-in, a
-members dashboard (profile, units, zones, levels, tenure/leadership structure), and a
-lightweight Q&A feature ("lo-app").
+members dashboard (profile, units, zones, levels, tenure/leadership structure), and
+Lo! ("lo-app"): member testimonies and an event Q&A.
 
 **Audience:** university students, mostly on mid-range Android phones and limited
 mobile data. Mobile-first layout and page weight are product requirements here, not

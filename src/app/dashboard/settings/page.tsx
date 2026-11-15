@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ShieldAlert, Settings as SettingsIcon, ShieldCheck, ChevronRight } from "lucide-react";
 import { getSettingsData } from "./actions";
 import { ModuleAccessEditor } from "./components/module-access-editor";
+import { LoAdminsEditor } from "./components/lo-admins-editor";
 
 export const metadata: Metadata = {
     title: "App Settings",
@@ -57,6 +58,9 @@ export default async function SettingsPage() {
                 units={data.units ?? []}
                 canWrite={data.canWrite ?? false}
             />
+
+            {/* Lo! moderators. Writes are System Admin only; the President sees the list. */}
+            <LoAdminsEditor />
 
             {/* System Admin only. The President can read this page but must not be handed
                 a link to an export of every member's home address. */}

@@ -345,7 +345,7 @@ pnpm db:reset-staging
 One command, and it does four things in order:
 
 1. **Clears every data table** — profiles, logins, sessions, appointments, events,
-   testimonies, the audit log. Preserved: `schema_migrations`, `units`,
+   testimonies, Lo! admins, the audit log. Preserved: `schema_migrations`, `units`,
    `leadership_positions`, `position_privileges`, `module_access` and
    `residential_zones`. Those are structure and geography, not data; wiping the ledger
    would leave the database unable to say which migrations it has, and wiping the

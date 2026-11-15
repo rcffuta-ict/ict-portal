@@ -12,7 +12,7 @@ export function MobileHeader({ onMenuClick, isMenuOpen }: MobileHeaderProps) {
     return (
         <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 md:hidden">
             <div className="flex items-center gap-2">
-                <Logo variant="colored" width={50} />
+                <Logo variant="colored" width={50} asLink />
             </div>
             <button 
                 onClick={onMenuClick}

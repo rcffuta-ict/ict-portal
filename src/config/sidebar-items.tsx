@@ -88,11 +88,15 @@ const eventItems: SidebarItem[] = [
     },
 ];
 
+function LoSidebarIcon() {
+    return <LoLogo size="sm" variant="dark" mode="short" />;
+}
+
 const appItems: SidebarItem[] = [
     {
         name: "Lo! App",
         href: "/lo-app",
-        icon: () => <LoLogo size="sm" />,
+        icon: LoSidebarIcon,
         section: "apps",
         color: "bg-pink-600",
         description: "Ask questions, star topics & join the discussion.",

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { BookOpen, Clock, EyeOff, Hand, ShieldAlert } from "lucide-react";
+import { BookOpen, Clock, EyeOff, Hand, PencilLine, ShieldAlert, Star } from "lucide-react";
 import { ShareButton } from "./ShareButton";
 import { categoryLabel, type Testimony } from "@/lib/testimonies";
 import { formatEventDateTime, parseEventDate } from "@/lib/event-utils";
@@ -13,6 +13,8 @@ interface TestimonyCardProps {
     canAmen: boolean;
     onAmen: (id: string) => void;
     onRequestMembership?: () => void;
+    /** Drawn as the pinned card at the top of the feed. */
+    featured?: boolean;
 }
 
 const STATUS_NOTE: Record<string, { label: string; tone: string; hint: string }> = {
@@ -38,6 +40,7 @@ export function TestimonyCard({
     canAmen,
     onAmen,
     onRequestMembership,
+    featured = false,
 }: TestimonyCardProps) {
     const [expanded, setExpanded] = useState(false);
 
@@ -59,7 +62,19 @@ export function TestimonyCard({
             .toUpperCase();
 
     return (
-        <article className="border-b border-slate-100 px-4 py-5 transition-colors hover:bg-slate-50/40">
+        <article
+            className={`border-b px-4 py-5 transition-colors ${
+                featured
+                    ? "border-rcf-gold/30 bg-rcf-gold/5"
+                    : "border-slate-100 hover:bg-slate-50/40"
+            }`}
+        >
+            {featured && (
+                <p className="mb-3 inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-amber-700 uppercase">
+                    <Star className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                    Featured testimony
+                </p>
+            )}
             {statusNote && (
                 <div className={`mb-3 flex items-start gap-2 rounded-xl px-3 py-2 ${statusNote.tone}`}>
                     {testimony.status === "pending" ? (
@@ -101,9 +116,18 @@ export function TestimonyCard({
                         </span>
                     </div>
 
-                    <span className="mt-1.5 inline-block rounded-full bg-rcf-gold/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
-                        {categoryLabel(testimony.category)}
-                    </span>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="inline-block rounded-full bg-rcf-gold/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
+                            {categoryLabel(testimony.category)}
+                        </span>
+                        {/* Only the author (and moderators) are sent editedAt. */}
+                        {testimony.editedAt && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                                <PencilLine className="h-3 w-3" aria-hidden="true" />
+                                Edited by a moderator
+                            </span>
+                        )}
+                    </div>
 
                     <h3 className="mt-2 text-base leading-snug font-bold text-slate-900">
                         {testimony.status === "approved" ? (
@@ -147,7 +171,7 @@ export function TestimonyCard({
                                     canAmen ? onAmen(testimony.id) : onRequestMembership?.()
                                 }
                                 aria-pressed={testimony.viewerHasAmened}
-                                className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors ${
+                                className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy ${
                                     testimony.viewerHasAmened
                                         ? "bg-rcf-gold/15 text-amber-700"
                                         : "text-slate-500 hover:bg-slate-100 hover:text-rcf-navy"

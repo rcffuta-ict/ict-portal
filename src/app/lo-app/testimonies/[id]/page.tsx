@@ -2,8 +2,8 @@ import { cache } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BookOpen, Hand } from "lucide-react";
-import { getTestimonyById } from "../actions";
+import { ArrowLeft, BookOpen, Hand, PencilLine } from "lucide-react";
+import { getRelatedTestimonies, getTestimonyById } from "../actions";
 import { ShareButton } from "@/components/lo-app/testimonies/ShareButton";
 import { LoLogo } from "@/components/lo-app/LoLogo";
 import { categoryLabel, testimonyExcerpt } from "@/lib/testimonies";
@@ -45,13 +45,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
             type: "article",
             siteName: "RCF FUTA Portal",
             url: `https://ict.rcffuta.com/lo-app/testimonies/${id}`,
-            images: [{ url: "/opengraph-image.jpg", width: 1200, height: 630, alt: title }],
+            // No `images`: the colocated opengraph-image.tsx draws this testimony's own
+            // card, and an explicit image here would override it.
         },
         twitter: {
             card: "summary_large_image",
             title,
             description,
-            images: ["/opengraph-image.jpg"],
         },
     };
 }
@@ -66,17 +66,22 @@ export default async function TestimonyPage({ params }: PageProps) {
 
     const testimony = result.data;
     const date = parseEventDate(testimony.publishedAt || testimony.createdAt);
+    // Below the fold and optional: a failure just means no "More like this".
+    const related =
+        testimony.status === "approved"
+            ? (await getRelatedTestimonies(testimony.id, testimony.category)).data
+            : [];
 
     return (
         <div className="min-h-screen bg-slate-50">
             <header className="bg-rcf-navy pt-safe">
                 <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3.5">
                     <Link
-                        href="/lo-app"
-                        className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5 text-sm font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                        href="/lo-app/testimonies"
+                        className="inline-flex min-h-10 items-center gap-2 rounded-xl px-2 py-1.5 text-sm font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
                     >
-                        <ArrowLeft className="h-4 w-4" />
-                        Lo! feed
+                        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                        All testimonies
                     </Link>
                     <LoLogo size="md" variant="dark" mode="short" />
                 </div>
@@ -102,6 +107,12 @@ export default async function TestimonyPage({ params }: PageProps) {
                     <p className="mt-2 text-sm text-slate-500">
                         {testimony.authorName} · {formatEventDate(date)}
                     </p>
+                    {testimony.editedAt && (
+                        <p className="mt-1 inline-flex items-center gap-1 text-xs text-slate-400">
+                            <PencilLine className="h-3 w-3" aria-hidden="true" />
+                            Edited by a moderator
+                        </p>
+                    )}
 
                     <div className="mt-5 text-base leading-relaxed whitespace-pre-wrap text-slate-700">
                         {testimony.body}
@@ -133,6 +144,29 @@ export default async function TestimonyPage({ params }: PageProps) {
                     </div>
                 </article>
 
+                {related.length > 0 && (
+                    <section aria-labelledby="related-heading" className="mt-4 rounded-3xl border border-slate-200 bg-white p-5">
+                        <h2 id="related-heading" className="text-sm font-bold text-slate-900">
+                            More {categoryLabel(testimony.category).toLowerCase()} testimonies
+                        </h2>
+                        <ul className="mt-3 divide-y divide-slate-100">
+                            {related.map((item) => (
+                                <li key={item.id}>
+                                    <Link
+                                        href={`/lo-app/testimonies/${item.id}`}
+                                        className="block rounded-xl py-3 transition-colors hover:text-rcf-navy focus:outline-none focus-visible:ring-2 focus-visible:ring-rcf-navy"
+                                    >
+                                        <span className="block text-sm font-semibold text-slate-900">{item.title}</span>
+                                        <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
+                                            {testimonyExcerpt(item.body, 110)}
+                                        </span>
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
+
                 <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-5 text-center">
                     <p className="text-sm font-semibold text-slate-900">
                         Has God done something for you too?
@@ -141,7 +175,7 @@ export default async function TestimonyPage({ params }: PageProps) {
                         Members of RCF FUTA can share their testimony on Lo!
                     </p>
                     <Link
-                        href="/lo-app"
+                        href="/lo-app/testimonies"
                         className="mt-4 inline-flex items-center justify-center rounded-2xl bg-rcf-navy px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-rcf-navy-light"
                     >
                         Open Lo! App

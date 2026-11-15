@@ -160,7 +160,8 @@ server enforces this in every write action, not only by hiding buttons.
 | **Settings** (module access, full backup) | view | ✘ | ✘ | **edit** | ✘ | ✘ | ✘ |
 | Create / edit events | ✘ | ✘ | ✘ | ✔ | ✘ | ✘ | ✘ |
 | An event's admin console | view | ✔ | ✔ | ✔ | if their unit runs it | ✘ | ✘ |
-| Moderate Lo! (answer, hide, testimonies) | ✘ | ✔ | ✘ | ✔ | ✘ | ✘ | ✘ |
+| Moderate Lo! (answer, hide, publish, edit, feature testimonies) | view | ✔ | Lo! admin⁵ | ✔ | Lo! admin⁵ | Lo! admin⁵ | ✘ |
+| Appoint Lo! admins | view | ✘ | ✘ | **edit** | ✘ | ✘ | ✘ |
 | Ask on Lo!, register for events | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 
 ¹ Only if their office's *grants login* switch is on (on by default for offices with tags).
@@ -169,6 +170,8 @@ Coordinator (`LEVEL:all`), who can edit every generation.
 ³ The default, `EXCO:academic`; Settings can give it to more offices.
 ⁴ Names and grades while the Academic Unit's "unit heads see their members' results"
 switch is on (it is by default); totals only when it's off.
+⁵ Only if the System Admin has made them a Lo! admin in **Settings → Lo! admins**, and
+only while they still lead this tenure and have a login (§5.8).
 
 ### 3.2 What's fixed and what's configurable
 
@@ -184,6 +187,8 @@ switch is on (it is by default); totals only when it's off.
   members themselves) is **not** in Settings: the Academic Unit decides it in
   **Academics → Visibility** (§5.10).
 - **Event** access is per event: the unit it is assigned to (§5.7).
+- **Lo! moderation** is the VP Admin, the System Admin, and any leaders the System Admin
+  appoints in **Settings → Lo! admins** (§5.8).
 
 ---
 
@@ -228,6 +233,8 @@ When it takes effect it also:
 - **Renames PDS/UABS to the new session** (`2028/2029`). PDS/UABS members are aspirants,
   not yet students, so PDS/UABS always ranks below 100 Level and is listed first.
 - **Closes any open Academics results round**, since a round belongs to its session.
+- **Ends every Lo! admin appointment**, since each belongs to its tenure. Until new ones
+  are appointed, only the VP Admin and System Admin moderate Lo!.
 
 The new tenure opens **awaiting coronation**. Every handover, finished or abandoned, is
 kept in the handover history for successors to read.
@@ -244,6 +251,8 @@ kept in the handover history for successors to read.
 3. **Level coordinators issue their registration link** (§4.4) so members can register
    and update their details.
 4. **Unit Excos build their rosters** in **Workforce** (§5.4).
+5. **Appoint Lo! admins** (System Admin), once the cabinet is in: **Settings → Lo!
+   admins** (§5.8). Last tenure's appointments ended at handover.
 
 ### 4.3 The coronation retreat
 
@@ -412,19 +421,41 @@ audit log with who, what, old and new value.
 
 ### 5.8 Lo!
 
-Open to everyone, with no login.
+Open to everyone, with no login. It opens on **Testimonies**; the link to share is
+`/lo-app/testimonies`. Q&A and Events are a tab away (`/lo-app?tab=questions` still works).
 
-- **Q&A.** Visitors ask questions per event, and others ★ the ones they want answered.
-  The VP Admin and System Admin answer, hide or group them.
 - **Testimonies.** Only members may post. A visitor proves they are a member with their
   matric number (or email) plus their surname; the portal remembers that on the device.
   This is *recognition*, not a login. It unlocks testimonies and "Amen", nothing else.
-  Posts wait for moderation by the VP Admin or System Admin.
+  - Every post waits for a moderator. The feed loads 20 at a time (**Load more**), the
+    category chips show how many each has, and a testimony's page ends with
+    *More like this*.
+  - A shared testimony link previews with its own card (title, category, excerpt). Only
+    published testimonies get one, and an anonymous one says "Anonymous".
+- **Moderating** (the **Admin** tab; a red badge counts what is waiting):
+  - **Publish** or **Don't publish**, with an optional note the poster sees.
+  - **Edit** to fix a typo or the category before publishing. The poster is told a
+    moderator edited it.
+  - **Feature** pins one published testimony to the top of the feed. Featuring another
+    replaces it; hiding it unfeatures it.
+  - **Hide** takes a published testimony down; **Restore** puts it back.
+- **Q&A.** Visitors ask questions per event, and others ★ the ones they want answered.
+  Moderators answer, hide or group them.
+- **Who moderates.** The VP Admin, the System Admin, and **Lo! admins**. The President
+  sees the queue but can't act on it.
+  - The System Admin appoints Lo! admins in **Settings → Lo! admins**, from the current
+    tenure's leaders.
+  - A leader whose office has no portal login can't be chosen, because moderating
+    needs a sign-in. Nothing here creates a login.
+  - It gives nothing outside Lo!, and it ends by itself at handover. Appoint again for
+    the new tenure.
 
 ### 5.9 Settings (System Admin; President can view)
 
 - **Module access.** Who can read and write Workforce, Levels and Zones (Tenure is fixed
   by policy).
+- **Lo! admins.** Which current leaders moderate Lo! (§5.8). Adding and removing are
+  recorded in the audit trail; removing takes effect on their next click.
 - **Insurance.** The **full system backup** (§6).
 
 ### 5.10 Academics (Academic Coord by default)
@@ -666,6 +697,7 @@ password; many from one IP means someone is probing.
 | Banner upload is greyed out | Cloudinary isn't configured on this deployment. |
 | Everything is slow | Each database round trip from Nigeria is roughly 0.3–0.9 s. Pages are written to make as few as possible; if one regresses, look for sequential `await`s that could run in parallel. |
 | An Exco can't open their event's console | The event's **Run by** unit isn't set to their unit (Events → edit). |
+| A leader can't moderate Lo! | They must be a Lo! admin *this* tenure (Settings → Lo! admins; grants end at handover), still hold an office, and have a working login. |
 | Staging looks wrong after experiments | `pnpm db:reset-staging` (never on production). |
 
 ---
@@ -674,7 +706,8 @@ password; many from one IP means someone is probing.
 
 - **Zones** is parked as "coming soon". The code exists but isn't wired up.
 - **Lo! stars** trust a member id sent from the browser, so someone could star on
-  another's behalf. Low impact; worth fixing when Lo! is next touched.
+  another's behalf. Low impact. It is still open after the testimonies upgrade, which
+  fixed a related leak: hidden and flagged questions are now only sent to moderators.
 - **Title-based ADMIN role.** The ADMIN *role* (`src/lib/auth-roles.ts`) still matches
   office titles. All writes now use slug- and tag-based checks, but some reads
   (`requireAccess("ADMIN")`) still use the role. Move them onto the context flags when

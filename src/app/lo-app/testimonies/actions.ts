@@ -2,23 +2,38 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { checkEnhancedAdminAccess, checkEnhancedAdminWriteAccess } from "@/lib/access-control";
+import { getLoAccess } from "@/lib/lo-admin";
 import { getLoMember, requireLoMember } from "@/lib/lo-member";
+import { getCurrentContext } from "@/lib/access-control";
 import {
+    computeTestimonyCycles,
+    createWatDate,
+    getWatDateBreakdown,
+    parseTimeString,
+    DEFAULT_CYCLE_SETTINGS,
+    type TestimonyCycleId,
+    type TestimonyCycleSettings,
+} from "@/lib/testimony-cycle";
+import {
+    REVIEW_PAGE_SIZE,
     TESTIMONY_CATEGORIES,
+    TESTIMONY_PAGE_SIZE,
+    testimonyEditSchema,
     type Testimony,
     type TestimonyCategory,
+    type TestimonyEdit,
     type TestimonyStatus,
 } from "@/lib/testimonies";
 
 /**
  * Testimonies are moderated BEFORE they go public, so these actions split cleanly:
  * public reads only ever see `approved` rows, the poster additionally sees their own,
- * and anything that changes a status is ADMIN-gated server-side.
+ * and anything that changes a status or the text is gated by `getLoAccess()` — the
+ * portal's admin write tier or an appointed Lo! admin (see src/lib/lo-admin.ts).
  */
 
 const PUBLIC_COLUMNS =
-    "id, title, body, category, scripture_reference, author_profile_id, author_name, is_anonymous, event_id, status, review_note, published_at, share_count, created_at";
+    "id, title, body, category, scripture_reference, author_profile_id, author_name, is_anonymous, event_id, status, review_note, published_at, share_count, created_at, is_featured, edited_at";
 
 interface TestimonyRow {
     id: string;
@@ -35,6 +50,8 @@ interface TestimonyRow {
     published_at: string | null;
     share_count: number;
     created_at: string;
+    is_featured: boolean;
+    edited_at: string | null;
 }
 
 /**
@@ -69,6 +86,9 @@ function toPublicTestimony(
         shareCount: row.share_count,
         amenCount,
         viewerHasAmened,
+        isFeatured: row.is_featured,
+        // Only the author and moderators are told a moderator touched the text.
+        editedAt: isOwn || isModerator ? row.edited_at : null,
     };
 }
 
@@ -100,21 +120,115 @@ async function amenData(
     return { counts, mine };
 }
 
+/** Rows → client shape, with Amen data, for one viewer. */
+async function present(
+    rows: TestimonyRow[],
+    viewerProfileId: string | null,
+    isModerator: boolean,
+): Promise<Testimony[]> {
+    const { counts, mine } = await amenData(rows.map((r) => r.id), viewerProfileId);
+    return rows.map((row) =>
+        toPublicTestimony(row, counts[row.id] || 0, mine.has(row.id), viewerProfileId, isModerator),
+    );
+}
+
+/** A PostgREST `or()` term can't contain its own syntax; keep a search to plain words. */
+function cleanSearch(term?: string): string {
+    return (term || "").replace(/[%,()*:\\]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function isCategory(value: unknown): value is TestimonyCategory {
+    return TESTIMONY_CATEGORIES.some((c) => c.id === value);
+}
+
 // ─── Reads ───
 
 /**
- * The public feed: approved testimonies, newest first. When the viewer is a
- * recognised member, their own pending/rejected posts are folded in so they can see
- * what happened to what they submitted.
+ * Sunday reading cut-off settings (default 09:00 AM WAT, plus any temporary override for today).
+ */
+export async function getTestimonyCycleSettings(): Promise<TestimonyCycleSettings> {
+    try {
+        const { data } = await db
+            .from("testimony_settings")
+            .select("cutoff_time, current_override_cutoff")
+            .eq("id", true)
+            .maybeSingle();
+
+        if (!data) return DEFAULT_CYCLE_SETTINGS;
+
+        return {
+            cutoffTime: data.cutoff_time || "09:00",
+            currentOverrideCutoff: data.current_override_cutoff || null,
+        };
+    } catch {
+        return DEFAULT_CYCLE_SETTINGS;
+    }
+}
+
+/**
+ * Count approved testimonies in each Sunday reading cycle for the cycle filter pills.
+ */
+export async function getTestimonyCycleCounts(): Promise<Record<TestimonyCycleId, number>> {
+    try {
+        const settings = await getTestimonyCycleSettings();
+        const cycles = computeTestimonyCycles(new Date(), settings);
+
+        const { data, error } = await db
+            .from("testimonies")
+            .select("created_at")
+            .eq("status", "approved");
+
+        const counts: Record<TestimonyCycleId, number> = {
+            this_week: 0,
+            last_week: 0,
+            two_weeks_ago: 0,
+            older: 0,
+            all: data?.length ?? 0,
+        };
+
+        if (error || !data) return counts;
+
+        for (const row of data) {
+            const date = new Date(row.created_at);
+            for (const c of cycles.allCycles) {
+                if (c.id === "all") continue;
+                const afterStart = !c.start || date > c.start;
+                const beforeEnd = !c.end || date <= c.end;
+                if (afterStart && beforeEnd) {
+                    counts[c.id]++;
+                    break;
+                }
+            }
+        }
+
+        return counts;
+    } catch {
+        return {
+            this_week: 0,
+            last_week: 0,
+            two_weeks_ago: 0,
+            older: 0,
+            all: 0,
+        };
+    }
+}
+
+/**
+ * One page of the public feed: approved testimonies, newest first. When the viewer
+ * is a recognised member, their own pending/rejected posts are folded in so they can
+ * see what happened to what they submitted.
+ *
+ * Paged by a `before` cursor (the last card's `createdAt`) rather than an offset, so a
+ * testimony approved while someone is reading doesn't shift the next page by one.
  */
 export async function getTestimonies(options?: {
     category?: TestimonyCategory | "all";
     search?: string;
-    limit?: number;
+    before?: string | null;
+    cycle?: TestimonyCycleId;
 }) {
     try {
-        const member = await getLoMember();
-        const admin = await checkEnhancedAdminAccess();
+        const [member, access] = await Promise.all([getLoMember(), getLoAccess()]);
         const viewerProfileId = member?.profileId || null;
 
         let query = db
@@ -124,59 +238,107 @@ export async function getTestimonies(options?: {
             // post must surface at the top of their feed, not sink below everything
             // already approved.
             .order("created_at", { ascending: false })
-            .limit(options?.limit ?? 60);
+            // One extra row tells us whether there is another page.
+            .limit(TESTIMONY_PAGE_SIZE + 1);
 
         if (viewerProfileId) {
-            // Approved for everyone, plus this member's own posts in any state.
-            query = query.or(
-                `status.eq.approved,author_profile_id.eq.${viewerProfileId}`,
-            );
+            query = query.or(`status.eq.approved,author_profile_id.eq.${viewerProfileId}`);
         } else {
             query = query.eq("status", "approved");
         }
 
-        if (options?.category && options.category !== "all") {
+        if (options?.category && options.category !== "all" && isCategory(options.category)) {
             query = query.eq("category", options.category);
         }
 
-        if (options?.search?.trim()) {
-            const term = options.search.trim().replace(/[%,]/g, " ");
-            query = query.or(`title.ilike.%${term}%,body.ilike.%${term}%`);
+        if (options?.cycle && options.cycle !== "all") {
+            const settings = await getTestimonyCycleSettings();
+            const cycles = computeTestimonyCycles(new Date(), settings);
+            const target = cycles.allCycles.find((c) => c.id === options.cycle);
+            if (target) {
+                if (target.start) query = query.gt("created_at", target.start.toISOString());
+                if (target.end) query = query.lte("created_at", target.end.toISOString());
+            }
         }
+
+        const term = cleanSearch(options?.search);
+        if (term) query = query.or(`title.ilike.%${term}%,body.ilike.%${term}%`);
+
+        if (options?.before) query = query.lt("created_at", options.before);
 
         const { data, error } = await query;
         if (error) throw new Error(error.message);
 
         const rows = (data || []) as TestimonyRow[];
-        const { counts, mine } = await amenData(
-            rows.map((r) => r.id),
-            viewerProfileId,
-        );
+        const hasMore = rows.length > TESTIMONY_PAGE_SIZE;
+        const page = rows.slice(0, TESTIMONY_PAGE_SIZE);
 
         return {
             success: true,
-            data: rows.map((row) =>
-                toPublicTestimony(
-                    row,
-                    counts[row.id] || 0,
-                    mine.has(row.id),
-                    viewerProfileId,
-                    admin.isAdmin,
-                ),
-            ),
+            data: await present(page, viewerProfileId, access.canRead),
+            hasMore,
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to load testimonies";
         console.error("testimonies: getTestimonies failed", error);
-        return { success: false, error: message, data: [] as Testimony[] };
+        return { success: false, error: message, data: [] as Testimony[], hasMore: false };
+    }
+}
+
+/** The pinned testimony, if a moderator has featured one. Approved only, by the DB. */
+export async function getFeaturedTestimony() {
+    try {
+        const [member, access] = await Promise.all([getLoMember(), getLoAccess()]);
+        const viewerProfileId = member?.profileId || null;
+
+        const { data, error } = await db
+            .from("testimonies")
+            .select(PUBLIC_COLUMNS)
+            .eq("status", "approved")
+            .eq("is_featured", true)
+            .order("featured_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (error) throw new Error(error.message);
+        if (!data) return { success: true, data: null };
+
+        const [testimony] = await present([data as TestimonyRow], viewerProfileId, access.canRead);
+        return { success: true, data: testimony };
+    } catch (error) {
+        console.error("testimonies: getFeaturedTestimony failed", error);
+        return { success: false, data: null };
+    }
+}
+
+/**
+ * Published testimonies per category, for the chips. Only `category` is read, so this
+ * stays a few bytes per testimony; the partial index covers it.
+ */
+export async function getTestimonyCategoryCounts() {
+    try {
+        const { data, error } = await db
+            .from("testimonies")
+            .select("category")
+            .eq("status", "approved");
+
+        if (error) throw new Error(error.message);
+
+        const counts: Record<string, number> = {};
+        for (const row of data || []) {
+            counts[row.category as string] = (counts[row.category as string] || 0) + 1;
+        }
+        return { success: true, data: counts, total: (data || []).length };
+    } catch (error) {
+        console.error("testimonies: category counts failed", error);
+        return { success: false, data: {} as Record<string, number>, total: 0 };
     }
 }
 
 /** A single testimony for its shareable page. Only approved rows are public. */
 export async function getTestimonyById(id: string) {
     try {
-        const member = await getLoMember();
-        const admin = await checkEnhancedAdminAccess();
+        const [member, access] = await Promise.all([getLoMember(), getLoAccess()]);
         const viewerProfileId = member?.profileId || null;
 
         const { data, error } = await db
@@ -191,57 +353,140 @@ export async function getTestimonyById(id: string) {
         const row = data as TestimonyRow;
         const isOwn = !!viewerProfileId && row.author_profile_id === viewerProfileId;
 
-        if (row.status !== "approved" && !isOwn && !admin.isAdmin) {
+        if (row.status !== "approved" && !isOwn && !access.canRead) {
             return { success: false, error: "Testimony not found", data: null };
         }
 
-        const { counts, mine } = await amenData([row.id], viewerProfileId);
-
-        return {
-            success: true,
-            data: toPublicTestimony(
-                row,
-                counts[row.id] || 0,
-                mine.has(row.id),
-                viewerProfileId,
-                admin.isAdmin,
-            ),
-        };
+        const [testimony] = await present([row], viewerProfileId, access.canRead);
+        return { success: true, data: testimony };
     } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to load testimony";
         return { success: false, error: message, data: null };
     }
 }
 
-/** The moderation queue — every testimony, any status. ADMIN only. */
-export async function getTestimoniesForReview() {
+/**
+ * For the share-card image. Deliberately ignores who is asking: a crawler fetches the
+ * image with no cookies, and a card must never show more than the public page would —
+ * so anything not approved returns null and gets the generic image.
+ */
+export async function getPublicTestimonyForCard(id: string) {
+    const { data, error } = await db
+        .from("testimonies")
+        .select("title, body, category, scripture_reference, author_name, is_anonymous, status")
+        .eq("id", id)
+        .eq("status", "approved")
+        .maybeSingle();
+
+    if (error || !data) return null;
+    return {
+        title: data.title as string,
+        body: data.body as string,
+        category: data.category as string,
+        scriptureReference: (data.scripture_reference as string | null) ?? null,
+        authorName: data.is_anonymous ? "Anonymous" : (data.author_name as string),
+    };
+}
+
+/** Up to three other published testimonies in the same category, newest first. */
+export async function getRelatedTestimonies(id: string, category: string) {
     try {
-        const admin = await checkEnhancedAdminAccess();
-        if (!admin.isAdmin) {
-            return { success: false, error: "Unauthorized", data: [] as Testimony[] };
-        }
+        if (!isCategory(category)) return { success: true, data: [] as Testimony[] };
 
         const { data, error } = await db
             .from("testimonies")
             .select(PUBLIC_COLUMNS)
-            // Newest first; the queue defaults to the "pending" filter on top of this.
-            .order("created_at", { ascending: false })
-            .limit(200);
+            .eq("status", "approved")
+            .eq("category", category)
+            .neq("id", id)
+            .order("published_at", { ascending: false })
+            .limit(3);
 
+        if (error) throw new Error(error.message);
+        // Related cards show no Amen state and no private fields: viewer-less on purpose.
+        return { success: true, data: await present((data || []) as TestimonyRow[], null, false) };
+    } catch (error) {
+        console.error("testimonies: related failed", error);
+        return { success: false, data: [] as Testimony[] };
+    }
+}
+
+/** How many are waiting for review — the badge on the moderation tab. */
+export async function getPendingTestimonyCount() {
+    const access = await getLoAccess();
+    if (!access.canRead) return { success: false, count: 0 };
+
+    const { count, error } = await db
+        .from("testimonies")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending");
+
+    if (error) {
+        console.error("testimonies: pending count failed", error);
+        return { success: false, count: 0 };
+    }
+    return { success: true, count: count ?? 0 };
+}
+
+export type ReviewFilter = TestimonyStatus | "featured" | "all";
+
+/**
+ * One page of the moderation queue. Filtered on the server now — the old queue loaded
+ * up to 200 rows of every status and filtered in the browser, which was both a heavy
+ * download on a phone and a silent cap once the fellowship had posted more than that.
+ */
+export async function getTestimoniesForReview(options?: {
+    filter?: ReviewFilter;
+    before?: string | null;
+    cycle?: TestimonyCycleId;
+}) {
+    try {
+        const access = await getLoAccess();
+        if (!access.canRead) {
+            return {
+                success: false,
+                error: "Unauthorized",
+                data: [] as Testimony[],
+                hasMore: false,
+                canModerate: false,
+            };
+        }
+
+        let query = db
+            .from("testimonies")
+            .select(PUBLIC_COLUMNS)
+            .order("created_at", { ascending: false })
+            .limit(REVIEW_PAGE_SIZE + 1);
+
+        const filter = options?.filter ?? "pending";
+        if (filter === "featured") query = query.eq("is_featured", true);
+        else if (filter !== "all") query = query.eq("status", filter);
+
+        if (options?.cycle && options.cycle !== "all") {
+            const settings = await getTestimonyCycleSettings();
+            const cycles = computeTestimonyCycles(new Date(), settings);
+            const target = cycles.allCycles.find((c) => c.id === options.cycle);
+            if (target) {
+                if (target.start) query = query.gt("created_at", target.start.toISOString());
+                if (target.end) query = query.lte("created_at", target.end.toISOString());
+            }
+        }
+
+        if (options?.before) query = query.lt("created_at", options.before);
+
+        const { data, error } = await query;
         if (error) throw new Error(error.message);
 
         const rows = (data || []) as TestimonyRow[];
-        const { counts, mine } = await amenData(rows.map((r) => r.id), null);
-
         return {
             success: true,
-            data: rows.map((row) =>
-                toPublicTestimony(row, counts[row.id] || 0, mine.has(row.id), null, true),
-            ),
+            data: await present(rows.slice(0, REVIEW_PAGE_SIZE), null, true),
+            hasMore: rows.length > REVIEW_PAGE_SIZE,
+            canModerate: access.canModerate,
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to load queue";
-        return { success: false, error: message, data: [] as Testimony[] };
+        return { success: false, error: message, data: [] as Testimony[], hasMore: false, canModerate: false };
     }
 }
 
@@ -269,9 +514,7 @@ export async function submitTestimony(input: {
             return { success: false, error: "Tell us a little more — at least 20 characters." };
         }
 
-        const category = TESTIMONY_CATEGORIES.some((c) => c.id === input.category)
-            ? input.category
-            : "other";
+        const category = isCategory(input.category) ? input.category : "other";
 
         const { data, error } = await db
             .from("testimonies")
@@ -349,7 +592,21 @@ export async function recordTestimonyShare(testimonyId: string) {
     }
 }
 
-// ─── Moderation (ADMIN only) ───
+// ─── Moderation (Lo! admins and the portal's admin write tier) ───
+
+async function requireModerator() {
+    const access = await getLoAccess();
+    if (!access.canModerate || !access.profileId) {
+        throw new Error("Only Lo! admins can do that.");
+    }
+    return access;
+}
+
+function revalidateTestimony(id: string) {
+    revalidatePath("/lo-app");
+    revalidatePath("/lo-app/testimonies");
+    revalidatePath(`/lo-app/testimonies/${id}`);
+}
 
 export async function moderateTestimony(
     testimonyId: string,
@@ -357,27 +614,29 @@ export async function moderateTestimony(
     note?: string,
 ) {
     try {
-        const admin = await checkEnhancedAdminWriteAccess();
-        if (!admin.isAdmin || !admin.user) {
-            return { success: false, error: "Unauthorized: Admin access required" };
-        }
+        const access = await requireModerator();
 
         const now = new Date().toISOString();
         const status: TestimonyStatus =
-            action === "approve"
+            action === "approve" || action === "restore"
                 ? "approved"
                 : action === "reject"
                     ? "rejected"
-                    : action === "hide"
-                        ? "hidden"
-                        : "approved";
+                    : "hidden";
 
         const update: Record<string, unknown> = {
             status,
-            reviewed_by_profile_id: admin.user.id,
+            reviewed_by_profile_id: access.profileId,
             reviewed_at: now,
             review_note: note?.trim() || null,
+            updated_at: now,
         };
+
+        // Off the feed means off the top of it too (the DB enforces this as well).
+        if (status !== "approved") {
+            update.is_featured = false;
+            update.featured_at = null;
+        }
 
         // published_at is set the first time it goes public and then left alone, so
         // the feed's ordering doesn't jump when a post is hidden and restored.
@@ -398,12 +657,168 @@ export async function moderateTestimony(
 
         if (error) throw new Error(error.message);
 
-        revalidatePath("/lo-app");
-        revalidatePath(`/lo-app/testimonies/${testimonyId}`);
-
+        revalidateTestimony(testimonyId);
         return { success: true };
     } catch (error) {
         const message = error instanceof Error ? error.message : "Moderation failed";
+        return { success: false, error: message };
+    }
+}
+
+/**
+ * Correct a testimony's text before (or after) it is published — a typo, a missing
+ * word, a better category. Validated with the same schema as the edit form, and
+ * stamped so the author is told a moderator changed it.
+ */
+export async function editTestimonyAction(testimonyId: string, input: TestimonyEdit) {
+    try {
+        const access = await requireModerator();
+
+        const parsed = testimonyEditSchema.safeParse(input);
+        if (!parsed.success) {
+            return { success: false, error: parsed.error.issues[0]?.message || "Check the fields." };
+        }
+
+        const now = new Date().toISOString();
+        const { error } = await db
+            .from("testimonies")
+            .update({
+                title: parsed.data.title,
+                body: parsed.data.body,
+                category: parsed.data.category,
+                scripture_reference: parsed.data.scriptureReference || null,
+                edited_at: now,
+                edited_by_profile_id: access.profileId,
+                updated_at: now,
+            })
+            .eq("id", testimonyId);
+
+        if (error) throw new Error(error.message);
+
+        revalidateTestimony(testimonyId);
+        return { success: true };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Couldn't save the edit";
+        return { success: false, error: message };
+    }
+}
+
+/**
+ * Pin a published testimony to the top of the feed, or unpin it. One at a time:
+ * featuring a testimony unfeatures whichever was featured before, so "Featured" always
+ * means one clear thing.
+ */
+export async function setTestimonyFeatured(testimonyId: string, featured: boolean) {
+    try {
+        await requireModerator();
+        const now = new Date().toISOString();
+
+        if (featured) {
+            const { data: current, error: readError } = await db
+                .from("testimonies")
+                .select("status")
+                .eq("id", testimonyId)
+                .maybeSingle();
+            if (readError) throw new Error(readError.message);
+            if (current?.status !== "approved") {
+                return { success: false, error: "Publish a testimony before featuring it." };
+            }
+
+            const { error: clearError } = await db
+                .from("testimonies")
+                .update({ is_featured: false, featured_at: null })
+                .eq("is_featured", true)
+                .neq("id", testimonyId);
+            if (clearError) throw new Error(clearError.message);
+        }
+
+        const { error } = await db
+            .from("testimonies")
+            .update({ is_featured: featured, featured_at: featured ? now : null, updated_at: now })
+            .eq("id", testimonyId);
+        if (error) throw new Error(error.message);
+
+        revalidateTestimony(testimonyId);
+        return { success: true };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Couldn't change the feature";
+        return { success: false, error: message };
+    }
+}
+
+async function requireCutoffManager() {
+    const access = await getLoAccess();
+    if (access.canModerate && access.profileId) {
+        return access;
+    }
+
+    const ctx = await getCurrentContext();
+    if (!ctx) throw new Error("Authentication required.");
+    if (ctx.isPresident) throw new Error("The President has view-only access and can't make changes.");
+
+    const isSecretariat = (ctx.leadership ?? []).some(
+        (l) => l.slug === "gen-sec" || l.slug === "asst-gen-sec"
+    );
+    if (!isSecretariat) {
+        throw new Error("Only the General Secretary, VP Admin, or Lo! admins can adjust the cut-off.");
+    }
+    return { canModerate: true, profileId: ctx.profile.id, canRead: true, viaLoAdmin: false };
+}
+
+/**
+ * Adjust the Sunday reading cut-off (General Secretary, VP Admin, ICT Coordinator).
+ */
+export async function updateWeeklyCutoffAction(input: {
+    defaultTime?: string;
+    overrideTimeToday?: string | null;
+}) {
+    try {
+        const access = await requireCutoffManager();
+        const now = new Date();
+        const update: Record<string, unknown> = {
+            updated_by: access.profileId,
+            updated_at: now.toISOString(),
+        };
+
+        if (input.defaultTime !== undefined) {
+            const clean = input.defaultTime.trim();
+            if (!/^\d{1,2}:\d{2}$/.test(clean)) {
+                return { success: false, error: "Invalid time format (expected HH:mm)." };
+            }
+            update.cutoff_time = clean;
+        }
+
+        if (input.overrideTimeToday !== undefined) {
+            if (input.overrideTimeToday === null) {
+                update.current_override_cutoff = null;
+            } else {
+                const { hours, minutes } = parseTimeString(input.overrideTimeToday);
+                const wat = getWatDateBreakdown(now);
+                const daysToSunday = wat.dayOfWeek === 0 ? 0 : 7 - wat.dayOfWeek;
+                const refSundayMidnight = new Date(Date.UTC(wat.year, wat.month, wat.day + daysToSunday));
+                const targetCutoff = createWatDate(
+                    refSundayMidnight.getUTCFullYear(),
+                    refSundayMidnight.getUTCMonth(),
+                    refSundayMidnight.getUTCDate(),
+                    hours,
+                    minutes,
+                );
+                update.current_override_cutoff = targetCutoff.toISOString();
+            }
+        }
+
+        const { error } = await db
+            .from("testimony_settings")
+            .upsert({ id: true, ...update });
+
+        if (error) throw new Error(error.message);
+
+        revalidatePath("/lo-app");
+        revalidatePath("/lo-app/testimonies");
+
+        return { success: true };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to update cut-off";
         return { success: false, error: message };
     }
 }
